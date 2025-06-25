@@ -8,8 +8,9 @@ import 'package:printing/printing.dart';
 String? formatFirestoreDate(dynamic d) {
   if (d == null) return null;
   if (d is DateTime) return "${d.day}/${d.month}/${d.year}";
-  if (d is Timestamp)
+  if (d is Timestamp) {
     return "${d.toDate().day}/${d.toDate().month}/${d.toDate().year}";
+  }
   return d.toString();
 }
 
@@ -24,11 +25,12 @@ class TelechargerRapportBouton extends StatelessWidget {
   });
 
   Future<List<Map<String, dynamic>>> _fetchPrelevementsCommerciauxForMagSimple(
-      String lotId, String magSimpleId) async {
+      String lotId, String magSimpleId, String prelevementMagSimpleId) async {
     final snap = await FirebaseFirestore.instance
         .collection('prelevements')
         .where('lotConditionnementId', isEqualTo: lotId)
         .where('magazinierId', isEqualTo: magSimpleId)
+        .where('prelevementMagasinierId', isEqualTo: prelevementMagSimpleId)
         .where('typePrelevement', isEqualTo: 'commercial')
         .get();
     return snap.docs.map((d) {
@@ -144,10 +146,16 @@ class TelechargerRapportBouton extends StatelessWidget {
 
     final lotId =
         lot['id'] ?? lot['lotConditionnementId'] ?? lot['lotId'] ?? "";
-    final magSimpleId = prelevement['magasinierId'] ??
-        prelevement['magasinierDestId'] ??
+    final magSimpleId = prelevement['magasinierDestId'] // <-- d'abord !
+        ??
+        prelevement['magasinierId'] ??
         prelevement['magasinierNom'] ??
         "";
+
+    print('lotId: $lotId');
+    print('magSimpleId: $magSimpleId');
+    print(
+        'prelevementMagSimpleId: ${prelevement['id'] ?? prelevement['prelevementMagasinierId'] ?? ""}');
 
     // --- PAGE 1 - EN-TÊTE & LOT ---
     pdf.addPage(
@@ -352,11 +360,13 @@ class TelechargerRapportBouton extends StatelessWidget {
 
     // --- PAGES PRÉLÈVEMENTS COMMERCIAUX ---
     final prelevementsCommerciaux =
-        await _fetchPrelevementsCommerciauxForMagSimple(lotId, magSimpleId);
+        await _fetchPrelevementsCommerciauxForMagSimple(lotId, magSimpleId,
+            prelevement['id'] ?? prelevement['prelevementMagasinierId'] ?? "");
     int pageC = 1;
     for (final pc in prelevementsCommerciaux.take(5)) {
       final ventes = await _fetchVentesCommerciales(
           pc['commercialId'], pc['id'] ?? pc['prelevementId'] ?? "");
+
       pdf.addPage(
         pw.Page(
           theme: pw.ThemeData.withFont(base: ttf, bold: ttfBold),

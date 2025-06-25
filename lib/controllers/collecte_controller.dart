@@ -709,7 +709,6 @@ class CollecteController extends GetxController {
   }
 
   /// Enregistre une collecte de type ACHAT
-  /// Enregistre une collecte de type ACHAT
   Future<void> enregistrerCollecteAchat({
     required bool isScoops,
     required Map<String, dynamic> achatDetails,

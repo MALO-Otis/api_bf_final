@@ -46,7 +46,6 @@ class _PrelevementFormPageState extends State<PrelevementFormPage> {
     "7kg": Icons.liquor,
   };
 
-  // Ces prix sont donnés à titre d'exemple, adapte-les à ta logique
   static const Map<String, double> prixGrosMilleFleurs = {
     "Stick 20g": 1500,
     "Pot alvéoles 30g": 36000,
@@ -82,8 +81,13 @@ class _PrelevementFormPageState extends State<PrelevementFormPage> {
   @override
   void initState() {
     super.initState();
-    _loadUserData();
-    _loadPrRecuEtStock();
+    _initAll();
+  }
+
+  void _initAll() async {
+    await _loadUserData();
+    // Optionnel : await Future.delayed(Duration(milliseconds: 50));
+    await _loadPrRecuEtStock();
   }
 
   Future<void> _loadUserData() async {
@@ -130,59 +134,321 @@ class _PrelevementFormPageState extends State<PrelevementFormPage> {
   }
 
   Future<void> _loadPrRecuEtStock() async {
-    // On récupère le prélèvement (magasinier) reçu pour ce lot et ce magasinier
-    final lotId = widget.lotConditionnement['id'];
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      print("[DEBUG] User non connecté !");
+      return;
+    }
+    final lotId = widget.lotConditionnement['id'];
+    final prelevId = widget.lotConditionnement['prelevementMagasinierId'];
+    final prData = widget.lotConditionnement['prelevementMagasinierData'];
+    final isMagazinierPrincipal =
+        (currentUserDoc?['magazinier']?['type'] ?? '').toLowerCase() ==
+            "principale";
+
+    print(
+        "[DEBUG] _loadPrRecuEtStock - userId: $currentUserId, role: $currentUserRole, isPrincipal: $isMagazinierPrincipal");
+    print(
+        "[DEBUG] lotId: $lotId | prelevementMagasinierId: $prelevId | prData: ${prData != null}");
+
+    // --- 1. Cas MAGASINIER PRINCIPAL SUR STOCK INITIAL ---
+    // On considère le stock initial si on est principal ET PAS de prelevementMagasinierId fournie (cas bouton principal)
+    if (isMagazinierPrincipal &&
+        (prelevId == null || prelevId.toString().isEmpty)) {
+      print("[DEBUG] Cas magasinier principal sur stock initial");
+      final emb = widget.lotConditionnement['emballages'] ?? [];
+      Map<String, int> potsInitials = {};
+      Map<String, int> potsRestantsParType = {};
+      for (var e in emb) {
+        potsInitials[e['type']] = e['nombre'];
+        potsRestantsParType[e['type']] = e['nombre'];
+      }
+      print("[DEBUG] Stock initial (emballages): $potsInitials");
+
+      final allPrelevSnap = await FirebaseFirestore.instance
+          .collection('prelevements')
+          .where('lotConditionnementId', isEqualTo: lotId)
+          .get();
+
+      print(
+          "[DEBUG] Nb total prélèvements sur ce lot: ${allPrelevSnap.docs.length}");
+
+      // Soustraire tous les mouvements sortants
+      for (var doc in allPrelevSnap.docs) {
+        final prData = doc.data();
+        final isVersMagasinierSimple =
+            (prData['magasinierDestId'] ?? '').toString().isNotEmpty &&
+                prData['typePrelevement'] == 'magasinier';
+        final isVersCommercialDirect =
+            prData['typePrelevement'] == 'commercial' &&
+                (prData['magazinierId'] ?? '') == (currentUserId ?? '');
+
+        if (isVersMagasinierSimple || isVersCommercialDirect) {
+          if (prData['emballages'] != null) {
+            for (var emb in prData['emballages']) {
+              final t = emb['type'];
+              potsRestantsParType[t] =
+                  (potsRestantsParType[t] ?? 0) - ((emb['nombre'] ?? 0) as int);
+            }
+          }
+        }
+      }
+
+      print(
+          "[DEBUG] Après soustraction mouvements sortants: $potsRestantsParType");
+
+      // Ajouter les restes validés des commerciaux directs
+      Map<String, int> restesCommerciauxDirects = {};
+      for (var doc in allPrelevSnap.docs) {
+        final prData = doc.data();
+        if (prData['typePrelevement'] == 'commercial' &&
+            prData['magazinierApprobationRestitution'] == true &&
+            prData['demandeRestitution'] == true &&
+            prData['magazinierId'] != null &&
+            prData['magazinierId'] == currentUserId) {
+          final String commercialId = prData['commercialId'] ?? "";
+          final String prelevementId = doc.id;
+          Map<String, int> potsRestants = {};
+          if (prData['emballages'] != null) {
+            for (var emb in prData['emballages']) {
+              final t = emb['type'];
+              final n = (emb['nombre'] ?? 0) as num;
+              potsRestants[t] = n.toInt();
+            }
+          }
+          final ventes = await FirebaseFirestore.instance
+              .collection('ventes')
+              .doc(commercialId)
+              .collection('ventes_effectuees')
+              .where('prelevementId', isEqualTo: prelevementId)
+              .get();
+          for (final venteDoc in ventes.docs) {
+            final vente = venteDoc.data() as Map<String, dynamic>;
+            if (vente['emballagesVendus'] != null) {
+              for (var emb in vente['emballagesVendus']) {
+                final t = emb['type'];
+                final n = (emb['nombre'] ?? 0) as num;
+                potsRestants[t] = (potsRestants[t] ?? 0) - n.toInt();
+              }
+            }
+          }
+          potsRestants.updateAll((k, v) => v < 0 ? 0 : v);
+          potsRestants.forEach((k, v) {
+            restesCommerciauxDirects[k] =
+                (restesCommerciauxDirects[k] ?? 0) + v;
+          });
+        }
+      }
+
+      print("[DEBUG] Restes commerciaux directs: $restesCommerciauxDirects");
+
+      // Ajouter les restes validés des magasiniers simples
+      Map<String, int> restesMagasiniersSimples = {};
+      for (var doc in allPrelevSnap.docs) {
+        final prData = doc.data();
+        if (prData['typePrelevement'] == 'magasinier' &&
+            prData['magasinierPrincipalApprobationRestitution'] == true &&
+            prData['restesApresVenteCommerciaux'] != null) {
+          final restesMap =
+              Map<String, dynamic>.from(prData['restesApresVenteCommerciaux']);
+          restesMap.forEach((k, v) {
+            restesMagasiniersSimples[k] =
+                (restesMagasiniersSimples[k] ?? 0) + (v as int);
+          });
+        }
+      }
+      restesMagasiniersSimples.forEach((k, v) {
+        potsRestantsParType[k] = (potsRestantsParType[k] ?? 0) + v;
+      });
+
+      print("[DEBUG] Restes magasiniers simples: $restesMagasiniersSimples");
+
+      restesCommerciauxDirects.forEach((k, v) {
+        potsRestantsParType[k] = (potsRestantsParType[k] ?? 0) + v;
+      });
+      potsRestantsParType.updateAll((key, value) => value < 0 ? 0 : value);
+
+      print("[DEBUG] Stock final magasinier principal: $potsRestantsParType");
+      print("[DEBUG] Types emballage dispo: ${potsInitials.keys.toList()}");
+
+      setState(() {
+        typesEmballageDisponibles = potsInitials.keys.toList();
+        this.potsRestantsParType = potsRestantsParType;
+        predominanceFlorale = widget.lotConditionnement['predominanceFlorale']
+                ?.toString()
+                .toLowerCase() ??
+            '';
+        for (final t in typesEmballageDisponibles) {
+          emballageSelection[t] = false;
+          nbPotsController[t] = TextEditingController();
+          nbPotsController[t]!.addListener(_recalc);
+        }
+      });
+      return;
+    }
+
+    // --- 2. Cas MAGASINIER SIMPLE : FORMULAIRE SUR UN PRÉLÈVEMENT PRÉCIS ---
+    if (prelevId != null && prData != null) {
+      print("[DEBUG] Cas magasinier simple sur prélèvement précis: $prelevId");
+      Map<String, int> potsRecusParType = {};
+      if (prData['emballages'] != null) {
+        for (var emb in prData['emballages']) {
+          potsRecusParType[emb['type']] = emb['nombre'];
+        }
+      }
+      print("[DEBUG] Pots reçus par type: $potsRecusParType");
+      final prelevSnap = await FirebaseFirestore.instance
+          .collection('prelevements')
+          .where('lotConditionnementId', isEqualTo: lotId)
+          .where('typePrelevement', isEqualTo: 'commercial')
+          .where('magazinierId', isEqualTo: user.uid)
+          .where('prelevementMagasinierId', isEqualTo: prelevId)
+          .get();
+
+      Map<String, int> potsPrelevesParType = {};
+      List<QueryDocumentSnapshot> prelevementsCommerciauxMagSimple = [];
+      for (var doc in prelevSnap.docs) {
+        prelevementsCommerciauxMagSimple.add(doc);
+        final data = doc.data();
+        if (data['emballages'] != null) {
+          for (var emb in data['emballages']) {
+            final t = emb['type'];
+            final n = (emb['nombre'] ?? 0) as int;
+            potsPrelevesParType[t] = (potsPrelevesParType[t] ?? 0) + n;
+          }
+        }
+      }
+      Map<String, int> totalRestesParType = {};
+      for (final prDoc in prelevementsCommerciauxMagSimple) {
+        final d = prDoc.data() as Map<String, dynamic>;
+        if (d['magazinierApprobationRestitution'] == true &&
+            d['demandeRestitution'] == true &&
+            d['restesApresVenteCommercial'] != null) {
+          final restes =
+              Map<String, dynamic>.from(d['restesApresVenteCommercial']);
+          restes.forEach((k, v) {
+            totalRestesParType[k] = (totalRestesParType[k] ?? 0) + (v as int);
+          });
+        }
+      }
+      Map<String, int> stockRestant = {};
+      for (final t in potsRecusParType.keys) {
+        final resteNormal =
+            (potsRecusParType[t] ?? 0) - (potsPrelevesParType[t] ?? 0);
+        final resteComm = totalRestesParType[t] ?? 0;
+        stockRestant[t] = resteNormal + resteComm;
+      }
+      for (final t in totalRestesParType.keys) {
+        if (!stockRestant.containsKey(t)) {
+          stockRestant[t] = totalRestesParType[t]!;
+        }
+      }
+      stockRestant.updateAll((key, value) => value < 0 ? 0 : value);
+
+      setState(() {
+        typesEmballageDisponibles = potsRecusParType.keys.toList();
+        potsRestantsParType = stockRestant;
+        predominanceFlorale =
+            prData['predominanceFlorale']?.toString().toLowerCase() ??
+                (widget.lotConditionnement['predominanceFlorale'] ?? '')
+                    .toString()
+                    .toLowerCase();
+        for (final t in typesEmballageDisponibles) {
+          emballageSelection[t] = false;
+          nbPotsController[t] = TextEditingController();
+          nbPotsController[t]!.addListener(_recalc);
+        }
+      });
+      return;
+    }
+
+    // --- 3. Cas MAGASINIER SIMPLE : stock CUMULÉ de TOUS les prélèvements reçus ---
     final prRecuSnap = await FirebaseFirestore.instance
         .collection('prelevements')
         .where('lotConditionnementId', isEqualTo: lotId)
         .where('typePrelevement', isEqualTo: 'magasinier')
         .where('magasinierDestId', isEqualTo: user.uid)
-        .limit(1)
         .get();
-    if (prRecuSnap.docs.isEmpty) {
-      // Pas de stock reçu sur ce lot !
-      setState(() {
-        typesEmballageDisponibles = [];
-        potsRestantsParType = {};
-      });
-      return;
-    }
-    final prRecu = prRecuSnap.docs.first.data();
-    // Les types d'emballage et leur stock
-    Map<String, int> stockInitial = {};
-    if (prRecu['emballages'] != null) {
-      for (var emb in prRecu['emballages']) {
-        stockInitial[emb['type']] = emb['nombre'];
-      }
-    }
-    // Calculer les prélèvements faits à des commerciaux
-    final prelevComSnap = await FirebaseFirestore.instance
-        .collection('prelevements')
-        .where('lotConditionnementId', isEqualTo: lotId)
-        .where('typePrelevement', isEqualTo: 'commercial')
-        .where('magazinierId', isEqualTo: user.uid)
-        .get();
-    Map<String, int> stockRestant = Map<String, int>.from(stockInitial);
-    for (var doc in prelevComSnap.docs) {
-      final data = doc.data();
-      if (data['emballages'] != null) {
-        for (var emb in data['emballages']) {
+
+    List<Map<String, dynamic>> prRecus = prRecuSnap.docs.map((d) {
+      var data = d.data() as Map<String, dynamic>;
+      data['id'] = d.id;
+      return data;
+    }).toList();
+
+    Map<String, int> potsRecusParType = {};
+    for (final prRecu in prRecus) {
+      if (prRecu['emballages'] != null) {
+        for (var emb in prRecu['emballages']) {
           final t = emb['type'];
-          stockRestant[t] =
-              (stockRestant[t] ?? 0) - ((emb['nombre'] ?? 0) as num).toInt();
+          final n = (emb['nombre'] ?? 0) as int;
+          potsRecusParType[t] = (potsRecusParType[t] ?? 0) + n;
         }
       }
     }
+    final prelevSnap = await FirebaseFirestore.instance
+        .collection('prelevements')
+        .where('lotConditionnementId', isEqualTo: lotId)
+        .get();
+
+    Map<String, int> potsPrelevesParType = {};
+    List<QueryDocumentSnapshot> prelevementsCommerciauxMagSimple = [];
+    for (final prRecu in prRecus) {
+      final prelevementMagasinierId = prRecu['id'];
+      for (final doc in prelevSnap.docs) {
+        final data = doc.data();
+        if (data['typePrelevement'] == 'commercial' &&
+            data['magazinierId'] == user.uid &&
+            data['prelevementMagasinierId'] == prelevementMagasinierId) {
+          prelevementsCommerciauxMagSimple.add(doc);
+          if (data['emballages'] != null) {
+            for (var emb in data['emballages']) {
+              final t = emb['type'];
+              final n = (emb['nombre'] ?? 0) as int;
+              potsPrelevesParType[t] = (potsPrelevesParType[t] ?? 0) + n;
+            }
+          }
+        }
+      }
+    }
+    Map<String, int> totalRestesParType = {};
+    for (final prDoc in prelevementsCommerciauxMagSimple) {
+      final d = prDoc.data() as Map<String, dynamic>;
+      if (d['magazinierApprobationRestitution'] == true &&
+          d['demandeRestitution'] == true &&
+          d['restesApresVenteCommercial'] != null) {
+        final restes =
+            Map<String, dynamic>.from(d['restesApresVenteCommercial']);
+        restes.forEach((k, v) {
+          totalRestesParType[k] = (totalRestesParType[k] ?? 0) + (v as int);
+        });
+      }
+    }
+    Map<String, int> stockRestant = {};
+    for (final t in potsRecusParType.keys) {
+      final resteNormal =
+          (potsRecusParType[t] ?? 0) - (potsPrelevesParType[t] ?? 0);
+      final resteComm = totalRestesParType[t] ?? 0;
+      stockRestant[t] = resteNormal + resteComm;
+    }
+    for (final t in totalRestesParType.keys) {
+      if (!stockRestant.containsKey(t)) {
+        stockRestant[t] = totalRestesParType[t]!;
+      }
+    }
+    stockRestant.updateAll((key, value) => value < 0 ? 0 : value);
+
     setState(() {
-      typesEmballageDisponibles = stockInitial.keys.toList();
+      typesEmballageDisponibles = potsRecusParType.keys.toList();
       potsRestantsParType = stockRestant;
-      predominanceFlorale =
-          prRecu['predominanceFlorale']?.toString().toLowerCase() ??
+      predominanceFlorale = prRecus.isNotEmpty
+          ? (prRecus.first['predominanceFlorale']?.toString().toLowerCase() ??
               (widget.lotConditionnement['predominanceFlorale'] ?? '')
                   .toString()
-                  .toLowerCase();
+                  .toLowerCase())
+          : (widget.lotConditionnement['predominanceFlorale'] ?? '')
+              .toString()
+              .toLowerCase();
       for (final t in typesEmballageDisponibles) {
         emballageSelection[t] = false;
         nbPotsController[t] = TextEditingController();
@@ -286,7 +552,6 @@ class _PrelevementFormPageState extends State<PrelevementFormPage> {
       Get.snackbar("Erreur", "Veuillez remplir tous les champs obligatoires.");
       return;
     }
-    // Le stock total maximal pour ce mag simple
     final double lotConditionne = potsRestantsParType.values.fold<double>(
         0.0, (prev, val) => prev + ((val ?? 0) as int).toDouble());
     if (quantiteTotale > lotConditionne) {
@@ -326,6 +591,8 @@ class _PrelevementFormPageState extends State<PrelevementFormPage> {
               orElse: () => currentUserDoc ?? {})['nom'] ??
           "",
       "magazinierId": _magazinierId,
+      "prelevementMagasinierId":
+          widget.lotConditionnement['prelevementMagasinierId'],
       "magasinierNom": magasiniers.firstWhere((m) => m['id'] == _magazinierId,
               orElse: () => currentUserDoc ?? {})['nom'] ??
           "",
@@ -335,6 +602,8 @@ class _PrelevementFormPageState extends State<PrelevementFormPage> {
       "lotConditionnementId": widget.lotConditionnement['id'],
       "typePrelevement": "commercial",
       "createdAt": FieldValue.serverTimestamp(),
+      "referenceAuto":
+          "${widget.lotConditionnement['prelevementMagasinierId'] ?? ''}__${_commercialId ?? ''}__${DateTime.now().millisecondsSinceEpoch}",
     });
 
     Get.snackbar("Succès", "Prélèvement enregistré !");

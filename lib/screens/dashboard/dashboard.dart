@@ -1,11 +1,9 @@
 import 'package:apisavana_gestion/authentication/user_session.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 
 final Map<String, List<String>> roleModules = {
   "Admin": [
@@ -16,7 +14,6 @@ final Map<String, List<String>> roleModules = {
     "conditionnement",
     "gestion de ventes",
     "ventes",
-    "stock",
     "rapports"
   ],
   "Collecteur": ["collecte"],
@@ -41,137 +38,39 @@ class _DashboardScreenState extends State<DashboardScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeInAnimation;
 
-  bool get isLargeScreen =>
-      MediaQuery.of(context).size.width >= 900; // seuil PC
+  DateTimeRange? _selectedRange;
+  String? _selectedCommercial;
+  String? _selectedClient;
+  String? _selectedLot;
+  String? _selectedTypeVente; // "Comptant", "Crédit", "Recouvrement", null=Tous
+  String graphType = "Tout"; // "Tout", "Ventes", "Collecte", "Stock"
 
-  // --- Statistiques dynamiques (Firestore)
-  Map<String, dynamic> statsData = {};
-  bool loadingStats = true;
+  // Ajoute ces variables à ta classe :
+  DateTime? _detailsFilterStart;
+  DateTime? _detailsFilterEnd;
+  String _detailsSearch = ""; // Pour la recherche texte
 
-  // PDF
-  Future<void> exportPDF(String section) async {
-    try {
-      final pdf = pw.Document();
-      List<String> columns = [];
-      List<List<String>> rows = [];
+  List<String> commerciaux = [];
+  List<String> clients = [];
+  List<String> lots = [];
 
-      if (section == "collecte") {
-        columns = [
-          "Date",
-          "Type",
-          "Quantité",
-          "Unité",
-          "Producteur/SCOOPS",
-          "Localité"
-        ];
-        rows = (statsData["collecteRows"] ?? []).map<List<String>>((row) {
-          return [
-            row["date"] ?? "",
-            row["type"] ?? "",
-            row["quantite"].toString(),
-            row["unite"] ?? "",
-            row["producteur"] ?? "",
-            row["localite"] ?? ""
-          ].map((e) => e.toString()).toList();
-        }).toList();
-      } else if (section == "ventes") {
-        columns = [
-          "Date",
-          "Client",
-          "Commercial",
-          "Type vente",
-          "Montant total"
-        ];
-        rows = (statsData["ventesRows"] ?? []).map<List<String>>((row) {
-          return [
-            row["date"] ?? "",
-            row["client"] ?? "",
-            row["commercial"] ?? "",
-            row["typeVente"] ?? "",
-            row["montantTotal"]?.toString() ?? ""
-          ].map((e) => e.toString()).toList();
-        }).toList();
-      } else if (section == "stock") {
-        columns = [
-          "Date",
-          "Produit",
-          "Quantité",
-          "Unité",
-          "Localité",
-          "Magasin"
-        ];
-        rows = (statsData["stockRows"] ?? []).map<List<String>>((row) {
-          return [
-            row["date"] ?? "",
-            row["produit"] ?? "",
-            row["quantite"].toString(),
-            row["unite"] ?? "",
-            row["localite"] ?? "",
-            row["magasin"] ?? ""
-          ].map((e) => e.toString()).toList();
-        }).toList();
-      }
-      if (rows.isEmpty) {
-        pdf.addPage(pw.Page(
-            build: (context) =>
-                pw.Center(child: pw.Text("Aucune donnée à exporter"))));
-      } else {
-        pdf.addPage(
-          pw.Page(
-            build: (context) => pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(
-                  "Export $section",
-                  style: pw.TextStyle(
-                      fontWeight: pw.FontWeight.bold, fontSize: 22),
-                ),
-                pw.SizedBox(height: 14),
-                pw.Table(
-                  border: pw.TableBorder.all(),
-                  children: [
-                    pw.TableRow(
-                      decoration: pw.BoxDecoration(color: PdfColors.grey300),
-                      children: columns
-                          .map((h) => pw.Padding(
-                                padding: const pw.EdgeInsets.all(4),
-                                child: pw.Text(h,
-                                    style: pw.TextStyle(
-                                        fontWeight: pw.FontWeight.bold)),
-                              ))
-                          .toList(),
-                    ),
-                    ...rows.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final row = entry.value;
-                      return pw.TableRow(
-                        decoration: pw.BoxDecoration(
-                            color: index.isEven
-                                ? PdfColors.white
-                                : PdfColors.grey100),
-                        children: row
-                            .map((cell) => pw.Padding(
-                                  padding: const pw.EdgeInsets.all(4),
-                                  child: pw.Text(cell),
-                                ))
-                            .toList(),
-                      );
-                    }),
-                  ],
-                )
-              ],
-            ),
-          ),
-        );
-      }
-      await Printing.layoutPdf(onLayout: (format) async => pdf.save());
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text("Erreur export PDF: $e")));
-      }
-    }
-  }
+  List<String> _xLabels = [];
+  List<Map<String, double>> barChartData = [];
+  bool _isLoadingChart = true;
+  String? chartError;
+
+  List<Map<String, dynamic>> _alertes = [];
+  List<Map<String, dynamic>> _logs = [];
+  Map<String, num> kpis = {};
+  Map<String, List<Map<String, dynamic>>> details = {};
+
+  // Pour tri et pagination des détails
+  String? _sortField;
+  bool _sortAscending = true;
+  int _detailsPage = 0;
+  static const int _detailsPageSize = 20;
+
+  bool get isLargeScreen => MediaQuery.of(context).size.width >= 900;
 
   @override
   void initState() {
@@ -182,238 +81,1220 @@ class _DashboardScreenState extends State<DashboardScreen>
         CurvedAnimation(parent: _animationController, curve: Curves.easeIn);
     _animationController.forward();
     _scaffoldKey = GlobalKey<ScaffoldState>();
-    if (!Get.isRegistered<UserSession>()) {
-      Get.put(UserSession());
-    }
-    loadStats();
+    if (!Get.isRegistered<UserSession>()) Get.put(UserSession());
+    _initDefaultRange();
+    _loadAllData();
   }
 
-  Future<void> loadStats() async {
-    setState(() => loadingStats = true);
-    Map<String, dynamic> stats = {};
-    // --- COLLECTE ---
-    final collecteSnap =
-        await FirebaseFirestore.instance.collection('collectes').get();
-    int qteRecolte = 0, qteAchat = 0;
-    String uniteRecolte = "kg", uniteAchat = "litres";
-    List collecteRows = [];
-    for (final doc in collecteSnap.docs) {
-      final data = doc.data();
-      String date = "";
-      if (data["dateCollecte"] is Timestamp) {
-        date = DateFormat('dd/MM/yyyy')
-            .format((data["dateCollecte"] as Timestamp).toDate());
-      }
-      final type = data["type"] ?? "";
-      int quantite = int.tryParse(data["quantite"].toString()) ?? 0;
-      String unite = data["unite"] ?? (type == "achat" ? "litres" : "kg");
-      String producteur = data["nomIndividuel"] ?? data["nomPrenom"] ?? "";
-      String localite = data["localite"] ?? data["commune"] ?? "";
-      collecteRows.add({
-        "date": date,
-        "type": type,
-        "quantite": quantite,
-        "unite": unite,
-        "producteur": producteur,
-        "localite": localite
-      });
-      if (type == "achat") {
-        qteAchat += quantite;
-        uniteAchat = unite;
-      } else if (type == "récolte" || type == "recolte") {
-        qteRecolte += quantite;
-        uniteRecolte = unite;
-      }
-    }
-    stats["collecte"] = {
-      "recolte": {"valeur": qteRecolte, "unite": uniteRecolte},
-      "achat": {"valeur": qteAchat, "unite": uniteAchat},
-    };
-    stats["collecteRows"] = collecteRows;
+  void _initDefaultRange() {
+    final now = DateTime.now();
+    _selectedRange = DateTimeRange(
+      start: DateTime(now.year, now.month, 1),
+      end: DateTime(now.year, now.month + 1, 0),
+    );
+  }
 
-    // --- VENTES ---
-    final ventesSnap = await FirebaseFirestore.instance
-        .collectionGroup('ventes_effectuees')
-        .get();
-    int vComptant = 0, vCredit = 0, vRecouv = 0;
-    String uniteVente = "kg";
-    List ventesRows = [];
-    Map<String, String> clientsMap = {};
-    Map<String, String> commerciauxMap = {};
-    // Récupérer tous les clients et commerciaux pour mapping noms
-    final clientsSnap =
-        await FirebaseFirestore.instance.collection('clients').get();
-    for (var d in clientsSnap.docs) {
-      clientsMap[d.id] =
-          d.data()['nomBoutique'] ?? d.data()['nomGerant'] ?? d.id;
-    }
-    final commSnap = await FirebaseFirestore.instance
-        .collection('utilisateurs')
-        .where('role', isEqualTo: 'commercial')
-        .get();
-    for (var d in commSnap.docs) {
-      final nom = d.data()['nom'] ?? d.id;
-      commerciauxMap[d.id] = nom;
-      final uid = d.data()['uid'];
-      if (uid != null && uid != d.id) {
-        commerciauxMap[uid] = nom;
-      }
-    }
-    for (final doc in ventesSnap.docs) {
-      final v = doc.data() as Map<String, dynamic>;
-      String date = "";
-      if (v["dateVente"] is Timestamp) {
-        date = DateFormat('dd/MM/yyyy')
-            .format((v["dateVente"] as Timestamp).toDate());
-      }
-      String client = clientsMap[v['clientId']] ?? v['clientNom'] ?? "";
-      String commId = v['commercialId']?.toString() ?? "";
-      String commNom = v['commercialNom']?.toString() ?? "";
-      String commercial = commerciauxMap[commId] ?? commNom ?? "";
-      String typeVente = v['typeVente'] ?? "";
-      int montantTotal = int.tryParse(v['montantTotal']?.toString() ?? "") ?? 0;
-      ventesRows.add({
-        "date": date,
-        "client": client,
-        "commercial": commercial,
-        "typeVente": typeVente,
-        "montantTotal": montantTotal
+  Future<void> _loadAllData() async {
+    try {
+      setState(() => _isLoadingChart = true);
+      await Future.wait([
+        _loadDropdowns(),
+        _loadKPIsAndDetails(),
+        _loadChartData(),
+        _loadAlertes(),
+        _loadLogs(),
+      ]);
+    } catch (e) {
+      setState(() {
+        chartError = "Erreur chargement données : $e";
       });
-      if (typeVente == "Comptant")
-        vComptant += montantTotal;
-      else if (typeVente == "Crédit")
-        vCredit += montantTotal;
-      else if (typeVente == "Recouvrement") vRecouv += montantTotal;
+    } finally {
+      setState(() => _isLoadingChart = false);
     }
-    stats["ventes"] = {
-      "comptant": {"valeur": vComptant, "unite": uniteVente},
-      "credit": {"valeur": vCredit, "unite": uniteVente},
-      "recouvrement": {"valeur": vRecouv, "unite": uniteVente},
-    };
-    stats["ventesRows"] = ventesRows;
+  }
 
-    // --- STOCK ---
-    final stockSnap =
-        await FirebaseFirestore.instance.collection('conditionnement').get();
-    int brut = 0, semiFini = 0, finiKoudougou = 0, finiOuaga = 0;
-    String uniteBrut = "kg",
-        uniteSemiFini = "kg",
-        uniteFiniKdg = "litres",
-        uniteFiniOuaga = "kg";
-    List stockRows = [];
-    for (final doc in stockSnap.docs) {
-      final lot = doc.data();
-      String date = "";
-      if (lot["date"] is Timestamp) {
-        date = DateFormat('dd/MM/yyyy')
-            .format((lot["date"] as Timestamp).toDate());
+  Future<void> _loadDropdowns() async {
+    try {
+      final commSnap = await FirebaseFirestore.instance
+          .collection('utilisateurs')
+          .where('role', isEqualTo: 'Commercial')
+          .get();
+      commerciaux = commSnap.docs
+          .map((d) => d.data()['nom'] ?? d.id)
+          .whereType<String>()
+          .toList();
+
+      final cliSnap =
+          await FirebaseFirestore.instance.collection('clients').get();
+      clients = cliSnap.docs
+          .map((d) => d.data()['nomBoutique'] ?? d.data()['nomGerant'] ?? d.id)
+          .whereType<String>()
+          .toList();
+
+      final lotSnap =
+          await FirebaseFirestore.instance.collection('conditionnement').get();
+      lots = lotSnap.docs
+          .map((d) => d.data()['lotOrigine'] ?? d.id)
+          .whereType<String>()
+          .toList();
+    } catch (_) {
+      commerciaux = [];
+      clients = [];
+      lots = [];
+    }
+  }
+
+  Future<void> _loadKPIsAndDetails() async {
+    double qteVentes = 0,
+        montantVentes = 0,
+        qteCollecte = 0,
+        qteStock = 0,
+        credits = 0;
+    List<Map<String, dynamic>> ventesList = [];
+    List<Map<String, dynamic>> collecteList = [];
+    List<Map<String, dynamic>> stockList = [];
+    List<Map<String, dynamic>> creditsList = [];
+
+    // Ventes
+    try {
+      final snapVentes = await FirebaseFirestore.instance
+          .collectionGroup('ventes_effectuees')
+          .get();
+      for (var doc in snapVentes.docs) {
+        final v = doc.data() as Map<String, dynamic>;
+        final embVendus = v['emballagesVendus'] ?? [];
+        double qte = 0;
+        for (final emb in embVendus) {
+          qte += (emb['contenanceKg'] ?? 0.0) * (emb['nombre'] ?? 0);
+        }
+        qteVentes += qte;
+        montantVentes += (v['montantTotal'] ?? 0.0) is num
+            ? (v['montantTotal'] ?? 0.0)
+            : 0.0;
+        ventesList.add(v);
+        if (v['typeVente'] == "Crédit" && (v['montantRestant'] ?? 0) > 0) {
+          credits += (v['montantRestant'] ?? 0.0);
+          creditsList.add(v);
+        }
       }
-      String produit = lot["predominanceFlorale"] ?? "";
-      int quantite =
-          int.tryParse(lot["quantiteRestante"]?.toString() ?? "") ?? 0;
-      String localite = lot["localite"] ?? "";
-      String magasin = lot["magasin"] ?? "";
-      String unite = "kg";
-      stockRows.add({
-        "date": date,
-        "produit": produit,
-        "quantite": quantite,
-        "unite": unite,
-        "localite": localite,
-        "magasin": magasin
+    } catch (_) {}
+
+    // Collecte
+    try {
+      final snapCollecte =
+          await FirebaseFirestore.instance.collection('collectes').get();
+      for (var doc in snapCollecte.docs) {
+        final sousColl = await doc.reference.collection('Récolte').get();
+        for (var s in sousColl.docs) {
+          var d = s.data();
+          if (d['details'] is List) {
+            for (var detail in (d['details'] as List)) {
+              qteCollecte += (detail['quantite'] ?? 0.0) is num
+                  ? (detail['quantite'] ?? 0.0)
+                  : 0.0;
+              collecteList.add(detail as Map<String, dynamic>);
+            }
+          } else {
+            qteCollecte += (d['quantiteKg'] ?? 0.0) is num
+                ? (d['quantiteKg'] ?? 0.0)
+                : 0.0;
+            collecteList.add(d);
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Stock
+    try {
+      final snapStock =
+          await FirebaseFirestore.instance.collection('conditionnement').get();
+      for (var doc in snapStock.docs) {
+        qteStock += (doc.data()['quantiteRestante'] ?? 0.0) is num
+            ? (doc.data()['quantiteRestante'] ?? 0.0)
+            : 0.0;
+        stockList.add(doc.data());
+      }
+    } catch (_) {}
+
+    kpis = {
+      "Ventes": qteVentes,
+      "Montant ventes": montantVentes,
+      "Collecte": qteCollecte,
+      "Stock": qteStock,
+      "Crédits à recouvrer": credits,
+    };
+    details = {
+      "Ventes": ventesList,
+      "Collecte": collecteList,
+      "Stock": stockList,
+      "Crédits à recouvrer": creditsList,
+    };
+    setState(() {});
+  }
+
+  Future<void> _loadChartData() async {
+    try {
+      setState(() {
+        _isLoadingChart = true;
+        chartError = null;
       });
-      if ((magasin.toLowerCase() == "koudougou" ||
-          localite.toLowerCase() == "koudougou")) {
-        finiKoudougou += quantite;
-      } else if ((magasin.toLowerCase() == "ouagadougou" ||
-          localite.toLowerCase() == "ouagadougou")) {
-        finiOuaga += quantite;
+      final nbDays =
+          _selectedRange!.end.difference(_selectedRange!.start).inDays;
+      final bool byMonth = nbDays > 60;
+      List<DateTime> xAxisPoints = [];
+      if (byMonth) {
+        DateTime d = DateTime(
+            _selectedRange!.start.year, _selectedRange!.start.month, 1);
+        while (d.isBefore(_selectedRange!.end)) {
+          xAxisPoints.add(d);
+          d = DateTime(d.year, d.month + 1, 1);
+        }
       } else {
-        brut += quantite;
+        DateTime d = _selectedRange!.start;
+        while (!d.isAfter(_selectedRange!.end)) {
+          xAxisPoints.add(DateTime(d.year, d.month, d.day));
+          d = d.add(const Duration(days: 1));
+        }
       }
-    }
-    stats["stock"] = {
-      "brut": brut,
-      "semi_fini": semiFini,
-      "fini": {
-        "koudougou": {"valeur": finiKoudougou, "unite": uniteFiniKdg},
-        "ouaga": {"valeur": finiOuaga, "unite": uniteFiniOuaga},
-      }
-    };
-    stats["stockRows"] = stockRows;
+      _xLabels = xAxisPoints
+          .map((d) => byMonth
+              ? DateFormat('MM/yyyy').format(d)
+              : DateFormat('dd/MM').format(d))
+          .toList();
 
-    // Alertes
-    stats["alertes"] = [
-      if (brut < 20)
-        {"type": "Stock bas", "message": "Stock brut inférieur à 20kg"},
-      if (vCredit > 0)
-        {
-          "type": "Crédit en attente",
-          "message": "Il y a des crédits non réglés"
-        },
-      if ((semiFini + brut + finiKoudougou + finiOuaga) == 0)
-        {"type": "Anomalie", "message": "Aucun stock enregistré"},
+      // Préparation des barres pour chaque série
+      barChartData = List.generate(_xLabels.length, (idx) {
+        return {
+          "Ventes": 0.0,
+          "Collecte": 0.0,
+          "Stock": 0.0,
+        };
+      });
+
+      // Ventes
+      try {
+        final ventesQ = FirebaseFirestore.instance
+            .collectionGroup('ventes_effectuees')
+            .where('dateVente', isGreaterThanOrEqualTo: _selectedRange!.start)
+            .where('dateVente', isLessThanOrEqualTo: _selectedRange!.end);
+        final ventesSnap = await ventesQ.get();
+        for (var doc in ventesSnap.docs) {
+          final v = doc.data() as Map<String, dynamic>;
+          DateTime? dt = (v['dateVente'] is Timestamp)
+              ? (v['dateVente'] as Timestamp).toDate()
+              : null;
+          if (dt == null) continue;
+          int idx = byMonth
+              ? ((dt.year - xAxisPoints[0].year) * 12 +
+                  (dt.month - xAxisPoints[0].month))
+              : dt.difference(xAxisPoints[0]).inDays;
+          if (idx < 0 || idx >= _xLabels.length) continue;
+          double qte = 0;
+          final embVendus = v['emballagesVendus'] ?? [];
+          for (final emb in embVendus) {
+            qte += (emb['contenanceKg'] ?? 0.0) * (emb['nombre'] ?? 0);
+          }
+          barChartData[idx]["Ventes"] =
+              (barChartData[idx]["Ventes"] ?? 0) + qte;
+        }
+      } catch (_) {}
+
+      // Collecte
+      try {
+        final collecteSnap = await FirebaseFirestore.instance
+            .collection('collectes')
+            .where('dateCollecte',
+                isGreaterThanOrEqualTo: _selectedRange!.start)
+            .where('dateCollecte', isLessThanOrEqualTo: _selectedRange!.end)
+            .get();
+        for (var doc in collecteSnap.docs) {
+          final data = doc.data();
+          DateTime? dt = (data['dateCollecte'] as Timestamp?)?.toDate();
+          if (dt == null) continue;
+          int idx = byMonth
+              ? ((dt.year - xAxisPoints[0].year) * 12 +
+                  (dt.month - xAxisPoints[0].month))
+              : dt.difference(xAxisPoints[0]).inDays;
+          if (idx < 0 || idx >= _xLabels.length) continue;
+          double score = 0;
+          final sousColl = await doc.reference.collection('Récolte').get();
+          for (var s in sousColl.docs) {
+            final d = s.data();
+            if (d['details'] is List) {
+              for (var detail in (d['details'] as List)) {
+                score += (detail['quantite'] ?? 0.0) is num
+                    ? (detail['quantite'] ?? 0.0)
+                    : 0.0;
+              }
+            } else {
+              score += (d['quantiteKg'] ?? 0.0) is num
+                  ? (d['quantiteKg'] ?? 0.0)
+                  : 0.0;
+            }
+          }
+          barChartData[idx]["Collecte"] =
+              (barChartData[idx]["Collecte"] ?? 0) + score;
+        }
+      } catch (_) {}
+
+      // Stock pour toute période (pas que byMonth)
+      try {
+        final stockSnap = await FirebaseFirestore.instance
+            .collection('conditionnement')
+            .get();
+        for (var doc in stockSnap.docs) {
+          DateTime? dt = (doc.data()['date'] is Timestamp)
+              ? (doc.data()['date'] as Timestamp).toDate()
+              : null;
+          if (dt == null) continue;
+          int idx = byMonth
+              ? ((dt.year - xAxisPoints[0].year) * 12 +
+                  (dt.month - xAxisPoints[0].month))
+              : dt.difference(xAxisPoints[0]).inDays;
+          if (idx < 0 || idx >= _xLabels.length) continue;
+          barChartData[idx]["Stock"] = (barChartData[idx]["Stock"] ?? 0) +
+              (doc.data()['quantiteRestante'] ?? 0);
+        }
+      } catch (_) {}
+
+      setState(() => chartError = null);
+    } catch (e) {
+      setState(() => chartError = "Erreur: $e");
+    } finally {
+      setState(() => _isLoadingChart = false);
+    }
+  }
+
+  Widget _activityBarChart() {
+    final List<Color> colors = [
+      Colors.blueAccent, // Ventes
+      Colors.green[700]!, // Collecte
+      Colors.red[700]! // Stock
     ];
-
-    setState(() {
-      statsData = stats;
-      loadingStats = false;
-    });
+    final List<String> legendLabels = ["Ventes", "Collecte", "Stock"];
+    List<String> displayed = legendLabels;
+    if (graphType != "Tout") {
+      displayed = [graphType];
+    }
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      margin: EdgeInsets.symmetric(vertical: 18),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.bar_chart, color: Colors.deepPurple, size: 26),
+                SizedBox(width: 10),
+                Text(
+                  "Activité (${_selectedRange == null ? "..." : "${DateFormat('dd/MM/yyyy').format(_selectedRange!.start)} - ${DateFormat('dd/MM/yyyy').format(_selectedRange!.end)}"})",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19),
+                ),
+                Spacer(),
+                ...["Tout", ...legendLabels].map((t) => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: ChoiceChip(
+                        label: Text(t),
+                        selected: graphType == t,
+                        onSelected: (_) => setState(() => graphType = t),
+                      ),
+                    )),
+                SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    // Correction pour bug showDateRangePicker
+                    final now = DateTime.now();
+                    final maxDate = DateTime(now.year, now.month, now.day)
+                        .add(Duration(days: 2));
+                    DateTimeRange? initial = _selectedRange;
+                    if (initial != null && initial.end.isAfter(maxDate)) {
+                      initial =
+                          DateTimeRange(start: initial.start, end: maxDate);
+                    }
+                    final picked = await showDateRangePicker(
+                      context: context,
+                      initialDateRange: initial,
+                      firstDate: DateTime(2022, 1, 1),
+                      lastDate: maxDate,
+                    );
+                    if (picked != null) {
+                      setState(() => _selectedRange = picked);
+                      await _loadChartData();
+                    }
+                  },
+                  icon: Icon(Icons.date_range, size: 20),
+                  label: Text("Période"),
+                  style: OutlinedButton.styleFrom(shape: StadiumBorder()),
+                ),
+              ],
+            ),
+            SizedBox(height: 14),
+            Row(
+              children: [
+                _filterDropdown<String>(
+                  hint: "Commercial",
+                  values: commerciaux,
+                  selected: _selectedCommercial,
+                  onChanged: (v) => setState(() {
+                    _selectedCommercial = v;
+                    _loadChartData();
+                  }),
+                ),
+                SizedBox(width: 8),
+                _filterDropdown<String>(
+                  hint: "Client",
+                  values: clients,
+                  selected: _selectedClient,
+                  onChanged: (v) => setState(() {
+                    _selectedClient = v;
+                    _loadChartData();
+                  }),
+                ),
+                SizedBox(width: 8),
+                _filterDropdown<String>(
+                  hint: "Lot",
+                  values: lots,
+                  selected: _selectedLot,
+                  onChanged: (v) => setState(() {
+                    _selectedLot = v;
+                    _loadChartData();
+                  }),
+                ),
+                SizedBox(width: 8),
+                _filterDropdown<String>(
+                  hint: "Type vente",
+                  values: ["Comptant", "Crédit", "Recouvrement"],
+                  selected: _selectedTypeVente,
+                  onChanged: (v) => setState(() {
+                    _selectedTypeVente = v;
+                    _loadChartData();
+                  }),
+                ),
+              ],
+            ),
+            SizedBox(height: 15),
+            SizedBox(
+              height: 270,
+              child: _isLoadingChart
+                  ? Center(child: CircularProgressIndicator())
+                  : chartError != null
+                      ? Center(
+                          child: Text(
+                              "Erreur chargement graphique: $chartError",
+                              style: TextStyle(color: Colors.red)))
+                      : (graphType == "Stock" &&
+                              (barChartData.isEmpty ||
+                                  barChartData.every(
+                                      (row) => (row["Stock"] ?? 0.0) == 0.0)))
+                          ? Center(
+                              child: Text(
+                                  "Aucune donnée Stock sur la période sélectionnée ou données invalides.",
+                                  style: TextStyle(color: Colors.orange[900])))
+                          : (barChartData.isEmpty ||
+                                  barChartData.length != _xLabels.length ||
+                                  displayed.isEmpty ||
+                                  barChartData.every((row) => displayed.every(
+                                      (label) =>
+                                          row[label] == null ||
+                                          row[label]!.isNaN ||
+                                          row[label] == 0.0)))
+                              ? Center(
+                                  child: Text(
+                                      "Aucune donnée sur la période sélectionnée ou données invalides.",
+                                      style:
+                                          TextStyle(color: Colors.grey[700])))
+                              : BarChart(
+                                  BarChartData(
+                                    barGroups:
+                                        List.generate(barChartData.length, (i) {
+                                      final row = barChartData[i];
+                                      return BarChartGroupData(
+                                        x: i,
+                                        barRods: List.generate(displayed.length,
+                                            (j) {
+                                          final label = displayed[j];
+                                          final y = row[label] ?? 0;
+                                          return BarChartRodData(
+                                            toY: y.isNaN ? 0 : y,
+                                            color: colors[
+                                                legendLabels.indexOf(label)],
+                                            width: 14,
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                          );
+                                        }),
+                                      );
+                                    }),
+                                    titlesData: FlTitlesData(
+                                      leftTitles: AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: true,
+                                          reservedSize: 40,
+                                          getTitlesWidget: (value, meta) =>
+                                              Padding(
+                                            padding: const EdgeInsets.only(
+                                                right: 4.0),
+                                            child: Text(
+                                                value.toInt().toString(),
+                                                style: TextStyle(
+                                                    color: Colors.grey[700],
+                                                    fontSize: 12)),
+                                          ),
+                                        ),
+                                      ),
+                                      bottomTitles: AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: true,
+                                          reservedSize: 44,
+                                          interval: (_xLabels.length / 6)
+                                              .ceilToDouble()
+                                              .clamp(1, 100),
+                                          getTitlesWidget: (value, meta) {
+                                            final idx = value.toInt();
+                                            if (idx < 0 ||
+                                                idx >= _xLabels.length)
+                                              return Container();
+                                            return Padding(
+                                              padding: const EdgeInsets.only(
+                                                  top: 8.0),
+                                              child: Text(_xLabels[idx],
+                                                  style: TextStyle(
+                                                      color: Colors.grey[700],
+                                                      fontSize: 10,
+                                                      fontWeight:
+                                                          FontWeight.w500)),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      rightTitles: AxisTitles(
+                                        sideTitles:
+                                            SideTitles(showTitles: false),
+                                      ),
+                                      topTitles: AxisTitles(
+                                        sideTitles:
+                                            SideTitles(showTitles: false),
+                                      ),
+                                    ),
+                                    gridData: FlGridData(
+                                        show: true, horizontalInterval: 10),
+                                    barTouchData: BarTouchData(
+                                      enabled: true,
+                                      touchTooltipData: BarTouchTooltipData(
+                                        getTooltipItem:
+                                            (group, groupIndex, rod, rodIndex) {
+                                          final label = displayed[rodIndex];
+                                          return BarTooltipItem(
+                                            "$label: ${rod.toY.toStringAsFixed(2)}",
+                                            TextStyle(
+                                              color: colors[
+                                                  legendLabels.indexOf(label)],
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Wrap(
+                spacing: 20,
+                children: legendLabels
+                    .where((l) => displayed.contains(l))
+                    .map((label) {
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 16,
+                        height: 12,
+                        color: colors[legendLabels.indexOf(label)],
+                        margin: EdgeInsets.only(right: 6),
+                      ),
+                      Text(label),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  void _onModuleSelected(String module) {
-    Get.snackbar(
-      "Navigation",
-      "Aller au module $module",
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: Colors.amber[100],
-      duration: Duration(seconds: 1),
+  void _showDetailsPopup(String label, List<Map<String, dynamic>> rows) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        // Etats locaux pour la popup (on ne pollue pas l'état global !)
+        String localSortField = _sortField ?? '';
+        bool localSortAscending = _sortAscending;
+        int localDetailsPage = 0;
+        String localSearch = '';
+        DateTime? localFilterStart;
+        DateTime? localFilterEnd;
+        final searchController = TextEditingController();
+
+        // Pour update le champ recherche sans perdre le focus
+        searchController.text = localSearch;
+        searchController.selection = TextSelection.fromPosition(
+            TextPosition(offset: searchController.text.length));
+
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            // Filtres dynamiques
+            List<Map<String, dynamic>> filteredRows = rows.where((row) {
+              // Filtre texte
+              if (localSearch.trim().isNotEmpty) {
+                final search = localSearch.trim().toLowerCase();
+                final match = row.entries.any((e) =>
+                    (e.value?.toString().toLowerCase() ?? '').contains(search));
+                if (!match) return false;
+              }
+              // Filtre date
+              DateTime? dt;
+              if (row['dateCollecte'] is Timestamp)
+                dt = (row['dateCollecte'] as Timestamp).toDate();
+              else if (row['dateVente'] is Timestamp)
+                dt = (row['dateVente'] as Timestamp).toDate();
+              else if (row['date'] is Timestamp)
+                dt = (row['date'] as Timestamp).toDate();
+              if (localFilterStart != null &&
+                  dt != null &&
+                  dt.isBefore(localFilterStart!)) return false;
+              if (localFilterEnd != null &&
+                  dt != null &&
+                  dt.isAfter(localFilterEnd!)) return false;
+              return true;
+            }).toList();
+            // Tri
+            if (localSortField.isNotEmpty) {
+              filteredRows.sort((a, b) {
+                var va = a[localSortField];
+                var vb = b[localSortField];
+                if (va == null && vb == null) return 0;
+                if (va == null) return localSortAscending ? -1 : 1;
+                if (vb == null) return localSortAscending ? 1 : -1;
+                if (va is num && vb is num) {
+                  return localSortAscending
+                      ? va.compareTo(vb)
+                      : vb.compareTo(va);
+                }
+                if (va is Comparable && vb is Comparable) {
+                  return localSortAscending
+                      ? va.compareTo(vb)
+                      : vb.compareTo(va);
+                }
+                return 0;
+              });
+            } else {
+              // Tri sur la date décroissante par défaut
+              filteredRows.sort((a, b) {
+                DateTime? da, db;
+                if (a['dateCollecte'] is Timestamp)
+                  da = (a['dateCollecte'] as Timestamp).toDate();
+                else if (a['dateVente'] is Timestamp)
+                  da = (a['dateVente'] as Timestamp).toDate();
+                else if (a['date'] is Timestamp)
+                  da = (a['date'] as Timestamp).toDate();
+                if (b['dateCollecte'] is Timestamp)
+                  db = (b['dateCollecte'] as Timestamp).toDate();
+                else if (b['dateVente'] is Timestamp)
+                  db = (b['dateVente'] as Timestamp).toDate();
+                else if (b['date'] is Timestamp)
+                  db = (b['date'] as Timestamp).toDate();
+                if (da == null && db == null) return 0;
+                if (da == null) return 1;
+                if (db == null) return -1;
+                return db.compareTo(da);
+              });
+            }
+            // Pagination
+            int pageCount = (filteredRows.length / _detailsPageSize).ceil();
+            final pagedRows = filteredRows.length > _detailsPageSize
+                ? filteredRows.sublist(
+                    localDetailsPage * _detailsPageSize,
+                    (localDetailsPage + 1) * _detailsPageSize >
+                            filteredRows.length
+                        ? filteredRows.length
+                        : (localDetailsPage + 1) * _detailsPageSize)
+                : filteredRows;
+
+            // Champs de tri dispos
+            final triFields = rows.isNotEmpty
+                ? rows.first.keys
+                    .where((k) => rows.any((r) => r[k] != null))
+                    .toList()
+                : [];
+
+            // Plage de dates mini-maxi
+            DateTime? minDate, maxDate;
+            for (final row in rows) {
+              DateTime? dt;
+              if (row['dateCollecte'] is Timestamp)
+                dt = (row['dateCollecte'] as Timestamp).toDate();
+              else if (row['dateVente'] is Timestamp)
+                dt = (row['dateVente'] as Timestamp).toDate();
+              else if (row['date'] is Timestamp)
+                dt = (row['date'] as Timestamp).toDate();
+              if (dt != null) {
+                if (minDate == null || dt.isBefore(minDate)) minDate = dt;
+                if (maxDate == null || dt.isAfter(maxDate)) maxDate = dt;
+              }
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "$label - Détail (${filteredRows.length}/${rows.length})",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  if (rows.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10.0, bottom: 0),
+                      child: Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        runSpacing: 6,
+                        spacing: 10,
+                        children: [
+                          // Recherche texte (ne pas recréer le controller à chaque build)
+                          SizedBox(
+                            width: 220,
+                            child: TextField(
+                              controller: searchController,
+                              decoration: InputDecoration(
+                                hintText: "Recherche (tous champs)",
+                                prefixIcon: Icon(Icons.search, size: 17),
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                    vertical: 8, horizontal: 10),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                              ),
+                              onChanged: (v) {
+                                setStateDialog(() {
+                                  localSearch = v;
+                                  localDetailsPage = 0;
+                                });
+                              },
+                            ),
+                          ),
+                          // Tri champ
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text("Trier par: "),
+                              DropdownButton<String>(
+                                value: localSortField.isNotEmpty
+                                    ? localSortField
+                                    : null,
+                                hint: Text("Champ"),
+                                items: triFields
+                                    .map((k) => DropdownMenuItem<String>(
+                                          value: k,
+                                          child: Text(k),
+                                        ))
+                                    .toList(),
+                                onChanged: (v) {
+                                  setStateDialog(() {
+                                    localSortField = v ?? '';
+                                    localSortAscending = true;
+                                    localDetailsPage = 0;
+                                  });
+                                },
+                              ),
+                              IconButton(
+                                icon: Icon(localSortAscending
+                                    ? Icons.arrow_downward
+                                    : Icons.arrow_upward),
+                                tooltip: "Inverser l'ordre",
+                                onPressed: localSortField.isEmpty
+                                    ? null
+                                    : () {
+                                        setStateDialog(() {
+                                          localSortAscending =
+                                              !localSortAscending;
+                                          localDetailsPage = 0;
+                                        });
+                                      },
+                              ),
+                            ],
+                          ),
+                          // Filtre date
+                          if (minDate != null && maxDate != null)
+                            OutlinedButton.icon(
+                              icon: Icon(Icons.date_range, size: 18),
+                              label: Text(
+                                localFilterStart != null &&
+                                        localFilterEnd != null
+                                    ? "${DateFormat('dd/MM/yy').format(localFilterStart!)} - ${DateFormat('dd/MM/yy').format(localFilterEnd!)}"
+                                    : "Filtrer dates",
+                                style: TextStyle(fontSize: 13),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                shape: StadiumBorder(),
+                                minimumSize: Size(0, 32),
+                              ),
+                              onPressed: () async {
+                                final picked = await showDateRangePicker(
+                                  context: context,
+                                  initialDateRange: (localFilterStart != null &&
+                                          localFilterEnd != null)
+                                      ? DateTimeRange(
+                                          start: localFilterStart!,
+                                          end: localFilterEnd!)
+                                      : DateTimeRange(
+                                          start: minDate!, end: maxDate!),
+                                  firstDate: minDate!,
+                                  lastDate: maxDate!,
+                                );
+                                if (picked != null) {
+                                  setStateDialog(() {
+                                    localFilterStart = picked.start;
+                                    localFilterEnd = picked.end;
+                                    localDetailsPage = 0;
+                                  });
+                                }
+                              },
+                            ),
+                          if (localFilterStart != null ||
+                              localFilterEnd != null)
+                            IconButton(
+                              icon: Icon(Icons.clear),
+                              tooltip: "Supprimer filtre date",
+                              onPressed: () {
+                                setStateDialog(() {
+                                  localFilterStart = null;
+                                  localFilterEnd = null;
+                                  localDetailsPage = 0;
+                                });
+                              },
+                            ),
+                          // Pagination
+                          if (filteredRows.length > _detailsPageSize)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(Icons.chevron_left),
+                                  onPressed: localDetailsPage > 0
+                                      ? () => setStateDialog(() {
+                                            localDetailsPage--;
+                                          })
+                                      : null,
+                                ),
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 6),
+                                  child: Text(
+                                      "${localDetailsPage + 1} / $pageCount"),
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.chevron_right),
+                                  onPressed: localDetailsPage < pageCount - 1
+                                      ? () => setStateDialog(() {
+                                            localDetailsPage++;
+                                          })
+                                      : null,
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              content: SizedBox(
+                width: MediaQuery.of(context).size.width * 0.7,
+                height: 480,
+                child: pagedRows.isEmpty
+                    ? Center(
+                        child: Text(
+                            "Aucun détail à afficher sur la période/filtre/texte."))
+                    : Scrollbar(
+                        thumbVisibility: true,
+                        child: ListView.separated(
+                          itemCount: pagedRows.length,
+                          separatorBuilder: (_, __) => Divider(),
+                          itemBuilder: (_, i) {
+                            final data = pagedRows[i];
+                            if (label.toLowerCase().contains("vente")) {
+                              return _venteDetailCard(data);
+                            } else if (label
+                                .toLowerCase()
+                                .contains("collecte")) {
+                              return _collecteDetailCard(data);
+                            } else if (label.toLowerCase().contains("stock")) {
+                              return _stockDetailCard(data);
+                            } else if (label.toLowerCase().contains("crédit")) {
+                              return _creditDetailCard(data);
+                            }
+                            return _genericDetailCard(data);
+                          },
+                        ),
+                      ),
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                    },
+                    child: Text("Fermer"))
+              ],
+            );
+          },
+        );
+      },
     );
-    String route = "";
-    switch (module.toLowerCase()) {
-      case "collecte":
-        route = "/collecte";
-        break;
-      case "controle":
-        route = "/controle";
-        break;
-      case "extraction":
-        route = "/extraction";
-        break;
-      case "filtrage":
-        route = "/filtrage";
-        break;
-      case "conditionnement":
-        route = "/conditionnement";
-        break;
-      case "gestion de ventes":
-        route = "/gestion_de_ventes";
-        break;
-      case "ventes":
-        route = "/ventes";
-        break;
-      case "stock":
-        route = "/stock";
-        break;
-      case "rapports":
-        route = "/rapports";
-        break;
-      default:
-        route = "/";
-    }
-    if (route.isNotEmpty) {
-      Get.toNamed(route);
+  }
+
+// Remplace ton _collecteDetailCard par celui-ci pour un affichage complet et lisible
+  Widget _collecteDetailCard(Map<String, dynamic> data) {
+    DateTime? dt;
+    if (data['dateCollecte'] is Timestamp)
+      dt = (data['dateCollecte'] as Timestamp).toDate();
+    else if (data['date'] is Timestamp)
+      dt = (data['date'] as Timestamp).toDate();
+
+    final quantite = data['quantite'] ?? data['quantiteKg'];
+    final lot = data['lotOrigine'] ?? data['lot'];
+    final collecteur = data['nomCollecteur'] ?? data['collecteur'] ?? "";
+
+    return Card(
+      color: Colors.green[50],
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              collecteur.toString().isNotEmpty ? collecteur : "Collecte",
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 17,
+                  color: Colors.green[900]),
+            ),
+            SizedBox(height: 2),
+            Text(
+                "Date : ${dt != null ? DateFormat('dd/MM/yyyy').format(dt) : ''}",
+                style: TextStyle(color: Colors.grey[700])),
+            if (quantite != null)
+              Text("Quantité : $quantite kg",
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+            if (lot != null) Text("Lot origine : $lot"),
+            if (data['commentaire'] != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Text("Commentaire : ${data['commentaire']}",
+                    style: TextStyle(color: Colors.black54)),
+              ),
+            ...data.entries
+                .where((e) => ![
+                      'nomCollecteur',
+                      'collecteur',
+                      'dateCollecte',
+                      'date',
+                      'quantite',
+                      'quantiteKg',
+                      'lotOrigine',
+                      'lot',
+                      'commentaire'
+                    ].contains(e.key))
+                .map((e) => Padding(
+                      padding: const EdgeInsets.only(top: 2.0),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("${e.key} : ",
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey[800])),
+                          Expanded(
+                              child: Text('${e.value}',
+                                  style: TextStyle(color: Colors.grey[700])))
+                        ],
+                      ),
+                    )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _drilldownCard(String label, IconData icon, num value,
+      {required List<Map<String, dynamic>> details}) {
+    return FadeTransition(
+      opacity: _fadeInAnimation,
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        margin: EdgeInsets.symmetric(vertical: 7, horizontal: 3),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap:
+              details.isEmpty ? null : () => _showDetailsPopup(label, details),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Icon(
+                    label == "Stock"
+                        ? Icons.storage
+                        : label.toLowerCase().contains("vente")
+                            ? Icons.shopping_cart
+                            : label.toLowerCase().contains("collecte")
+                                ? Icons.api
+                                : label.toLowerCase().contains("crédit")
+                                    ? Icons.money_off
+                                    : Icons.info_outline,
+                    size: 32,
+                    color: label == "Stock"
+                        ? Colors.orange[800]
+                        : label.toLowerCase().contains("vente")
+                            ? Colors.amber[800]
+                            : label.toLowerCase().contains("collecte")
+                                ? Colors.green[800]
+                                : label.toLowerCase().contains("crédit")
+                                    ? Colors.red[800]
+                                    : Colors.grey[700]),
+                SizedBox(width: 18),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(label,
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
+                      Text("$value",
+                          style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              color: label == "Stock"
+                                  ? Colors.orange[800]
+                                  : label.toLowerCase().contains("vente")
+                                      ? Colors.amber[800]
+                                      : label.toLowerCase().contains("collecte")
+                                          ? Colors.green[800]
+                                          : label
+                                                  .toLowerCase()
+                                                  .contains("crédit")
+                                              ? Colors.red[800]
+                                              : Colors.grey[700])),
+                    ],
+                  ),
+                ),
+                if (details.isNotEmpty)
+                  Icon(Icons.arrow_forward_ios,
+                      color: Colors.amber[800], size: 19)
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _venteDetailCard(Map<String, dynamic> data) {
+    final emb = (data['emballagesVendus'] as List?) ?? [];
+    return Card(
+      color: Colors.blue[50],
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "${data['nomClient'] ?? data['nomBoutique'] ?? 'Vente'}",
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 17,
+                  color: Colors.blue[900]),
+            ),
+            Text("Date : ${_formatDate(data['dateVente'])}",
+                style: TextStyle(color: Colors.grey[700])),
+            Text("Montant : ${data['montantTotal'] ?? 0} FCFA",
+                style: TextStyle(
+                    fontWeight: FontWeight.w600, color: Colors.green)),
+            if (data['typeVente'] != null)
+              Text("Type : ${data['typeVente']}",
+                  style: TextStyle(color: Colors.deepPurple)),
+            if (emb.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6.0),
+                child: Text("Emballages vendus :",
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+              ),
+            ...emb
+                .map((e) => Text("- ${e['contenanceKg']}kg x ${e['nombre']}")),
+            if (data['commentaire'] != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Text("Commentaire : ${data['commentaire']}",
+                    style: TextStyle(color: Colors.black54)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _stockDetailCard(Map<String, dynamic> data) {
+    return Card(
+      color: Colors.orange[50],
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Lot : ${data['lotOrigine'] ?? 'Stock'}",
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 17,
+                    color: Colors.orange[900])),
+            Text("Date : ${_formatDate(data['date'])}",
+                style: TextStyle(color: Colors.grey[700])),
+            Text("Quantité restante : ${data['quantiteRestante'] ?? 0} kg",
+                style: TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _creditDetailCard(Map<String, dynamic> data) {
+    return Card(
+      color: Colors.red[50],
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("${data['nomClient'] ?? data['nomBoutique'] ?? 'Crédit'}",
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 17,
+                    color: Colors.red[900])),
+            Text("Date vente : ${_formatDate(data['dateVente'])}",
+                style: TextStyle(color: Colors.grey[700])),
+            Text("Montant restant : ${data['montantRestant'] ?? 0} FCFA",
+                style: TextStyle(
+                    fontWeight: FontWeight.w600, color: Colors.red[800])),
+            Text("Montant total : ${data['montantTotal'] ?? 0} FCFA"),
+            if (data['dateEcheance'] != null)
+              Text("Échéance : ${_formatDate(data['dateEcheance'])}",
+                  style: TextStyle(color: Colors.red[400])),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _genericDetailCard(Map<String, dynamic> data) {
+    return Card(
+      color: Colors.amber[50],
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: data.entries.map((e) {
+            return Text("${e.key} : ${e.value}");
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(dynamic ts) {
+    if (ts is Timestamp) {
+      return DateFormat('dd/MM/yyyy').format(ts.toDate());
+    } else if (ts is DateTime) {
+      return DateFormat('dd/MM/yyyy').format(ts);
+    } else if (ts != null) {
+      return ts.toString();
+    } else {
+      return "";
     }
   }
 
-  void _onSettings() {
-    Get.snackbar(
-      "Paramètres",
-      "Ici tu peux gérer les paramètres de l'application.",
-      backgroundColor: Colors.blue[100],
-      snackPosition: SnackPosition.BOTTOM,
-      duration: Duration(seconds: 1),
-    );
+  Future<void> _loadAlertes() async {
+    List<Map<String, dynamic>> alertes = [];
+    try {
+      final filtrageSnap = await FirebaseFirestore.instance
+          .collection('filtrage')
+          .where('statutFiltrage', isEqualTo: 'Filtrage total')
+          .get();
+      int lotsNonCond = 0;
+      for (var doc in filtrageSnap.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        if (data['statutConditionnement'] != 'Conditionné') lotsNonCond++;
+      }
+      if (lotsNonCond > 0) {
+        alertes.add({
+          "type": "Stock bas",
+          "message": "$lotsNonCond lots filtrés à conditionner",
+        });
+      }
+      final ventesSnap = await FirebaseFirestore.instance
+          .collectionGroup('ventes_effectuees')
+          .where('typeVente', isEqualTo: 'Crédit')
+          .get();
+      int credits = ventesSnap.docs.length;
+      if (credits > 0) {
+        alertes.add({
+          "type": "Crédit en attente",
+          "message": "$credits ventes à crédit à recouvrer",
+        });
+      }
+    } catch (_) {}
+    setState(() => _alertes = alertes);
+  }
+
+  Future<void> _loadLogs() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('logs')
+          .orderBy('date', descending: true)
+          .limit(20)
+          .get();
+      _logs = snap.docs.map((d) {
+        final data = d.data();
+        return {
+          "date": (data['date'] as Timestamp).toDate(),
+          "action": data['action'] ?? "",
+          "user": data['user'] ?? "",
+          "details": data['details'] ?? "",
+        };
+      }).toList();
+      setState(() {});
+    } catch (_) {
+      _logs = [];
+      setState(() {});
+    }
   }
 
   Widget _buildHeader(BuildContext context) {
@@ -536,32 +1417,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _headerBtn(String label, IconData icon, VoidCallback onPressed,
-      {bool enabled = true}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2.0),
-      child: TextButton.icon(
-        onPressed: enabled ? onPressed : null,
-        icon: Icon(icon,
-            color: enabled ? Colors.amber[900] : Colors.grey[400], size: 21),
-        label: Text(
-          label,
-          style: TextStyle(
-              color: enabled ? Colors.amber[900] : Colors.grey[400],
-              fontWeight: FontWeight.w600,
-              fontSize: 14),
-        ),
-        style: TextButton.styleFrom(
-          foregroundColor: enabled ? Colors.amber[900] : Colors.grey[400],
-          backgroundColor:
-              enabled ? Colors.amber[100]?.withOpacity(0.4) : Colors.grey[200],
-          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          shape: StadiumBorder(),
-        ),
-      ),
-    );
-  }
-
   Widget _buildDrawerMenu() {
     final userSession = Get.find<UserSession>();
     final role = userSession.role ?? "";
@@ -637,97 +1492,61 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _sectionTitle(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 12.0, top: 24.0),
-        child: Text(
-          text,
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-        ),
-      );
-
-  Widget _dashboardCard(
-      {required String label,
-      required List<Widget> children,
-      required IconData icon,
-      bool enabled = true,
-      void Function()? onTap}) {
-    return FadeTransition(
-      opacity: _fadeInAnimation,
-      child: MouseRegion(
-        cursor:
-            enabled ? SystemMouseCursors.click : SystemMouseCursors.forbidden,
-        child: GestureDetector(
-          onTap: enabled ? onTap : null,
-          child: AnimatedContainer(
-            duration: Duration(milliseconds: 200),
-            margin: EdgeInsets.symmetric(vertical: 7.0, horizontal: 3.0),
-            decoration: BoxDecoration(
-              color: enabled ? Colors.white : Colors.grey[100],
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.amber.withOpacity(0.08),
-                  offset: Offset(0, 5),
-                  blurRadius: 16,
-                ),
-              ],
-            ),
-            child: Opacity(
-              opacity: enabled ? 1.0 : 0.5,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    AnimatedScale(
-                      scale: 1.1,
-                      duration: Duration(milliseconds: 300),
-                      child: Icon(icon, size: 36, color: Colors.amber[800]),
-                    ),
-                    SizedBox(width: 18),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            label,
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                          ...children,
-                        ],
-                      ),
-                    ),
-                    Icon(Icons.chevron_right,
-                        color: Colors.amber[800], size: 28)
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
+  Widget _filterDropdown<T>({
+    required String hint,
+    required List<T> values,
+    required T? selected,
+    required void Function(T?) onChanged,
+  }) {
+    return SizedBox(
+      width: 170,
+      child: DropdownButton<T>(
+        value: selected,
+        isExpanded: true,
+        hint: Text(hint),
+        items: [
+          DropdownMenuItem<T>(value: null, child: Text('Tous')),
+          ...values.map(
+              (v) => DropdownMenuItem<T>(value: v, child: Text(v.toString()))),
+        ],
+        onChanged: onChanged,
       ),
     );
   }
 
-  Widget _infoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 4.0, bottom: 2.0),
-      child: Row(
-        children: [
-          Text(
-            "$label : ",
-            style: TextStyle(fontWeight: FontWeight.w500),
-          ),
-          AnimatedSwitcher(
-            duration: Duration(milliseconds: 350),
-            child: Text(
-              value,
-              key: ValueKey(value),
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          )
-        ],
+  Widget _logsSection() {
+    if (_logs.isEmpty) {
+      return Card(
+        child: ListTile(
+          leading: Icon(Icons.history, color: Colors.amber[900]),
+          title: Text("Aucune activité récente",
+              style: TextStyle(color: Colors.grey[700])),
+        ),
+      );
+    }
+    return Card(
+      elevation: 2,
+      margin: EdgeInsets.symmetric(vertical: 12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Historique des actions",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Divider(),
+            ..._logs.map((log) => ListTile(
+                  leading: Icon(Icons.circle_rounded,
+                      color: Colors.amber[900], size: 16),
+                  title: Text(log["action"],
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(
+                    "${DateFormat('dd/MM/yy HH:mm').format(log["date"])} • ${log["user"]} • ${log["details"]}",
+                    style: TextStyle(fontSize: 13),
+                  ),
+                )),
+          ],
+        ),
       ),
     );
   }
@@ -761,6 +1580,95 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  Widget _sectionTitle(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 12.0, top: 24.0),
+        child: Text(
+          text,
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
+      );
+
+  void _onModuleSelected(String module) {
+    Get.snackbar(
+      "Navigation",
+      "Aller au module $module",
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.amber[100],
+      duration: Duration(seconds: 1),
+    );
+    String route = "";
+    switch (module.toLowerCase()) {
+      case "collecte":
+        route = "/collecte";
+        break;
+      case "controle":
+        route = "/controle";
+        break;
+      case "extraction":
+        route = "/extraction";
+        break;
+      case "filtrage":
+        route = "/filtrage";
+        break;
+      case "conditionnement":
+        route = "/conditionnement";
+        break;
+      case "gestion de ventes":
+        route = "/gestion_de_ventes";
+        break;
+      case "ventes":
+        route = "/ventes";
+        break;
+      case "stock":
+        route = "/stock";
+        break;
+      case "rapports":
+        route = "/rapports";
+        break;
+      default:
+        route = "/";
+    }
+    if (route.isNotEmpty) {
+      Get.toNamed(route);
+    }
+  }
+
+  Widget _headerBtn(String label, IconData icon, VoidCallback onPressed,
+      {bool enabled = true}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2.0),
+      child: TextButton.icon(
+        onPressed: enabled ? onPressed : null,
+        icon: Icon(icon,
+            color: enabled ? Colors.amber[900] : Colors.grey[400], size: 21),
+        label: Text(
+          label,
+          style: TextStyle(
+              color: enabled ? Colors.amber[900] : Colors.grey[400],
+              fontWeight: FontWeight.w600,
+              fontSize: 14),
+        ),
+        style: TextButton.styleFrom(
+          foregroundColor: enabled ? Colors.amber[900] : Colors.grey[400],
+          backgroundColor:
+              enabled ? Colors.amber[100]?.withOpacity(0.4) : Colors.grey[200],
+          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          shape: StadiumBorder(),
+        ),
+      ),
+    );
+  }
+
+  void _onSettings() {
+    Get.snackbar(
+      "Paramètres",
+      "Ici tu peux gérer les paramètres de l'application.",
+      backgroundColor: Colors.blue[100],
+      snackPosition: SnackPosition.BOTTOM,
+      duration: Duration(seconds: 1),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final userSession = Get.find<UserSession>();
@@ -769,104 +1677,15 @@ class _DashboardScreenState extends State<DashboardScreen>
     final allowedModules = roleModules[role] ?? [];
 
     final cards = [
-      _dashboardCard(
-        label: "Quantités de miel collectées",
-        children: [
-          _infoRow(
-              "Récolte",
-              loadingStats
-                  ? "..."
-                  : "${statsData["collecte"]?["recolte"]["valeur"] ?? 0} ${statsData["collecte"]?["recolte"]["unite"] ?? ""}"),
-          _infoRow(
-              "Achat",
-              loadingStats
-                  ? "..."
-                  : "${statsData["collecte"]?["achat"]["valeur"] ?? 0} ${statsData["collecte"]?["achat"]["unite"] ?? ""}"),
-          ElevatedButton.icon(
-            onPressed: loadingStats ? null : () => exportPDF("collecte"),
-            icon: Icon(Icons.picture_as_pdf),
-            label: Text("Exporter PDF"),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber[100],
-                foregroundColor: Colors.amber[900],
-                elevation: 0),
-          ),
-        ],
-        icon: Icons.api,
-        enabled: isAdmin || allowedModules.contains("collecte"),
-        onTap: (isAdmin || allowedModules.contains("collecte"))
-            ? () => _onModuleSelected("collecte")
-            : null,
-      ),
-      _dashboardCard(
-        label: "Ventes",
-        children: [
-          _infoRow(
-              "Comptant",
-              loadingStats
-                  ? "..."
-                  : "${statsData["ventes"]?["comptant"]["valeur"] ?? 0} ${statsData["ventes"]?["comptant"]["unite"] ?? ""}"),
-          _infoRow(
-              "Crédit",
-              loadingStats
-                  ? "..."
-                  : "${statsData["ventes"]?["credit"]["valeur"] ?? 0} ${statsData["ventes"]?["credit"]["unite"] ?? ""}"),
-          _infoRow(
-              "Recouvrement",
-              loadingStats
-                  ? "..."
-                  : "${statsData["ventes"]?["recouvrement"]["valeur"] ?? 0} ${statsData["ventes"]?["recouvrement"]["unite"] ?? ""}"),
-          ElevatedButton.icon(
-            onPressed: loadingStats ? null : () => exportPDF("ventes"),
-            icon: Icon(Icons.picture_as_pdf),
-            label: Text("Exporter PDF"),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber[100],
-                foregroundColor: Colors.amber[900],
-                elevation: 0),
-          ),
-        ],
-        icon: Icons.shopping_cart,
-        enabled: isAdmin ||
-            allowedModules.contains("gestion de ventes") ||
-            allowedModules.contains("ventes"),
-        onTap: (isAdmin ||
-                allowedModules.contains("gestion de ventes") ||
-                allowedModules.contains("ventes"))
-            ? () => _onModuleSelected("ventes")
-            : null,
-      ),
-      _dashboardCard(
-        label: "Stock disponible",
-        children: [
-          _infoRow("Matière première (Miel brut)",
-              loadingStats ? "..." : "${statsData["stock"]?["brut"] ?? 0} kg"),
-          _infoRow(
-              "Produit fini Koudougou",
-              loadingStats
-                  ? "..."
-                  : "${statsData["stock"]?["fini"]["koudougou"]["valeur"] ?? 0} ${statsData["stock"]?["fini"]["koudougou"]["unite"] ?? ""}"),
-          _infoRow(
-              "Produit fini Ouagadougou",
-              loadingStats
-                  ? "..."
-                  : "${statsData["stock"]?["fini"]["ouaga"]["valeur"] ?? 0} ${statsData["stock"]?["fini"]["ouaga"]["unite"] ?? ""}"),
-          ElevatedButton.icon(
-            onPressed: loadingStats ? null : () => exportPDF("stock"),
-            icon: Icon(Icons.picture_as_pdf),
-            label: Text("Exporter PDF"),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber[100],
-                foregroundColor: Colors.amber[900],
-                elevation: 0),
-          ),
-        ],
-        icon: Icons.storage,
-        enabled: isAdmin || allowedModules.contains("stock"),
-        onTap: (isAdmin || allowedModules.contains("stock"))
-            ? () => _onModuleSelected("stock")
-            : null,
-      ),
+      _drilldownCard("Ventes", Icons.shopping_cart, kpis["Ventes"] ?? 0,
+          details: details["Ventes"] ?? []),
+      _drilldownCard("Collecte", Icons.api, kpis["Collecte"] ?? 0,
+          details: details["Collecte"] ?? []),
+      _drilldownCard("Stock", Icons.storage, kpis["Stock"] ?? 0,
+          details: details["Stock"] ?? []),
+      _drilldownCard("Crédits à recouvrer", Icons.money_off,
+          kpis["Crédits à recouvrer"] ?? 0,
+          details: details["Crédits à recouvrer"] ?? []),
     ];
 
     return Scaffold(
@@ -881,43 +1700,47 @@ class _DashboardScreenState extends State<DashboardScreen>
               opacity: _fadeInAnimation,
               child: Center(
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: 1100),
-                  child: loadingStats
-                      ? Center(child: CircularProgressIndicator())
-                      : ListView(
-                          padding: EdgeInsets.symmetric(
-                              horizontal: 18, vertical: 12),
-                          children: [
-                            _sectionTitle("Résumé des informations clés"),
-                            LayoutBuilder(
-                              builder: (context, constraints) {
-                                int crossAxisCount = constraints.maxWidth > 900
-                                    ? 2
-                                    : constraints.maxWidth > 600
-                                        ? 1
-                                        : 1;
-                                return Wrap(
-                                  spacing: 24,
-                                  runSpacing: 18,
-                                  children: List.generate(
-                                    cards.length,
-                                    (i) => SizedBox(
-                                      width: constraints.maxWidth /
-                                              crossAxisCount -
-                                          (crossAxisCount == 2 ? 24 : 0),
-                                      child: cards[i],
-                                    ),
-                                  ),
-                                );
-                              },
+                  constraints: BoxConstraints(maxWidth: 1200),
+                  child: ListView(
+                    padding: EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                    children: [
+                      _sectionTitle("Résumé des informations clés"),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          int crossAxisCount =
+                              constraints.maxWidth > 900 ? 2 : 1;
+                          return Wrap(
+                            spacing: 24,
+                            runSpacing: 18,
+                            children: List.generate(
+                              cards.length,
+                              (i) => SizedBox(
+                                width: constraints.maxWidth / crossAxisCount -
+                                    (crossAxisCount == 2 ? 24 : 0),
+                                child: cards[i],
+                              ),
                             ),
-                            _sectionTitle("Alertes"),
-                            ...List.generate(
-                              (statsData["alertes"] ?? []).length,
-                              (i) => _buildAlertCard(statsData["alertes"][i]),
+                          );
+                        },
+                      ),
+                      _sectionTitle("Activité principale"),
+                      _activityBarChart(),
+                      _sectionTitle("Alertes"),
+                      _alertes.isEmpty
+                          ? Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: Text("Aucune alerte",
+                                  style: TextStyle(
+                                      color: Colors.green[700],
+                                      fontWeight: FontWeight.w500)),
+                            )
+                          : Column(
+                              children: _alertes.map(_buildAlertCard).toList(),
                             ),
-                          ],
-                        ),
+                      _sectionTitle("Historique"),
+                      _logsSection(),
+                    ],
+                  ),
                 ),
               ),
             ),

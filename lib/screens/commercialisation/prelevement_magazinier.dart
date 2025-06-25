@@ -28,7 +28,6 @@ class _PrelevementMagasinierFormPageState
   String? _magasinierDestId;
   List<Map<String, dynamic>> magasiniers = [];
 
-  // Prix gros mille fleurs
   static const Map<String, double> prixGrosMilleFleurs = {
     "Stick 20g": 1500,
     "Pot alvéoles 30g": 36000,
@@ -40,7 +39,6 @@ class _PrelevementMagasinierFormPageState
     "7kg": 23000,
   };
 
-  // Prix gros mono fleur
   static const Map<String, double> prixGrosMonoFleur = {
     "250g": 1750,
     "500g": 3000,
@@ -171,30 +169,118 @@ class _PrelevementMagasinierFormPageState
 
   Future<void> _loadPotsRestants() async {
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
       final lotId = widget.lotConditionnement['id'];
-      final Map<String, int> stockInitial = {};
-      if (widget.lotConditionnement['emballages'] != null) {
-        for (var emb in widget.lotConditionnement['emballages']) {
-          stockInitial[emb['type']] = emb['nombre'];
-        }
+
+      // 1. Stock initial
+      final emb = widget.lotConditionnement['emballages'] ?? [];
+      Map<String, int> potsInitials = {};
+      Map<String, int> potsRestantsParType = {};
+      for (var e in emb) {
+        potsInitials[e['type']] = e['nombre'];
+        potsRestantsParType[e['type']] = e['nombre'];
       }
-      final prelevSnap = await FirebaseFirestore.instance
+
+      // 2. Récupérer TOUS les prélèvements de ce lot
+      final allPrelevSnap = await FirebaseFirestore.instance
           .collection('prelevements')
           .where('lotConditionnementId', isEqualTo: lotId)
           .get();
-      final Map<String, int> stockRestant = Map<String, int>.from(stockInitial);
-      for (var doc in prelevSnap.docs) {
-        final data = doc.data();
-        if (data['emballages'] != null) {
-          for (var emb in data['emballages']) {
-            final t = emb['type'];
-            stockRestant[t] =
-                (stockRestant[t] ?? 0) - ((emb['nombre'] ?? 0) as num).toInt();
+
+      // 3. Soustraire tous les prélèvements sortants (magasiniers simples + commerciaux directs du principal)
+      for (var doc in allPrelevSnap.docs) {
+        final prData = doc.data();
+        final isVersMagasinierSimple =
+            (prData['magasinierDestId'] ?? '').toString().isNotEmpty &&
+                prData['typePrelevement'] == 'magasinier';
+        final isVersCommercialDirect =
+            prData['typePrelevement'] == 'commercial' &&
+                (prData['magazinierId'] ?? '') == (user.uid);
+
+        if (isVersMagasinierSimple || isVersCommercialDirect) {
+          if (prData['emballages'] != null) {
+            for (var emb in prData['emballages']) {
+              final t = emb['type'];
+              potsRestantsParType[t] =
+                  (potsRestantsParType[t] ?? 0) - ((emb['nombre'] ?? 0) as int);
+            }
           }
         }
       }
+
+      // 4. Ajouter les restes VALIDÉS des commerciaux directs du principal (calcul à partir de leur prélèvement initial - ventes)
+      Map<String, int> restesCommerciauxDirects = {};
+      for (var doc in allPrelevSnap.docs) {
+        final prData = doc.data();
+        if (prData['typePrelevement'] == 'commercial' &&
+            prData['magazinierApprobationRestitution'] == true &&
+            prData['demandeRestitution'] == true &&
+            prData['magazinierId'] != null &&
+            prData['magazinierId'] == user.uid) {
+          final String commercialId = prData['commercialId'] ?? "";
+          final String prelevementId = doc.id;
+          Map<String, int> potsRestants = {};
+          if (prData['emballages'] != null) {
+            for (var emb in prData['emballages']) {
+              final t = emb['type'];
+              final n = (emb['nombre'] ?? 0) as num;
+              potsRestants[t] = n.toInt();
+            }
+          }
+          final ventes = await FirebaseFirestore.instance
+              .collection('ventes')
+              .doc(commercialId)
+              .collection('ventes_effectuees')
+              .where('prelevementId', isEqualTo: prelevementId)
+              .get();
+          for (final venteDoc in ventes.docs) {
+            final vente = venteDoc.data() as Map<String, dynamic>;
+            if (vente['emballagesVendus'] != null) {
+              for (var emb in vente['emballagesVendus']) {
+                final t = emb['type'];
+                final n = (emb['nombre'] ?? 0) as num;
+                potsRestants[t] = (potsRestants[t] ?? 0) - n.toInt();
+              }
+            }
+          }
+          potsRestants.updateAll((k, v) => v < 0 ? 0 : v);
+          potsRestants.forEach((k, v) {
+            restesCommerciauxDirects[k] =
+                (restesCommerciauxDirects[k] ?? 0) + v;
+          });
+        }
+      }
+
+      // 5. Ajouter les restes VALIDÉS des magasiniers simples (uniquement ceux de type magasinier, pas deux fois !)
+      Map<String, int> restesMagasiniersSimples = {};
+      for (var doc in allPrelevSnap.docs) {
+        final prData = doc.data();
+        if (prData['typePrelevement'] == 'magasinier' &&
+            prData['magasinierPrincipalApprobationRestitution'] == true &&
+            prData['restesApresVenteCommerciaux'] != null) {
+          final restesMap =
+              Map<String, dynamic>.from(prData['restesApresVenteCommerciaux']);
+          restesMap.forEach((k, v) {
+            restesMagasiniersSimples[k] =
+                (restesMagasiniersSimples[k] ?? 0) + (v as int);
+          });
+        }
+      }
+
+      // 6. Ajouter tous les restes calculés (jamais deux fois!)
+      restesMagasiniersSimples.forEach((k, v) {
+        potsRestantsParType[k] = (potsRestantsParType[k] ?? 0) + v;
+      });
+      restesCommerciauxDirects.forEach((k, v) {
+        potsRestantsParType[k] = (potsRestantsParType[k] ?? 0) + v;
+      });
+
+      // 7. Clamp à zéro
+      potsRestantsParType.updateAll((key, value) => value < 0 ? 0 : value);
+
       setState(() {
-        potsRestantsParType = stockRestant;
+        this.potsRestantsParType = potsRestantsParType;
       });
     } catch (e) {
       Get.snackbar("Erreur", "Chargement stock restant : $e");
