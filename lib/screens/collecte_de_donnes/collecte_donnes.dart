@@ -5,6 +5,7 @@ import 'package:apisavana_gestion/screens/collecte_de_donnes/widgets/validators.
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dropdown_search/dropdown_search.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import 'mes_collectes.dart';
@@ -389,6 +390,10 @@ class CollectePage extends StatelessWidget {
                                                             .value =
                                                         double.tryParse(v) ?? 0;
                                                   },
+                                                  inputFormatters: [
+                                                    FilteringTextInputFormatter
+                                                        .digitsOnly
+                                                  ], // <-- Ici !
                                                   validator: (v) {
                                                     if (v == null ||
                                                         v.isEmpty ||
@@ -420,6 +425,10 @@ class CollectePage extends StatelessWidget {
                                                             .value =
                                                         double.tryParse(v) ?? 0;
                                                   },
+                                                  inputFormatters: [
+                                                    FilteringTextInputFormatter
+                                                        .digitsOnly
+                                                  ], // <-- Ici !
                                                   validator: (v) {
                                                     if (v == null ||
                                                         v.isEmpty ||
@@ -451,6 +460,10 @@ class CollectePage extends StatelessWidget {
                                                     achat.prixUnitaire.value =
                                                         double.tryParse(v) ?? 0;
                                                   },
+                                                  inputFormatters: [
+                                                    FilteringTextInputFormatter
+                                                        .digitsOnly
+                                                  ], // <-- Ici !
                                                   validator: (v) {
                                                     if (v == null ||
                                                         v.isEmpty ||
@@ -989,6 +1002,9 @@ class CollectePage extends StatelessWidget {
                         achat.quantiteAcceptee.value = value;
                         _updatePrixTotal(achat);
                       },
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly
+                      ], // <-- Ici !
                     ),
                   ),
                   SizedBox(width: 15),
@@ -1007,6 +1023,9 @@ class CollectePage extends StatelessWidget {
                         achat.quantiteRejetee.value = value;
                         _updatePrixTotal(achat);
                       },
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly
+                      ], // <-- Ici !
                     ),
                   ),
                 ],
@@ -1028,6 +1047,7 @@ class CollectePage extends StatelessWidget {
                         achat.prixUnitaire.value = value;
                         _updatePrixTotal(achat);
                       },
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     ),
                   ),
                   SizedBox(width: 15),
@@ -1415,8 +1435,14 @@ class CollectePage extends StatelessWidget {
                   labelText: "Numéro du Président",
                   prefixIcon: Icon(Icons.phone),
                 ),
+
                 keyboardType: TextInputType.phone,
-                validator: (v) => v == null || v.isEmpty ? "Obligatoire" : null,
+                validator: (v) => v == null || v.isEmpty || v.length != 8
+                    ? "Obligatoire avec 8 chiffres "
+                    : null,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly
+                ], // <-- Ici !
               ),
               SizedBox(height: 12),
               DropdownSearch<String>(
@@ -2003,7 +2029,12 @@ class CollectePage extends StatelessWidget {
                   prefixIcon: Icon(Icons.phone),
                 ),
                 keyboardType: TextInputType.phone,
-                validator: (v) => v == null || v.isEmpty ? "Obligatoire" : null,
+                validator: (v) => v == null || v.isEmpty || v.length != 8
+                    ? "Obligatoire avec 8 chiffres"
+                    : null,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly
+                ], // <-- Ici !
               ),
               SizedBox(height: 12),
               _dropdownWithIcon("Sexe", c.sexes, c.sexeIndivAjout, Icons.wc,
@@ -2190,6 +2221,9 @@ class CollectePage extends StatelessWidget {
       ),
       keyboardType: TextInputType.number,
       validator: (v) => v == null || v.isEmpty ? erreur : null,
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly
+      ], // <-- Ici aussi !
     );
   }
 

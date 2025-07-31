@@ -552,13 +552,34 @@ class _PrelevementFormPageState extends State<PrelevementFormPage> {
       Get.snackbar("Erreur", "Veuillez remplir tous les champs obligatoires.");
       return;
     }
-    final double lotConditionne = potsRestantsParType.values.fold<double>(
-        0.0, (prev, val) => prev + ((val ?? 0) as int).toDouble());
-    if (quantiteTotale > lotConditionne) {
+
+// Calcul du nombre total de pots prélevés
+    int totalPotsPreleves = 0;
+    for (final type in typesEmballageDisponibles) {
+      if (emballageSelection[type] == true) {
+        final n = int.tryParse(nbPotsController[type]?.text ?? '') ?? 0;
+        if (type == "Stick 20g") {
+          totalPotsPreleves += n * 10;
+        } else if (type == "Pot alvéoles 30g") {
+          totalPotsPreleves += n * 200;
+        } else {
+          totalPotsPreleves += n;
+        }
+      }
+    }
+
+// Calcul du nombre total de pots disponibles
+    int totalPotsDisponibles = 0;
+    for (final type in typesEmballageDisponibles) {
+      totalPotsDisponibles += potsRestantsParType[type] ?? 0;
+    }
+
+    if (totalPotsPreleves > totalPotsDisponibles) {
       Get.snackbar("Erreur",
-          "La quantité prélevée dépasse le stock disponible (${lotConditionne.toStringAsFixed(2)} pots) !");
+          "Le nombre total de pots prélevés ($totalPotsPreleves) dépasse le stock disponible ($totalPotsDisponibles pots) !");
       return;
     }
+
     for (final type in typesEmballageDisponibles) {
       if (emballageSelection[type] == true) {
         final n = int.tryParse(nbPotsController[type]?.text ?? '') ?? 0;
