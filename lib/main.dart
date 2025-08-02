@@ -8,6 +8,7 @@ import 'package:apisavana_gestion/screens/filtrage/filtrage_page.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 import 'authentication/login.dart';
 import 'authentication/sign_up.dart';
@@ -26,6 +27,8 @@ void main() async {
       measurementId: "G-NH4D0Q9NTS",
     ),
   );
+
+  await initializeDateFormatting('fr_FR', null);
 
   Get.put(UserSession());
 
@@ -48,7 +51,7 @@ class ApisavanaApp extends StatelessWidget {
       initialRoute: '/login',
       getPages: [
         GetPage(name: '/login', page: () => LoginPage()),
-        GetPage(name: '/dashboard', page: () => DashboardScreen()),
+        GetPage(name: '/dashboard', page: () => DashboardPage()),
         GetPage(name: '/signup', page: () => SignupPage()),
         GetPage(name: '/collecte', page: () => CollectePage()),
         GetPage(name: '/controle', page: () => ControlePage()),

@@ -1,624 +1,1880 @@
-import 'package:apisavana_gestion/authentication/user_session.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/collecte_donnes.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
+import 'package:apisavana_gestion/authentication/user_session.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:apisavana_gestion/authentication/login.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nouvelle_collecte_recolte.dart';
 
-final Map<String, List<String>> roleModules = {
-  "Admin": [
-    "collecte",
-    "controle",
-    "extraction",
-    "filtrage",
-    "conditionnement",
-    "gestion de ventes",
-    "ventes",
-    "rapports"
-  ],
-  "Collecteur": ["collecte"],
-  "Contrôleur": ["controle"],
-  "Extracteur": ["extraction"],
-  "Filtreur": ["filtrage"],
-  "Conditionneur": ["conditionnement"],
-  "Commercial": ["gestion de ventes", "ventes", "rapports"],
-  "Gestionaire Commerciale": ["gestion de ventes", "ventes", "rapports"],
-  "Magazinier": ["gestion de ventes", "stock", "rapports"],
-  "Caissier": ["gestion de ventes", "ventes", "rapports"],
-};
+// Color palette
+const Color kHighlightColor = Color(0xFFF49101);
+const Color kValidationColor = Color(0xFF2D0C0D);
 
-class DashboardScreen extends StatefulWidget {
+class DashboardPage extends StatefulWidget {
+  const DashboardPage({Key? key}) : super(key: key);
+
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen>
-    with SingleTickerProviderStateMixin {
-  late final GlobalKey<ScaffoldState> _scaffoldKey;
-  late AnimationController _animationController;
-  late Animation<double> _fadeInAnimation;
-
-  DateTimeRange? _selectedRange;
-  String? _selectedCommercial;
-  String? _selectedClient;
-  String? _selectedLot;
-  String? _selectedTypeVente; // "Comptant", "Crédit", "Recouvrement", null=Tous
-  String graphType = "Tout"; // "Tout", "Ventes", "Collecte", "Stock"
-
-  // Ajoute ces variables à ta classe :
-  DateTime? _detailsFilterStart;
-  DateTime? _detailsFilterEnd;
-  String _detailsSearch = ""; // Pour la recherche texte
-
-  List<String> commerciaux = [];
-  List<String> clients = [];
-  List<String> lots = [];
-
-  List<String> _xLabels = [];
-  List<Map<String, double>> barChartData = [];
-  bool _isLoadingChart = true;
-  String? chartError;
-
-  List<Map<String, dynamic>> _alertes = [];
-  List<Map<String, dynamic>> _logs = [];
-  Map<String, num> kpis = {};
-  Map<String, List<Map<String, dynamic>>> details = {};
-
-  // Pour tri et pagination des détails
-  String? _sortField;
-  bool _sortAscending = true;
-  int _detailsPage = 0;
-  static const int _detailsPageSize = 20;
-
-  bool get isLargeScreen => MediaQuery.of(context).size.width >= 900;
+class _DashboardPageState extends State<DashboardPage> {
+  bool isSliderOpen = false;
+  bool _isLoading = true;
+  Widget? _currentPage;
 
   @override
   void initState() {
     super.initState();
-    _animationController =
-        AnimationController(duration: Duration(milliseconds: 900), vsync: this);
-    _fadeInAnimation =
-        CurvedAnimation(parent: _animationController, curve: Curves.easeIn);
-    _animationController.forward();
-    _scaffoldKey = GlobalKey<ScaffoldState>();
-    if (!Get.isRegistered<UserSession>()) Get.put(UserSession());
-    _initDefaultRange();
-    _loadAllData();
+    // Ne pas utiliser MediaQuery ici !
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        // Affiche un SnackBar listant les modules accessibles
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          UserSession user;
+          try {
+            user = Get.find<UserSession>();
+          } catch (_) {
+            user = Get.put(UserSession());
+          }
+          // Récupère la liste des modules accessibles
+          final modules = NavigationSlider(
+            isOpen: false,
+            onToggle: () {},
+            isMobile: false,
+            isTablet: false,
+            isDesktop: false,
+          ).filterModulesByUser(
+            [
+              {"name": "VENTES"},
+              {"name": "COLLECTE"},
+              {"name": "CONTRÔLE"},
+              {"name": "EXTRACTION"},
+              {"name": "FILTRAGE"},
+              {"name": "CONDITIONNEMENT"},
+              {"name": "GESTION DE VENTES"},
+              {"name": "RAPPORTS"},
+            ],
+            user,
+          );
+          final moduleNames = modules.map((m) => m["name"]).join(", ");
+          final msg = modules.isEmpty
+              ? "Aucun module accessible pour votre profil."
+              : "Modules accessibles : $moduleNames";
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(msg),
+              duration: Duration(seconds: 5),
+            ),
+          );
+        });
+      }
+    });
   }
 
-  void _initDefaultRange() {
-    final now = DateTime.now();
-    _selectedRange = DateTimeRange(
-      start: DateTime(now.year, now.month, 1),
-      end: DateTime(now.year, now.month + 1, 0),
+  void _navigateTo(String moduleName, {String? subModule}) {
+    // Ne ferme le menu que si on ouvre une vraie page (sous-module)
+    if (subModule != null) {
+      setState(() {
+        isSliderOpen = false;
+        if (moduleName == 'COLLECTE' && subModule == 'Nouvelle collecte') {
+          _currentPage = NouvelleCollecteRecoltePage();
+          return;
+        }
+        switch (moduleName) {
+          case 'COLLECTE':
+            _currentPage = CollectePage();
+            break;
+          default:
+            _currentPage = null;
+        }
+      });
+    }
+    // Si on clique juste sur le module (pour déplier), ne rien faire
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600;
+    final isTablet = screenWidth >= 600 && screenWidth < 1200;
+    final isDesktop = screenWidth >= 1200;
+
+    Widget navigationSlider = NavigationSlider(
+      isOpen: isDesktop || isSliderOpen,
+      onToggle: () => setState(() => isSliderOpen = !isSliderOpen),
+      isMobile: isMobile,
+      isTablet: isTablet,
+      isDesktop: isDesktop,
+      onModuleSelected: (moduleName, {subModule}) =>
+          _navigateTo(moduleName, subModule: subModule),
     );
-  }
 
-  Future<void> _loadAllData() async {
-    try {
-      setState(() => _isLoadingChart = true);
-      await Future.wait([
-        _loadDropdowns(),
-        _loadKPIsAndDetails(),
-        _loadChartData(),
-        _loadAlertes(),
-        _loadLogs(),
-      ]);
-    } catch (e) {
-      setState(() {
-        chartError = "Erreur chargement données : $e";
-      });
-    } finally {
-      setState(() => _isLoadingChart = false);
-    }
-  }
+    Widget mainContent = _isLoading
+        ? DashboardSkeleton(
+            isMobile: isMobile,
+            isTablet: isTablet,
+            isDesktop: isDesktop,
+          )
+        : (_currentPage ??
+            MainDashboardContent(
+              isMobile: isMobile,
+              isTablet: isTablet,
+              isDesktop: isDesktop,
+            ));
 
-  Future<void> _loadDropdowns() async {
-    try {
-      final commSnap = await FirebaseFirestore.instance
-          .collection('utilisateurs')
-          .where('role', isEqualTo: 'Commercial')
-          .get();
-      commerciaux = commSnap.docs
-          .map((d) => d.data()['nom'] ?? d.id)
-          .whereType<String>()
-          .toList();
-
-      final cliSnap =
-          await FirebaseFirestore.instance.collection('clients').get();
-      clients = cliSnap.docs
-          .map((d) => d.data()['nomBoutique'] ?? d.data()['nomGerant'] ?? d.id)
-          .whereType<String>()
-          .toList();
-
-      final lotSnap =
-          await FirebaseFirestore.instance.collection('conditionnement').get();
-      lots = lotSnap.docs
-          .map((d) => d.data()['lotOrigine'] ?? d.id)
-          .whereType<String>()
-          .toList();
-    } catch (_) {
-      commerciaux = [];
-      clients = [];
-      lots = [];
-    }
-  }
-
-  Future<void> _loadKPIsAndDetails() async {
-    double qteVentes = 0,
-        montantVentes = 0,
-        qteCollecte = 0,
-        qteStock = 0,
-        credits = 0;
-    List<Map<String, dynamic>> ventesList = [];
-    List<Map<String, dynamic>> collecteList = [];
-    List<Map<String, dynamic>> stockList = [];
-    List<Map<String, dynamic>> creditsList = [];
-
-    // Ventes
-    try {
-      final snapVentes = await FirebaseFirestore.instance
-          .collectionGroup('ventes_effectuees')
-          .get();
-      for (var doc in snapVentes.docs) {
-        final v = doc.data() as Map<String, dynamic>;
-        final embVendus = v['emballagesVendus'] ?? [];
-        double qte = 0;
-        for (final emb in embVendus) {
-          qte += (emb['contenanceKg'] ?? 0.0) * (emb['nombre'] ?? 0);
-        }
-        qteVentes += qte;
-        montantVentes += (v['montantTotal'] ?? 0.0) is num
-            ? (v['montantTotal'] ?? 0.0)
-            : 0.0;
-        ventesList.add(v);
-        if (v['typeVente'] == "Crédit" && (v['montantRestant'] ?? 0) > 0) {
-          credits += (v['montantRestant'] ?? 0.0);
-          creditsList.add(v);
-        }
-      }
-    } catch (_) {}
-
-    // Collecte
-    try {
-      final snapCollecte =
-          await FirebaseFirestore.instance.collection('collectes').get();
-      for (var doc in snapCollecte.docs) {
-        final sousColl = await doc.reference.collection('Récolte').get();
-        for (var s in sousColl.docs) {
-          var d = s.data();
-          if (d['details'] is List) {
-            for (var detail in (d['details'] as List)) {
-              qteCollecte += (detail['quantite'] ?? 0.0) is num
-                  ? (detail['quantite'] ?? 0.0)
-                  : 0.0;
-              collecteList.add(detail as Map<String, dynamic>);
-            }
-          } else {
-            qteCollecte += (d['quantiteKg'] ?? 0.0) is num
-                ? (d['quantiteKg'] ?? 0.0)
-                : 0.0;
-            collecteList.add(d);
-          }
-        }
-      }
-    } catch (_) {}
-
-    // Stock
-    try {
-      final snapStock =
-          await FirebaseFirestore.instance.collection('conditionnement').get();
-      for (var doc in snapStock.docs) {
-        qteStock += (doc.data()['quantiteRestante'] ?? 0.0) is num
-            ? (doc.data()['quantiteRestante'] ?? 0.0)
-            : 0.0;
-        stockList.add(doc.data());
-      }
-    } catch (_) {}
-
-    kpis = {
-      "Ventes": qteVentes,
-      "Montant ventes": montantVentes,
-      "Collecte": qteCollecte,
-      "Stock": qteStock,
-      "Crédits à recouvrer": credits,
-    };
-    details = {
-      "Ventes": ventesList,
-      "Collecte": collecteList,
-      "Stock": stockList,
-      "Crédits à recouvrer": creditsList,
-    };
-    setState(() {});
-  }
-
-  Future<void> _loadChartData() async {
-    try {
-      setState(() {
-        _isLoadingChart = true;
-        chartError = null;
-      });
-      final nbDays =
-          _selectedRange!.end.difference(_selectedRange!.start).inDays;
-      final bool byMonth = nbDays > 60;
-      List<DateTime> xAxisPoints = [];
-      if (byMonth) {
-        DateTime d = DateTime(
-            _selectedRange!.start.year, _selectedRange!.start.month, 1);
-        while (d.isBefore(_selectedRange!.end)) {
-          xAxisPoints.add(d);
-          d = DateTime(d.year, d.month + 1, 1);
-        }
-      } else {
-        DateTime d = _selectedRange!.start;
-        while (!d.isAfter(_selectedRange!.end)) {
-          xAxisPoints.add(DateTime(d.year, d.month, d.day));
-          d = d.add(const Duration(days: 1));
-        }
-      }
-      _xLabels = xAxisPoints
-          .map((d) => byMonth
-              ? DateFormat('MM/yyyy').format(d)
-              : DateFormat('dd/MM').format(d))
-          .toList();
-
-      // Préparation des barres pour chaque série
-      barChartData = List.generate(_xLabels.length, (idx) {
-        return {
-          "Ventes": 0.0,
-          "Collecte": 0.0,
-          "Stock": 0.0,
-        };
-      });
-
-      // Ventes
-      try {
-        final ventesQ = FirebaseFirestore.instance
-            .collectionGroup('ventes_effectuees')
-            .where('dateVente', isGreaterThanOrEqualTo: _selectedRange!.start)
-            .where('dateVente', isLessThanOrEqualTo: _selectedRange!.end);
-        final ventesSnap = await ventesQ.get();
-        for (var doc in ventesSnap.docs) {
-          final v = doc.data() as Map<String, dynamic>;
-          DateTime? dt = (v['dateVente'] is Timestamp)
-              ? (v['dateVente'] as Timestamp).toDate()
-              : null;
-          if (dt == null) continue;
-          int idx = byMonth
-              ? ((dt.year - xAxisPoints[0].year) * 12 +
-                  (dt.month - xAxisPoints[0].month))
-              : dt.difference(xAxisPoints[0]).inDays;
-          if (idx < 0 || idx >= _xLabels.length) continue;
-          double qte = 0;
-          final embVendus = v['emballagesVendus'] ?? [];
-          for (final emb in embVendus) {
-            qte += (emb['contenanceKg'] ?? 0.0) * (emb['nombre'] ?? 0);
-          }
-          barChartData[idx]["Ventes"] =
-              (barChartData[idx]["Ventes"] ?? 0) + qte;
-        }
-      } catch (_) {}
-
-      // Collecte
-      try {
-        final collecteSnap = await FirebaseFirestore.instance
-            .collection('collectes')
-            .where('dateCollecte',
-                isGreaterThanOrEqualTo: _selectedRange!.start)
-            .where('dateCollecte', isLessThanOrEqualTo: _selectedRange!.end)
-            .get();
-        for (var doc in collecteSnap.docs) {
-          final data = doc.data();
-          DateTime? dt = (data['dateCollecte'] as Timestamp?)?.toDate();
-          if (dt == null) continue;
-          int idx = byMonth
-              ? ((dt.year - xAxisPoints[0].year) * 12 +
-                  (dt.month - xAxisPoints[0].month))
-              : dt.difference(xAxisPoints[0]).inDays;
-          if (idx < 0 || idx >= _xLabels.length) continue;
-          double score = 0;
-          final sousColl = await doc.reference.collection('Récolte').get();
-          for (var s in sousColl.docs) {
-            final d = s.data();
-            if (d['details'] is List) {
-              for (var detail in (d['details'] as List)) {
-                score += (detail['quantite'] ?? 0.0) is num
-                    ? (detail['quantite'] ?? 0.0)
-                    : 0.0;
-              }
-            } else {
-              score += (d['quantiteKg'] ?? 0.0) is num
-                  ? (d['quantiteKg'] ?? 0.0)
-                  : 0.0;
-            }
-          }
-          barChartData[idx]["Collecte"] =
-              (barChartData[idx]["Collecte"] ?? 0) + score;
-        }
-      } catch (_) {}
-
-      // Stock pour toute période (pas que byMonth)
-      try {
-        final stockSnap = await FirebaseFirestore.instance
-            .collection('conditionnement')
-            .get();
-        for (var doc in stockSnap.docs) {
-          DateTime? dt = (doc.data()['date'] is Timestamp)
-              ? (doc.data()['date'] as Timestamp).toDate()
-              : null;
-          if (dt == null) continue;
-          int idx = byMonth
-              ? ((dt.year - xAxisPoints[0].year) * 12 +
-                  (dt.month - xAxisPoints[0].month))
-              : dt.difference(xAxisPoints[0]).inDays;
-          if (idx < 0 || idx >= _xLabels.length) continue;
-          barChartData[idx]["Stock"] = (barChartData[idx]["Stock"] ?? 0) +
-              (doc.data()['quantiteRestante'] ?? 0);
-        }
-      } catch (_) {}
-
-      setState(() => chartError = null);
-    } catch (e) {
-      setState(() => chartError = "Erreur: $e");
-    } finally {
-      setState(() => _isLoadingChart = false);
-    }
-  }
-
-  Widget _activityBarChart() {
-    final List<Color> colors = [
-      Colors.blueAccent, // Ventes
-      Colors.green[700]!, // Collecte
-      Colors.red[700]! // Stock
-    ];
-    final List<String> legendLabels = ["Ventes", "Collecte", "Stock"];
-    List<String> displayed = legendLabels;
-    if (graphType != "Tout") {
-      displayed = [graphType];
-    }
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      margin: EdgeInsets.symmetric(vertical: 18),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Stack(
           children: [
             Row(
               children: [
-                Icon(Icons.bar_chart, color: Colors.deepPurple, size: 26),
-                SizedBox(width: 10),
-                Text(
-                  "Activité (${_selectedRange == null ? "..." : "${DateFormat('dd/MM/yyyy').format(_selectedRange!.start)} - ${DateFormat('dd/MM/yyyy').format(_selectedRange!.end)}"})",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19),
-                ),
-                Spacer(),
-                ...["Tout", ...legendLabels].map((t) => Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                      child: ChoiceChip(
-                        label: Text(t),
-                        selected: graphType == t,
-                        onSelected: (_) => setState(() => graphType = t),
+                // Main Content
+                Expanded(
+                  child: Column(
+                    children: [
+                      DashboardHeader(
+                        onMenuToggle: () =>
+                            setState(() => isSliderOpen = !isSliderOpen),
+                        isMobile: isMobile,
+                        isTablet: isTablet,
                       ),
-                    )),
-                SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    // Correction pour bug showDateRangePicker
-                    final now = DateTime.now();
-                    final maxDate = DateTime(now.year, now.month, now.day)
-                        .add(Duration(days: 2));
-                    DateTimeRange? initial = _selectedRange;
-                    if (initial != null && initial.end.isAfter(maxDate)) {
-                      initial =
-                          DateTimeRange(start: initial.start, end: maxDate);
-                    }
-                    final picked = await showDateRangePicker(
-                      context: context,
-                      initialDateRange: initial,
-                      firstDate: DateTime(2022, 1, 1),
-                      lastDate: maxDate,
-                    );
-                    if (picked != null) {
-                      setState(() => _selectedRange = picked);
-                      await _loadChartData();
-                    }
-                  },
-                  icon: Icon(Icons.date_range, size: 20),
-                  label: Text("Période"),
-                  style: OutlinedButton.styleFrom(shape: StadiumBorder()),
+                      Expanded(child: mainContent),
+                    ],
+                  ),
                 ),
+                // Desktop slider
+                if (isDesktop)
+                  SizedBox(
+                    width: 270,
+                    child: navigationSlider,
+                  ),
               ],
             ),
-            SizedBox(height: 14),
+            // Overlay for mobile/tablet
+            if (!isDesktop)
+              AnimatedPositioned(
+                duration: Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+                right: isSliderOpen ? 0 : -270,
+                top: 0,
+                bottom: 0,
+                width: 250,
+                child: Material(
+                  color: Colors.white,
+                  elevation: 16,
+                  child: navigationSlider,
+                ),
+              ),
+            if (isSliderOpen && !isDesktop)
+              // Utilise ModalBarrier pour éviter la fermeture au scroll
+              ModalBarrier(
+                color: Colors.black.withOpacity(0.3),
+                dismissible: true,
+                onDismiss: () => setState(() => isSliderOpen = false),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Header
+class DashboardHeader extends StatelessWidget {
+  final VoidCallback onMenuToggle;
+  final bool isMobile, isTablet;
+
+  const DashboardHeader(
+      {required this.onMenuToggle,
+      required this.isMobile,
+      required this.isTablet,
+      Key? key})
+      : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final dateStr =
+        "${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}";
+    final hourStr =
+        "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+
+    return Material(
+      elevation: 1,
+      child: Container(
+        color: Colors.white,
+        padding: EdgeInsets.symmetric(
+            horizontal: isMobile ? 8 : 24, vertical: isMobile ? 8 : 14),
+        child: Row(
+          children: [
+            if (isMobile || isTablet)
+              IconButton(
+                icon: Icon(Icons.menu, color: kHighlightColor, size: 28),
+                onPressed: onMenuToggle,
+              ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                'assets/logo/logo.jpeg', // Correct path
+                height: isMobile ? 30 : 44,
+                width: isMobile ? 30 : 44,
+                fit: BoxFit.cover,
+              ),
+            ),
+            SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Dashboard Administrateur",
+                      style: TextStyle(
+                        fontSize: isMobile ? 15 : 21,
+                        fontWeight: FontWeight.bold,
+                        color: kHighlightColor,
+                      ),
+                      overflow: TextOverflow.ellipsis),
+                  if (!isMobile)
+                    Text("Plateforme de gestion Apisavana",
+                        style:
+                            TextStyle(fontSize: 11, color: Colors.grey[600])),
+                ],
+              ),
+            ),
+            if (!isMobile)
+              Row(
+                children: [
+                  Column(
+                    children: [
+                      Text("Date",
+                          style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      Text(dateStr,
+                          style: TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                  SizedBox(width: 10),
+                  Column(
+                    children: [
+                      Text("Heure",
+                          style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      Text(hourStr,
+                          style: TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                  SizedBox(width: 10),
+                  Row(
+                    children: [
+                      Icon(Icons.circle, color: Colors.green, size: 11),
+                      SizedBox(width: 4),
+                      Text("Système actif",
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.green,
+                              fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ],
+              ),
+            SizedBox(width: isMobile ? 6 : 12),
+            IconButton(
+              icon: Stack(
+                children: [
+                  Icon(Icons.notifications,
+                      color: kHighlightColor, size: isMobile ? 18 : 22),
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: CircleAvatar(
+                      backgroundColor: Colors.redAccent,
+                      radius: 6,
+                      child: Text("3",
+                          style: TextStyle(fontSize: 9, color: Colors.white)),
+                    ),
+                  ),
+                ],
+              ),
+              onPressed: () {},
+            ),
+            if (!isMobile) ...[
+              IconButton(
+                  icon: Icon(Icons.refresh, color: Colors.grey[700]),
+                  onPressed: () {}),
+              IconButton(
+                  icon: Icon(Icons.settings, color: Colors.grey[700]),
+                  onPressed: () {}),
+            ],
+            OutlinedButton.icon(
+              icon: Icon(Icons.logout, color: Colors.red[400], size: 16),
+              label: isMobile
+                  ? SizedBox.shrink()
+                  : Text("Déconnexion",
+                      style: TextStyle(color: Colors.red[400], fontSize: 12)),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: Colors.red[100]!),
+                backgroundColor: Colors.red[50],
+                padding: EdgeInsets.symmetric(
+                    horizontal: isMobile ? 5 : 12, vertical: 6),
+              ),
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+                Get.deleteAll(force: true); // Nettoie tous les contrôleurs GetX
+                Get.offAll(() => LoginPage());
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Main dashboard
+class MainDashboardContent extends StatefulWidget {
+  final bool isMobile, isTablet, isDesktop;
+  const MainDashboardContent(
+      {required this.isMobile,
+      required this.isTablet,
+      required this.isDesktop,
+      Key? key})
+      : super(key: key);
+
+  @override
+  State<MainDashboardContent> createState() => _MainDashboardContentState();
+}
+
+class _MainDashboardContentState extends State<MainDashboardContent> {
+  int selectedChart = 0; // 0: Line, 1: Bar, 2: Pie, 3: Area
+  // Pour la légende interactive
+  List<bool> visibleSeries = [true, true]; // [ventes, collecte]
+  int? touchedIndex; // Pour le hover/tap
+
+  @override
+  Widget build(BuildContext context) {
+    final EdgeInsets sectionPad = EdgeInsets.symmetric(
+        horizontal: widget.isMobile ? 6 : 22,
+        vertical: widget.isMobile ? 8 : 18);
+
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        // KPIs
+        Padding(
+          padding: sectionPad,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Vue d'ensemble",
+                  style: TextStyle(
+                      fontSize: widget.isMobile ? 15 : 19,
+                      fontWeight: FontWeight.bold)),
+              SizedBox(height: 8),
+              Wrap(
+                spacing: 10,
+                runSpacing: 18,
+                children: [
+                  KPICard(
+                      title: "Ventes du mois",
+                      value: "€24,500",
+                      icon: Icons.shopping_cart,
+                      color: kHighlightColor,
+                      trend: 12,
+                      isPositive: true,
+                      isMobile: widget.isMobile),
+                  KPICard(
+                      title: "Collecte totale",
+                      value: "1,240 kg",
+                      icon: Icons.local_florist,
+                      color: Colors.green,
+                      trend: 8,
+                      isPositive: true,
+                      isMobile: widget.isMobile),
+                  KPICard(
+                      title: "Stock disponible",
+                      value: "3,680 kg",
+                      icon: Icons.inventory,
+                      color: Colors.orange,
+                      trend: 5,
+                      isPositive: false,
+                      isMobile: widget.isMobile),
+                  KPICard(
+                      title: "Crédits en attente",
+                      value: "€8,900",
+                      icon: Icons.credit_card,
+                      color: Colors.red,
+                      trend: 15,
+                      isPositive: false,
+                      isMobile: widget.isMobile),
+                ],
+              ),
+            ],
+          ),
+        ),
+        // Chart
+        Padding(
+          padding: sectionPad,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Analyse des données",
+                  style: TextStyle(
+                      fontSize: widget.isMobile ? 15 : 19,
+                      fontWeight: FontWeight.bold)),
+              SizedBox(height: 7),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  ChartTypeButton(
+                      label: "Ligne",
+                      icon: Icons.show_chart,
+                      selected: selectedChart == 0,
+                      onTap: () => setState(() => selectedChart = 0)),
+                  ChartTypeButton(
+                      label: "Histogramme",
+                      icon: Icons.bar_chart,
+                      selected: selectedChart == 1,
+                      onTap: () => setState(() => selectedChart = 1)),
+                  ChartTypeButton(
+                      label: "Cercle",
+                      icon: Icons.pie_chart,
+                      selected: selectedChart == 2,
+                      onTap: () => setState(() => selectedChart = 2)),
+                  ChartTypeButton(
+                      label: "Aire",
+                      icon: Icons.area_chart,
+                      selected: selectedChart == 3,
+                      onTap: () => setState(() => selectedChart = 3)),
+                ],
+              ),
+              SizedBox(height: 8),
+              Container(
+                height: widget.isMobile ? 170 : 260,
+                child: AnimatedSwitcher(
+                  duration: Duration(milliseconds: 2000), // transition 2s
+                  child: selectedChart == 0
+                      ? LineChartSample(
+                          isMobile: widget.isMobile,
+                          visibleSeries: visibleSeries,
+                          touchedIndex: touchedIndex,
+                          onLegendTap: (i) => setState(() {
+                            visibleSeries[i] = !visibleSeries[i];
+                          }),
+                          onTouch: (i) => setState(() => touchedIndex = i),
+                          onTouchEnd: () => setState(() => touchedIndex = null),
+                        )
+                      : selectedChart == 1
+                          ? BarChartSample(
+                              isMobile: widget.isMobile,
+                              visibleSeries: visibleSeries,
+                              touchedIndex: touchedIndex,
+                              onLegendTap: (i) => setState(() {
+                                visibleSeries[i] = !visibleSeries[i];
+                              }),
+                              onTouch: (i) => setState(() => touchedIndex = i),
+                              onTouchEnd: () =>
+                                  setState(() => touchedIndex = null),
+                            )
+                          : selectedChart == 2
+                              ? PieChartSample(
+                                  touchedIndex: touchedIndex,
+                                  onTouch: (i) =>
+                                      setState(() => touchedIndex = i),
+                                  onTouchEnd: () =>
+                                      setState(() => touchedIndex = null),
+                                )
+                              : AreaChartSample(
+                                  isMobile: widget.isMobile,
+                                  visibleSeries: visibleSeries,
+                                  touchedIndex: touchedIndex,
+                                  onLegendTap: (i) => setState(() {
+                                    visibleSeries[i] = !visibleSeries[i];
+                                  }),
+                                  onTouch: (i) =>
+                                      setState(() => touchedIndex = i),
+                                  onTouchEnd: () =>
+                                      setState(() => touchedIndex = null),
+                                ),
+                ),
+              ),
+              // Légende interactive (sauf Pie)
+              if (selectedChart != 2)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      GestureDetector(
+                        onTap: () => setState(
+                            () => visibleSeries[0] = !visibleSeries[0]),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 14,
+                              height: 14,
+                              decoration: BoxDecoration(
+                                color: visibleSeries[0]
+                                    ? kHighlightColor
+                                    : Colors.grey[300],
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                    color: kHighlightColor, width: 2),
+                              ),
+                            ),
+                            SizedBox(width: 5),
+                            Text("Ventes",
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: visibleSeries[0]
+                                        ? Colors.black
+                                        : Colors.grey)),
+                          ],
+                        ),
+                      ),
+                      SizedBox(width: 18),
+                      GestureDetector(
+                        onTap: () => setState(
+                            () => visibleSeries[1] = !visibleSeries[1]),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 14,
+                              height: 14,
+                              decoration: BoxDecoration(
+                                color: visibleSeries[1]
+                                    ? Colors.green
+                                    : Colors.grey[300],
+                                shape: BoxShape.circle,
+                                border:
+                                    Border.all(color: Colors.green, width: 2),
+                              ),
+                            ),
+                            SizedBox(width: 5),
+                            Text("Collecte",
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: visibleSeries[1]
+                                        ? Colors.black
+                                        : Colors.grey)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        // Alerts and Timeline
+        Padding(
+          padding: sectionPad,
+          child: widget.isDesktop
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: AlertsSection(isMobile: widget.isMobile)),
+                    SizedBox(width: 18),
+                    Expanded(
+                        child: ActivityTimeline(isMobile: widget.isMobile)),
+                  ],
+                )
+              : Column(
+                  children: [
+                    AlertsSection(isMobile: widget.isMobile),
+                    SizedBox(height: 14),
+                    ActivityTimeline(isMobile: widget.isMobile),
+                  ],
+                ),
+        ),
+        SizedBox(height: widget.isMobile ? 20 : 32),
+      ],
+    );
+  }
+}
+
+// Chart switcher button
+class ChartTypeButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+  const ChartTypeButton(
+      {required this.label,
+      required this.icon,
+      required this.selected,
+      required this.onTap,
+      Key? key})
+      : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(right: 7),
+      child: OutlinedButton.icon(
+        icon: Icon(icon,
+            size: 15, color: selected ? Colors.white : kHighlightColor),
+        label: Text(label,
+            style: TextStyle(
+                fontSize: 12,
+                color: selected ? Colors.white : kHighlightColor)),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: selected ? kHighlightColor : Colors.white,
+          side: BorderSide(color: kHighlightColor),
+          minimumSize: Size(0, 28),
+          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        onPressed: onTap,
+      ),
+    );
+  }
+}
+
+// KPI Card
+class KPICard extends StatelessWidget {
+  final String title, value;
+  final IconData icon;
+  final Color color;
+  final int trend;
+  final bool isPositive;
+  final bool isMobile;
+  const KPICard({
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+    required this.trend,
+    required this.isPositive,
+    required this.isMobile,
+    Key? key,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 1,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: isMobile ? 135 : 180,
+        height: isMobile ? 100 : 190,
+        padding: EdgeInsets.all(isMobile ? 10 : 15),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: LinearGradient(
+            colors: [color.withOpacity(0.08), Colors.white],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(color: color.withOpacity(0.18)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: color, size: isMobile ? 19 : 25),
+            SizedBox(height: isMobile ? 4 : 8),
+            Text(title,
+                style: TextStyle(
+                    fontSize: isMobile ? 11 : 13,
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w500)),
+            SizedBox(height: isMobile ? 3 : 7),
+            Text(value,
+                style: TextStyle(
+                    fontSize: isMobile ? 14 : 19, fontWeight: FontWeight.bold)),
+            SizedBox(height: 1),
             Row(
               children: [
-                _filterDropdown<String>(
-                  hint: "Commercial",
-                  values: commerciaux,
-                  selected: _selectedCommercial,
-                  onChanged: (v) => setState(() {
-                    _selectedCommercial = v;
-                    _loadChartData();
-                  }),
-                ),
-                SizedBox(width: 8),
-                _filterDropdown<String>(
-                  hint: "Client",
-                  values: clients,
-                  selected: _selectedClient,
-                  onChanged: (v) => setState(() {
-                    _selectedClient = v;
-                    _loadChartData();
-                  }),
-                ),
-                SizedBox(width: 8),
-                _filterDropdown<String>(
-                  hint: "Lot",
-                  values: lots,
-                  selected: _selectedLot,
-                  onChanged: (v) => setState(() {
-                    _selectedLot = v;
-                    _loadChartData();
-                  }),
-                ),
-                SizedBox(width: 8),
-                _filterDropdown<String>(
-                  hint: "Type vente",
-                  values: ["Comptant", "Crédit", "Recouvrement"],
-                  selected: _selectedTypeVente,
-                  onChanged: (v) => setState(() {
-                    _selectedTypeVente = v;
-                    _loadChartData();
-                  }),
-                ),
+                Icon(isPositive ? Icons.arrow_upward : Icons.arrow_downward,
+                    color: isPositive ? Colors.green : Colors.red,
+                    size: isMobile ? 14 : 16),
+                SizedBox(width: 2),
+                Text('${trend.abs()}% ',
+                    style: TextStyle(
+                        color: isPositive ? Colors.green : Colors.red,
+                        fontSize: isMobile ? 10 : 12,
+                        fontWeight: FontWeight.bold)),
+                Text('vs. mois dernier',
+                    style: TextStyle(
+                        color: Colors.grey[600], fontSize: isMobile ? 9 : 11)),
               ],
             ),
-            SizedBox(height: 15),
-            SizedBox(
-              height: 270,
-              child: _isLoadingChart
-                  ? Center(child: CircularProgressIndicator())
-                  : chartError != null
-                      ? Center(
-                          child: Text(
-                              "Erreur chargement graphique: $chartError",
-                              style: TextStyle(color: Colors.red)))
-                      : (graphType == "Stock" &&
-                              (barChartData.isEmpty ||
-                                  barChartData.every(
-                                      (row) => (row["Stock"] ?? 0.0) == 0.0)))
-                          ? Center(
-                              child: Text(
-                                  "Aucune donnée Stock sur la période sélectionnée ou données invalides.",
-                                  style: TextStyle(color: Colors.orange[900])))
-                          : (barChartData.isEmpty ||
-                                  barChartData.length != _xLabels.length ||
-                                  displayed.isEmpty ||
-                                  barChartData.every((row) => displayed.every(
-                                      (label) =>
-                                          row[label] == null ||
-                                          row[label]!.isNaN ||
-                                          row[label] == 0.0)))
-                              ? Center(
-                                  child: Text(
-                                      "Aucune donnée sur la période sélectionnée ou données invalides.",
-                                      style:
-                                          TextStyle(color: Colors.grey[700])))
-                              : BarChart(
-                                  BarChartData(
-                                    barGroups:
-                                        List.generate(barChartData.length, (i) {
-                                      final row = barChartData[i];
-                                      return BarChartGroupData(
-                                        x: i,
-                                        barRods: List.generate(displayed.length,
-                                            (j) {
-                                          final label = displayed[j];
-                                          final y = row[label] ?? 0;
-                                          return BarChartRodData(
-                                            toY: y.isNaN ? 0 : y,
-                                            color: colors[
-                                                legendLabels.indexOf(label)],
-                                            width: 14,
-                                            borderRadius:
-                                                BorderRadius.circular(4),
-                                          );
-                                        }),
-                                      );
-                                    }),
-                                    titlesData: FlTitlesData(
-                                      leftTitles: AxisTitles(
-                                        sideTitles: SideTitles(
-                                          showTitles: true,
-                                          reservedSize: 40,
-                                          getTitlesWidget: (value, meta) =>
-                                              Padding(
-                                            padding: const EdgeInsets.only(
-                                                right: 4.0),
-                                            child: Text(
-                                                value.toInt().toString(),
-                                                style: TextStyle(
-                                                    color: Colors.grey[700],
-                                                    fontSize: 12)),
-                                          ),
-                                        ),
-                                      ),
-                                      bottomTitles: AxisTitles(
-                                        sideTitles: SideTitles(
-                                          showTitles: true,
-                                          reservedSize: 44,
-                                          interval: (_xLabels.length / 6)
-                                              .ceilToDouble()
-                                              .clamp(1, 100),
-                                          getTitlesWidget: (value, meta) {
-                                            final idx = value.toInt();
-                                            if (idx < 0 ||
-                                                idx >= _xLabels.length)
-                                              return Container();
-                                            return Padding(
-                                              padding: const EdgeInsets.only(
-                                                  top: 8.0),
-                                              child: Text(_xLabels[idx],
-                                                  style: TextStyle(
-                                                      color: Colors.grey[700],
-                                                      fontSize: 10,
-                                                      fontWeight:
-                                                          FontWeight.w500)),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                      rightTitles: AxisTitles(
-                                        sideTitles:
-                                            SideTitles(showTitles: false),
-                                      ),
-                                      topTitles: AxisTitles(
-                                        sideTitles:
-                                            SideTitles(showTitles: false),
-                                      ),
-                                    ),
-                                    gridData: FlGridData(
-                                        show: true, horizontalInterval: 10),
-                                    barTouchData: BarTouchData(
-                                      enabled: true,
-                                      touchTooltipData: BarTouchTooltipData(
-                                        getTooltipItem:
-                                            (group, groupIndex, rod, rodIndex) {
-                                          final label = displayed[rodIndex];
-                                          return BarTooltipItem(
-                                            "$label: ${rod.toY.toStringAsFixed(2)}",
-                                            TextStyle(
-                                              color: colors[
-                                                  legendLabels.indexOf(label)],
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- CHARTS (fl_chart) ---
+
+class LineChartSample extends StatefulWidget {
+  final bool isMobile;
+  final List<bool> visibleSeries;
+  final int? touchedIndex;
+  final void Function(int)? onLegendTap;
+  final void Function(int)? onTouch;
+  final VoidCallback? onTouchEnd;
+  const LineChartSample({
+    this.isMobile = false,
+    required this.visibleSeries,
+    this.touchedIndex,
+    this.onLegendTap,
+    this.onTouch,
+    this.onTouchEnd,
+    super.key,
+  });
+
+  @override
+  State<LineChartSample> createState() => _LineChartSampleState();
+}
+
+class _LineChartSampleState extends State<LineChartSample> {
+  Map<String, bool> visibleSeries = {
+    'ventes': true,
+    'collecte': true,
+  };
+  FlSpot? selectedSpot;
+  String? selectedSeries;
+  int? touchedIndex;
+
+  final List<FlSpot> ventes = [
+    FlSpot(0, 4000),
+    FlSpot(1, 3000),
+    FlSpot(2, 2000),
+    FlSpot(3, 2780),
+    FlSpot(4, 1890),
+    FlSpot(5, 2390),
+    FlSpot(6, 3490),
+  ];
+  final List<FlSpot> collecte = [
+    FlSpot(0, 2400),
+    FlSpot(1, 1398),
+    FlSpot(2, 9800),
+    FlSpot(3, 3908),
+    FlSpot(4, 4800),
+    FlSpot(5, 3800),
+    FlSpot(6, 4300),
+  ];
+  final List<String> months = [
+    'Jan',
+    'Fév',
+    'Mar',
+    'Avr',
+    'Mai',
+    'Juin',
+    'Juil'
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = widget.isMobile;
+    return Column(
+      children: [
+        Expanded(
+          child: LineChart(
+            LineChartData(
+              gridData: FlGridData(
+                  show: true,
+                  horizontalInterval: 5000,
+                  getDrawingHorizontalLine: (_) =>
+                      FlLine(color: Colors.grey[300], strokeWidth: 1)),
+              borderData: FlBorderData(
+                  show: true,
+                  border: Border.all(color: Colors.grey[300]!, width: 1)),
+              // Correction: FlTitlesData expects 'topTitles', 'rightTitles', 'bottomTitles', 'leftTitles'
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 5000,
+                        reservedSize: isMobile ? 22 : 30)),
+                bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 1,
+                        getTitlesWidget: (val, _) => Padding(
+                              padding: const EdgeInsets.only(top: 3.0),
+                              child: Text(months[val.toInt() % 7],
+                                  style:
+                                      TextStyle(fontSize: isMobile ? 9 : 13)),
+                            ))),
+              ),
+              minY: 0,
+              maxY: 10000,
+              lineBarsData: [
+                if (visibleSeries['ventes']!)
+                  LineChartBarData(
+                    spots: ventes,
+                    isCurved: true,
+                    color: kHighlightColor,
+                    barWidth: 3,
+                    dotData: FlDotData(show: true),
+                  ),
+                if (visibleSeries['collecte']!)
+                  LineChartBarData(
+                    spots: collecte,
+                    isCurved: true,
+                    color: Colors.green,
+                    barWidth: 2,
+                    dotData: FlDotData(show: true),
+                  ),
+              ],
+              lineTouchData: LineTouchData(
+                enabled: true,
+                touchTooltipData: LineTouchTooltipData(
+                  tooltipRoundedRadius: 10,
+                  getTooltipItems: (touchedSpots) {
+                    return touchedSpots.map((touched) {
+                      final series =
+                          touched.barIndex == 0 ? 'Ventes' : 'Collecte';
+                      return LineTooltipItem(
+                        '${series}\nMois: ${months[touched.x.toInt()]}\nValeur: ${touched.y.toInt()} kg',
+                        TextStyle(
+                          color: touched.barIndex == 0
+                              ? kHighlightColor
+                              : Colors.green,
+                          fontWeight: FontWeight.bold,
+                          fontSize: isMobile ? 11 : 14,
+                        ),
+                      );
+                    }).toList();
+                  },
+                ),
+                handleBuiltInTouches: true,
+                touchCallback: (event, response) {
+                  if (event is FlTapUpEvent &&
+                      response != null &&
+                      response.lineBarSpots != null &&
+                      response.lineBarSpots!.isNotEmpty) {
+                    final spot = response.lineBarSpots!.first;
+                    setState(() {
+                      selectedSpot = spot;
+                      selectedSeries =
+                          spot.barIndex == 0 ? 'ventes' : 'collecte';
+                      touchedIndex = spot.x.toInt();
+                    });
+                  } else if (event is FlLongPressEnd ||
+                      event is FlPanEndEvent) {
+                    setState(() {
+                      selectedSpot = null;
+                      selectedSeries = null;
+                      touchedIndex = null;
+                    });
+                  }
+                },
+              ),
             ),
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Wrap(
-                spacing: 20,
-                children: legendLabels
-                    .where((l) => displayed.contains(l))
-                    .map((label) {
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 16,
-                        height: 12,
-                        color: colors[legendLabels.indexOf(label)],
-                        margin: EdgeInsets.only(right: 6),
+          ),
+        ),
+        // Légende interactive
+        Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              GestureDetector(
+                onTap: () => setState(() =>
+                    visibleSeries['ventes'] = !(visibleSeries['ventes']!)),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: visibleSeries['ventes']!
+                            ? kHighlightColor
+                            : Colors.grey[300],
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(color: kHighlightColor, width: 1.5),
                       ),
-                      Text(label),
+                    ),
+                    SizedBox(width: 5),
+                    Text('Ventes',
+                        style: TextStyle(
+                            color: kHighlightColor,
+                            fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+              SizedBox(width: 18),
+              GestureDetector(
+                onTap: () => setState(() =>
+                    visibleSeries['collecte'] = !(visibleSeries['collecte']!)),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: visibleSeries['collecte']!
+                            ? Colors.green
+                            : Colors.grey[300],
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(color: Colors.green, width: 1.5),
+                      ),
+                    ),
+                    SizedBox(width: 5),
+                    Text('Collecte',
+                        style: TextStyle(
+                            color: Colors.green, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class BarChartSample extends StatelessWidget {
+  final bool isMobile;
+  final List<bool> visibleSeries;
+  final int? touchedIndex;
+  final void Function(int)? onLegendTap;
+  final void Function(int)? onTouch;
+  final VoidCallback? onTouchEnd;
+  const BarChartSample({
+    this.isMobile = false,
+    required this.visibleSeries,
+    this.touchedIndex,
+    this.onLegendTap,
+    this.onTouch,
+    this.onTouchEnd,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final data = [
+      {'name': 'Jan', 'ventes': 4000.0, 'collecte': 2400.0},
+      {'name': 'Fév', 'ventes': 3000.0, 'collecte': 1398.0},
+      {'name': 'Mar', 'ventes': 2000.0, 'collecte': 9800.0},
+      {'name': 'Avr', 'ventes': 2780.0, 'collecte': 3908.0},
+      {'name': 'Mai', 'ventes': 1890.0, 'collecte': 4800.0},
+      {'name': 'Juin', 'ventes': 2390.0, 'collecte': 3800.0},
+      {'name': 'Juil', 'ventes': 3490.0, 'collecte': 4300.0},
+    ];
+    return Column(
+      children: [
+        Expanded(
+          child: BarChart(
+            BarChartData(
+              gridData: FlGridData(
+                  show: true,
+                  horizontalInterval: 5000,
+                  getDrawingHorizontalLine: (_) =>
+                      FlLine(color: Colors.grey[300], strokeWidth: 1)),
+              borderData: FlBorderData(
+                  show: true,
+                  border: Border.all(color: Colors.grey[300]!, width: 1)),
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: isMobile ? 17 : 25,
+                        interval: 5000)),
+                bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 1,
+                        getTitlesWidget: (val, _) => Padding(
+                              padding: const EdgeInsets.only(top: 2.0),
+                              child: Text(
+                                  [
+                                    'Jan',
+                                    'Fév',
+                                    'Mar',
+                                    'Avr',
+                                    'Mai',
+                                    'Juin',
+                                    'Juil'
+                                  ][val.toInt() % 7],
+                                  style:
+                                      TextStyle(fontSize: isMobile ? 9 : 13)),
+                            ))),
+              ),
+              barGroups: List.generate(data.length, (i) {
+                final isTouched = touchedIndex == i;
+                return BarChartGroupData(
+                  x: i,
+                  barRods: [
+                    if (visibleSeries[0])
+                      BarChartRodData(
+                        toY: (data[i]['ventes'] as double),
+                        color: isTouched && visibleSeries[0]
+                            ? kHighlightColor.withOpacity(0.7)
+                            : kHighlightColor,
+                        width: 12,
+                        borderRadius: BorderRadius.circular(4),
+                        backDrawRodData: BackgroundBarChartRodData(show: false),
+                      ),
+                    if (visibleSeries[1])
+                      BarChartRodData(
+                        toY: (data[i]['collecte'] as double),
+                        color: isTouched && visibleSeries[1]
+                            ? Colors.green.withOpacity(0.7)
+                            : Colors.green,
+                        width: 12,
+                        borderRadius: BorderRadius.circular(4),
+                        backDrawRodData: BackgroundBarChartRodData(show: false),
+                      ),
+                  ],
+                );
+              }),
+              barTouchData: BarTouchData(
+                enabled: true,
+                touchTooltipData: BarTouchTooltipData(
+                  tooltipRoundedRadius: 10,
+                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                    final idx = group.x.toInt();
+                    final label = data[idx]['name'];
+                    final value = rodIndex == 0
+                        ? data[idx]['ventes']
+                        : data[idx]['collecte'];
+                    return BarTooltipItem(
+                      '${rodIndex == 0 ? "Ventes" : "Collecte"}\n$label: ${(value as double).toStringAsFixed(0)}',
+                      TextStyle(
+                        color: rodIndex == 0 ? kHighlightColor : Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    );
+                  },
+                ),
+                handleBuiltInTouches: false,
+                touchCallback: (event, response) {
+                  if (event is FlTapUpEvent ||
+                      event is FlLongPressEnd ||
+                      event is FlPanEndEvent) {
+                    if (onTouchEnd != null) onTouchEnd!();
+                  } else if (response != null && response.spot != null) {
+                    final idx = response.spot!.touchedBarGroupIndex;
+                    if (onTouch != null) onTouch!(idx);
+                  }
+                },
+              ),
+              // swapAnimationDuration: Duration(milliseconds: 2000), // SUPPRIMÉ car non supporté
+            ),
+          ),
+        ),
+        // Légende interactive
+        Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              GestureDetector(
+                onTap: () => onLegendTap?.call(0),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: visibleSeries[0]
+                            ? kHighlightColor
+                            : Colors.grey[300],
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(color: kHighlightColor, width: 1.5),
+                      ),
+                    ),
+                    SizedBox(width: 5),
+                    Text('Ventes',
+                        style: TextStyle(
+                            color: kHighlightColor,
+                            fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+              SizedBox(width: 18),
+              GestureDetector(
+                onTap: () => onLegendTap?.call(1),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color:
+                            visibleSeries[1] ? Colors.green : Colors.grey[300],
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(color: Colors.green, width: 1.5),
+                      ),
+                    ),
+                    SizedBox(width: 5),
+                    Text('Collecte',
+                        style: TextStyle(
+                            color: Colors.green, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class PieChartSample extends StatelessWidget {
+  final int? touchedIndex;
+  final void Function(int)? onTouch;
+  final VoidCallback? onTouchEnd;
+  const PieChartSample({
+    this.touchedIndex,
+    this.onTouch,
+    this.onTouchEnd,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pieData = [
+      {'name': 'Acacia', 'value': 30.0, 'color': kHighlightColor},
+      {'name': 'Lavande', 'value': 25.0, 'color': Colors.deepPurple},
+      {'name': 'Tilleul', 'value': 20.0, 'color': Colors.green},
+      {'name': 'Châtaignier', 'value': 15.0, 'color': Colors.yellowAccent},
+      {'name': 'Autres', 'value': 10.0, 'color': Colors.orange},
+    ];
+    return Column(
+      children: [
+        Expanded(
+          child: PieChart(
+            PieChartData(
+              sections: List.generate(pieData.length, (i) {
+                final isTouched = touchedIndex == i;
+                final item = pieData[i];
+                final double radius = isTouched ? 60 : 50;
+                return PieChartSectionData(
+                  value: item['value'] as double,
+                  color: item['color'] as Color,
+                  title: '${item['name']}\n${item['value']}%',
+                  radius: radius,
+                  titleStyle: TextStyle(
+                    fontSize: isTouched ? 14 : 11,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                  titlePositionPercentageOffset: 0.6,
+                );
+              }),
+              centerSpaceRadius: 30,
+              sectionsSpace: 1,
+              borderData: FlBorderData(show: false),
+              pieTouchData: PieTouchData(
+                enabled: true,
+                touchCallback: (event, response) {
+                  if (event is FlTapUpEvent &&
+                      response != null &&
+                      response.touchedSection != null) {
+                    onTouch?.call(response.touchedSection!.touchedSectionIndex);
+                  } else if (event is FlLongPressEnd ||
+                      event is FlPanEndEvent) {
+                    onTouchEnd?.call();
+                  }
+                },
+              ),
+            ),
+            duration: Duration(milliseconds: 1200),
+          ),
+        ),
+        // Légende
+        Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Wrap(
+            spacing: 14,
+            children: List.generate(pieData.length, (i) {
+              final item = pieData[i];
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 13,
+                    height: 13,
+                    decoration: BoxDecoration(
+                      color: item['color'] as Color,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  SizedBox(width: 4),
+                  Text(item['name'] as String, style: TextStyle(fontSize: 11)),
+                ],
+              );
+            }),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class AreaChartSample extends StatelessWidget {
+  final bool isMobile;
+  final List<bool> visibleSeries;
+  final int? touchedIndex;
+  final void Function(int)? onLegendTap;
+  final void Function(int)? onTouch;
+  final VoidCallback? onTouchEnd;
+  const AreaChartSample({
+    this.isMobile = false,
+    required this.visibleSeries,
+    this.touchedIndex,
+    this.onLegendTap,
+    this.onTouch,
+    this.onTouchEnd,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final data = [
+      {'name': 'Jan', 'ventes': 4000.0, 'collecte': 2400.0},
+      {'name': 'Fév', 'ventes': 3000.0, 'collecte': 1398.0},
+      {'name': 'Mar', 'ventes': 2000.0, 'collecte': 9800.0},
+      {'name': 'Avr', 'ventes': 2780.0, 'collecte': 3908.0},
+      {'name': 'Mai', 'ventes': 1890.0, 'collecte': 4800.0},
+      {'name': 'Juin', 'ventes': 2390.0, 'collecte': 3800.0},
+      {'name': 'Juil', 'ventes': 3490.0, 'collecte': 4300.0},
+    ];
+    return LineChart(
+      LineChartData(
+        gridData: FlGridData(
+            show: true,
+            horizontalInterval: 5000,
+            getDrawingHorizontalLine: (_) =>
+                FlLine(color: Colors.grey[300], strokeWidth: 1)),
+        borderData: FlBorderData(
+            show: true, border: Border.all(color: Colors.grey[300]!, width: 1)),
+        titlesData: FlTitlesData(
+          leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: isMobile ? 18 : 25,
+                  interval: 5000)),
+          bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+            showTitles: true,
+            interval: 1,
+            getTitlesWidget: (val, _) => Padding(
+              padding: const EdgeInsets.only(top: 3.0),
+              child: Text(
+                  [
+                    'Jan',
+                    'Fév',
+                    'Mar',
+                    'Avr',
+                    'Mai',
+                    'Juin',
+                    'Juil'
+                  ][val.toInt() % 7],
+                  style: TextStyle(fontSize: isMobile ? 9 : 13)),
+            ),
+          )),
+        ),
+        minY: 0,
+        maxY: 11000,
+        lineBarsData: [
+          if (visibleSeries[0])
+            LineChartBarData(
+              spots: [
+                for (int i = 0; i < data.length; i++)
+                  FlSpot(i.toDouble(), data[i]['ventes'] as double),
+              ],
+              isCurved: true,
+              color: kHighlightColor,
+              barWidth: 3,
+              dotData: FlDotData(
+                show: true,
+                getDotPainter: (spot, percent, bar, index) {
+                  final isActive = touchedIndex == index;
+                  return FlDotCirclePainter(
+                    radius: isActive ? 6 : 4,
+                    color: isActive ? kHighlightColor : Colors.white,
+                    strokeColor: kHighlightColor,
+                    strokeWidth: isActive ? 3 : 2,
+                  );
+                },
+              ),
+              belowBarData: BarAreaData(show: false),
+            ),
+          if (visibleSeries[1])
+            LineChartBarData(
+              spots: [
+                for (int i = 0; i < data.length; i++)
+                  FlSpot(i.toDouble(), data[i]['collecte'] as double),
+              ],
+              isCurved: true,
+              color: Colors.green,
+              barWidth: 2,
+              dotData: FlDotData(
+                show: true,
+                getDotPainter: (spot, percent, bar, index) {
+                  final isActive = touchedIndex == index;
+                  return FlDotCirclePainter(
+                    radius: isActive ? 6 : 4,
+                    color: isActive ? Colors.green : Colors.white,
+                    strokeColor: Colors.green,
+                    strokeWidth: isActive ? 3 : 2,
+                  );
+                },
+              ),
+              belowBarData: BarAreaData(show: false),
+            ),
+        ],
+        lineTouchData: LineTouchData(
+          enabled: true,
+          touchTooltipData: LineTouchTooltipData(
+            tooltipRoundedRadius: 10,
+            getTooltipItems: (touchedSpots) {
+              return touchedSpots.map((spot) {
+                final idx = spot.x.toInt();
+                final label = data[idx]['name'];
+                final value = spot.barIndex == 0
+                    ? data[idx]['ventes']
+                    : data[idx]['collecte'];
+                return LineTooltipItem(
+                  '${spot.barIndex == 0 ? "Ventes" : "Collecte"}\n$label: ${(value as double).toStringAsFixed(0)}',
+                  TextStyle(
+                    color: spot.barIndex == 0 ? kHighlightColor : Colors.green,
+                    fontWeight: FontWeight.bold,
+                  ),
+                );
+              }).toList();
+            },
+          ),
+          handleBuiltInTouches: false,
+          touchCallback: (event, response) {
+            if (event is FlTapUpEvent ||
+                event is FlLongPressEnd ||
+                event is FlPanEndEvent) {
+              if (onTouchEnd != null) onTouchEnd!();
+            } else if (response != null &&
+                response.lineBarSpots != null &&
+                response.lineBarSpots!.isNotEmpty) {
+              final idx = response.lineBarSpots!.first.x.toInt();
+              if (onTouch != null) onTouch!(idx);
+            }
+          },
+        ),
+      ),
+      duration: Duration(milliseconds: 2000),
+    );
+  }
+}
+
+// Alerts section
+class AlertsSection extends StatelessWidget {
+  final bool isMobile;
+  final alerts = const [
+    {
+      "type": "warning",
+      "title": "Stock bas",
+      "message": "Miel Acacia: seulement 15 kg restants",
+      "timestamp": "Il y a 2 heures",
+      "action": "Réapprovisionner"
+    },
+    {
+      "type": "error",
+      "title": "Crédit en retard",
+      "message": "Client Martin DUPONT: 2,400€ depuis 45 jours",
+      "timestamp": "Il y a 3 heures",
+      "action": "Relancer"
+    },
+    {
+      "type": "success",
+      "title": "Nouvelle commande",
+      "message": "Commande #2024-156: 50 kg miel toutes fleurs",
+      "timestamp": "Il y a 1 heure",
+      "action": "Traiter"
+    },
+    {
+      "type": "info",
+      "title": "Extraction terminée",
+      "message": "Lot #EXT-2024-089: 120 kg extraits",
+      "timestamp": "Il y a 30 minutes",
+      "action": "Vérifier"
+    },
+  ];
+  const AlertsSection({required this.isMobile, Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final iconMap = {
+      "warning": Icons.warning_amber_rounded,
+      "error": Icons.cancel,
+      "success": Icons.check_circle,
+      "info": Icons.info,
+    };
+    final colorMap = {
+      "warning": Colors.orange,
+      "error": Colors.red,
+      "success": Colors.green,
+      "info": Colors.blue,
+    };
+    return Material(
+      elevation: 1,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: EdgeInsets.all(isMobile ? 8 : 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.white,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Alertes & Notifications",
+                style: TextStyle(
+                    fontSize: isMobile ? 13 : 16, fontWeight: FontWeight.bold)),
+            SizedBox(height: 10),
+            ...alerts.map((alert) {
+              final c = colorMap[alert["type"]];
+              return Container(
+                margin: EdgeInsets.only(bottom: 9),
+                decoration: BoxDecoration(
+                  color: c!.withOpacity(0.09),
+                  border: Border.all(color: c.withOpacity(0.18)),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(iconMap[alert["type"]],
+                      color: c, size: isMobile ? 18 : 23),
+                  title: Text(alert["title"]!,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: isMobile ? 12 : 14)),
+                  subtitle: Text(alert["message"]!,
+                      style: TextStyle(fontSize: isMobile ? 10 : 12)),
+                  trailing: alert["action"] != null
+                      ? ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            elevation: 0,
+                            backgroundColor: c.withOpacity(0.13),
+                            foregroundColor: c,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(7)),
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 5),
+                            textStyle: TextStyle(
+                                fontSize: isMobile ? 9 : 11,
+                                fontWeight: FontWeight.w600),
+                          ),
+                          onPressed: () {},
+                          child: Text(alert["action"]!),
+                        )
+                      : null,
+                ),
+              );
+            }),
+            SizedBox(height: 10),
+            if (isMobile)
+              Center(
+                child: OutlinedButton(
+                  onPressed: () {},
+                  child: Text("Voir toutes les alertes",
+                      style: TextStyle(fontSize: isMobile ? 11 : 13)),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- TIMELINE/ACTIVITY ---
+class ActivityTimeline extends StatelessWidget {
+  final bool isMobile;
+  final activities = const [
+    {
+      "type": "vente",
+      "title": "Nouvelle vente créée",
+      "description":
+          "Vente #2024-156 pour 50kg miel toutes fleurs - Client: Boulangerie Martin",
+      "user": "Sophie Durand",
+      "timestamp": "Il y a 15 minutes",
+      "status": "success"
+    },
+    {
+      "type": "collecte",
+      "title": "Collecte terminée",
+      "description": "Apiculteur Jean MOREAU: 45kg miel acacia collectés",
+      "user": "Système",
+      "timestamp": "Il y a 1 heure",
+      "status": "success"
+    },
+    {
+      "type": "controle",
+      "title": "Contrôle qualité en attente",
+      "description":
+          "Lot #LOT-2024-088 nécessite un contrôle avant mise en stock",
+      "user": "Pierre Lefèvre",
+      "timestamp": "Il y a 2 heures",
+      "status": "pending"
+    },
+    {
+      "type": "extraction",
+      "title": "Extraction démarrée",
+      "description": "Traitement du lot #EXT-2024-089 - Durée estimée: 3h",
+      "user": "Marie Dubois",
+      "timestamp": "Il y a 3 heures",
+      "status": "pending"
+    },
+    {
+      "type": "system",
+      "title": "Sauvegarde automatique",
+      "description": "Sauvegarde quotidienne des données effectuée avec succès",
+      "user": "Système",
+      "timestamp": "Il y a 6 heures",
+      "status": "success"
+    },
+  ];
+  const ActivityTimeline({required this.isMobile, Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final colorMap = {
+      "success": Colors.green,
+      "pending": Colors.orange,
+      "error": Colors.red,
+    };
+    return Material(
+      elevation: 1,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: EdgeInsets.all(isMobile ? 8 : 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.white,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Historique des activités",
+                style: TextStyle(
+                    fontSize: isMobile ? 13 : 16, fontWeight: FontWeight.bold)),
+            SizedBox(height: 10),
+            ...activities.map((activity) {
+              final c = colorMap[activity["status"]];
+              return Container(
+                margin: EdgeInsets.only(bottom: 10),
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.access_time,
+                      size: 10, color: Colors.grey[600]),
+                  title: Text(activity["title"]!,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: isMobile ? 12 : 14)),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(activity["description"]!,
+                          style: TextStyle(fontSize: isMobile ? 9 : 11)),
+                      SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(Icons.person, size: 10, color: Colors.grey[600]),
+                          SizedBox(width: 2),
+                          Text(
+                            activity["user"]!,
+                            style: TextStyle(
+                              fontSize: isMobile ? 8 : 10,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                          SizedBox(width: 7),
+                          Icon(Icons.access_time,
+                              size: 10, color: Colors.grey[600]),
+                          SizedBox(width: 2),
+                          Text(activity["timestamp"]!,
+                              style: TextStyle(
+                                  fontSize: isMobile ? 8 : 10,
+                                  color: Colors.grey[700])),
+                        ],
+                      ),
                     ],
+                  ),
+                  trailing: Chip(
+                    backgroundColor: c!.withOpacity(0.15),
+                    label: Text(
+                      activity["status"] == "success"
+                          ? "Terminé"
+                          : activity["status"] == "pending"
+                              ? "En cours"
+                              : "Erreur",
+                      style: TextStyle(
+                          color: c,
+                          fontSize: isMobile ? 9 : 11,
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              );
+            }),
+            if (isMobile)
+              Center(
+                child: OutlinedButton(
+                  onPressed: () {},
+                  child: Text("Voir l'historique complet",
+                      style: TextStyle(fontSize: isMobile ? 11 : 13)),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Navigation Slider
+class NavigationSlider extends StatelessWidget {
+  final bool isOpen, isMobile, isTablet, isDesktop;
+  final VoidCallback onToggle;
+  final Function(String module, {String? subModule})? onModuleSelected;
+  const NavigationSlider({
+    required this.isOpen,
+    required this.onToggle,
+    required this.isMobile,
+    required this.isTablet,
+    required this.isDesktop,
+    this.onModuleSelected,
+    Key? key,
+  }) : super(key: key);
+
+  // Matrice d'accès site/role
+  static const Map<String, List<String>> siteRoles = {
+    'Ouaga': [
+      'Magazinier',
+      'Commercial',
+      'Gestionnaire Commercial',
+      'Caissier',
+      'Caissière'
+    ],
+    'Koudougou': ['Tout'],
+    'Bobo': ['Tout'],
+    'Mangodara': ['Collecteur', 'Contrôleur', 'Controlleur'],
+    'Bagre': [
+      'Collecteur',
+      'Contrôleur',
+      'Controlleur',
+      'Filtreur',
+      'Commercialisation',
+      'Caissier'
+    ],
+    'Pô': ['Tout'],
+  };
+
+  // Matrice d'accès module/role
+  static const Map<String, List<String>> moduleRoles = {
+    'VENTES': [
+      'Admin',
+      'Magazinier',
+      'Gestionnaire Commercial',
+      'Commercial',
+      'Caissier',
+      'Caissière'
+    ],
+    'COLLECTE': ['Admin', 'Collecteur'],
+    'CONTRÔLE': ['Admin', 'Contrôleur', 'Controlleur'],
+    'EXTRACTION': ['Admin', 'Extracteur'],
+    'FILTRAGE': ['Admin', 'Filtreur'],
+    'CONDITIONNEMENT': ['Admin', 'Conditionneur'],
+    'GESTION DE VENTES': [
+      'Admin',
+      'Magazinier',
+      'Gestionnaire Commercial',
+      'Commercial'
+    ],
+    'RAPPORTS': ['Admin'],
+  };
+
+  List<Map<String, dynamic>> filterModulesByUser(
+      List<Map<String, dynamic>> modules, UserSession user) {
+    String site = user.site ?? '';
+    final role = user.role ?? '';
+    // Correction : normalise la casse du site pour la clé
+    if (site.isNotEmpty) {
+      site = site[0].toUpperCase() + site.substring(1).toLowerCase();
+    }
+    // Si admin, accès à tout
+    if (role.toLowerCase() == 'admin') return modules;
+    // Vérifier accès site
+    final allowedRoles = siteRoles[site] ?? [];
+    if (allowedRoles.contains('Tout') ||
+        allowedRoles.contains(role) ||
+        allowedRoles.contains(role + 'e')) {
+      // Filtrer modules selon le rôle
+      return modules.where((m) {
+        final allowed = moduleRoles[m['name']] ?? [];
+        return allowed.contains(role) ||
+            allowed.contains(role + 'e') ||
+            allowed.contains('Admin');
+      }).toList();
+    }
+    // Aucun accès si le site ne correspond pas
+    return [];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Correction : s'assure que UserSession est bien enregistré dans GetX
+    UserSession user;
+    try {
+      user = Get.find<UserSession>();
+    } catch (_) {
+      user = Get.put(UserSession());
+    }
+    final modules = [
+      {
+        "icon": Icons.trending_up,
+        "name": "VENTES",
+        "badge": 8,
+        "subModules": [
+          {"name": "Nouvelle vente"},
+          {"name": "Ventes en cours", "badge": 5},
+          {"name": "Crédit/Recouvrement", "badge": 3},
+          {"name": "Historique ventes"}
+        ]
+      },
+      {
+        "icon": Icons.nature,
+        "name": "COLLECTE",
+        "badge": 5,
+        "subModules": [
+          {"name": "Nouvelle collecte"},
+          {"name": "Récoltes", "badge": 3},
+          {"name": "Achats SCOOPS"},
+          {"name": "Achats Individuels", "badge": 2}
+        ]
+      },
+      {
+        "icon": Icons.security,
+        "name": "CONTRÔLE",
+        "badge": 5,
+        "subModules": [
+          {"name": "Contrôles en attente", "badge": 7},
+          {"name": "Nouveau contrôle"},
+          {"name": "Historique contrôles"}
+        ]
+      },
+      {
+        "icon": Icons.bar_chart,
+        "name": "RAPPORTS",
+      },
+      {
+        "icon": Icons.layers,
+        "name": "EXTRACTION",
+        "subModules": [
+          {"name": "Nouvelle extraction"},
+          {"name": "Lots en cours", "badge": 4},
+          {"name": "Extractions terminées"}
+        ]
+      },
+      {
+        "name": "FILTRAGE",
+        "icon": Icons.filter_alt,
+        "subModules": [
+          {"name": "Nouveau filtrage"},
+          {"name": "En cours de filtrage", "badge": 2},
+          {"name": "Filtrage terminé"}
+        ]
+      },
+      {
+        "name": "CONDITIONNEMENT",
+        "icon": Icons.all_inbox,
+        "subModules": [
+          {"name": "Nouveau conditionnement"},
+          {"name": "Lots disponibles", "badge": 12},
+          {"name": "Stock conditionné"}
+        ]
+      },
+      {
+        "name": "GESTION DE VENTES",
+        "icon": Icons.trending_up,
+        "subModules": [
+          {"name": "Prélèvements"},
+          {"name": "Attribution commerciaux"},
+          {"name": "Suivi distributions", "badge": 3}
+        ]
+      },
+    ];
+    final filteredModules = filterModulesByUser(modules, user);
+    return Material(
+      elevation: isDesktop ? 0 : 10,
+      child: Container(
+        color: Colors.white,
+        child: Column(
+          children: [
+            if (!isDesktop)
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: kHighlightColor.withOpacity(0.17),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text("Modules",
+                        style: TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      icon: Icon(Icons.close, size: 18),
+                      onPressed: onToggle,
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: filteredModules.map((module) {
+                  return ExpansionTile(
+                    leading: Icon(module["icon"] as IconData,
+                        color: kHighlightColor),
+                    title: Text(module["name"] as String,
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    trailing: (module["badge"] as int? ?? 0) > 0
+                        ? CircleAvatar(
+                            radius: 12,
+                            backgroundColor: kHighlightColor.withOpacity(0.2),
+                            child: Text((module["badge"] as int).toString(),
+                                style: TextStyle(
+                                    color: kHighlightColor,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold)),
+                          )
+                        : null,
+                    children:
+                        (module["subModules"] as List<Map<String, dynamic>>? ??
+                                [])
+                            .map((sub) {
+                      return ListTile(
+                        onTap: () => onModuleSelected?.call(
+                            module["name"] as String,
+                            subModule: sub["name"] as String?),
+                        title: Text(sub["name"] as String,
+                            style: TextStyle(fontSize: 13)),
+                        trailing: (sub["badge"] as int? ?? 0) > 0
+                            ? CircleAvatar(
+                                radius: 10,
+                                backgroundColor: Colors.green.withOpacity(0.2),
+                                child: Text((sub["badge"] as int).toString(),
+                                    style: TextStyle(
+                                        color: Colors.green,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold)),
+                              )
+                            : null,
+                      );
+                    }).toList(),
                   );
                 }).toList(),
               ),
@@ -628,1125 +1884,69 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
     );
   }
+}
 
-  void _showDetailsPopup(String label, List<Map<String, dynamic>> rows) {
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        // Etats locaux pour la popup (on ne pollue pas l'état global !)
-        String localSortField = _sortField ?? '';
-        bool localSortAscending = _sortAscending;
-        int localDetailsPage = 0;
-        String localSearch = '';
-        DateTime? localFilterStart;
-        DateTime? localFilterEnd;
-        final searchController = TextEditingController();
-
-        // Pour update le champ recherche sans perdre le focus
-        searchController.text = localSearch;
-        searchController.selection = TextSelection.fromPosition(
-            TextPosition(offset: searchController.text.length));
-
-        return StatefulBuilder(
-          builder: (context, setStateDialog) {
-            // Filtres dynamiques
-            List<Map<String, dynamic>> filteredRows = rows.where((row) {
-              // Filtre texte
-              if (localSearch.trim().isNotEmpty) {
-                final search = localSearch.trim().toLowerCase();
-                final match = row.entries.any((e) =>
-                    (e.value?.toString().toLowerCase() ?? '').contains(search));
-                if (!match) return false;
-              }
-              // Filtre date
-              DateTime? dt;
-              if (row['dateCollecte'] is Timestamp)
-                dt = (row['dateCollecte'] as Timestamp).toDate();
-              else if (row['dateVente'] is Timestamp)
-                dt = (row['dateVente'] as Timestamp).toDate();
-              else if (row['date'] is Timestamp)
-                dt = (row['date'] as Timestamp).toDate();
-              if (localFilterStart != null &&
-                  dt != null &&
-                  dt.isBefore(localFilterStart!)) return false;
-              if (localFilterEnd != null &&
-                  dt != null &&
-                  dt.isAfter(localFilterEnd!)) return false;
-              return true;
-            }).toList();
-            // Tri
-            if (localSortField.isNotEmpty) {
-              filteredRows.sort((a, b) {
-                var va = a[localSortField];
-                var vb = b[localSortField];
-                if (va == null && vb == null) return 0;
-                if (va == null) return localSortAscending ? -1 : 1;
-                if (vb == null) return localSortAscending ? 1 : -1;
-                if (va is num && vb is num) {
-                  return localSortAscending
-                      ? va.compareTo(vb)
-                      : vb.compareTo(va);
-                }
-                if (va is Comparable && vb is Comparable) {
-                  return localSortAscending
-                      ? va.compareTo(vb)
-                      : vb.compareTo(va);
-                }
-                return 0;
-              });
-            } else {
-              // Tri sur la date décroissante par défaut
-              filteredRows.sort((a, b) {
-                DateTime? da, db;
-                if (a['dateCollecte'] is Timestamp)
-                  da = (a['dateCollecte'] as Timestamp).toDate();
-                else if (a['dateVente'] is Timestamp)
-                  da = (a['dateVente'] as Timestamp).toDate();
-                else if (a['date'] is Timestamp)
-                  da = (a['date'] as Timestamp).toDate();
-                if (b['dateCollecte'] is Timestamp)
-                  db = (b['dateCollecte'] as Timestamp).toDate();
-                else if (b['dateVente'] is Timestamp)
-                  db = (b['dateVente'] as Timestamp).toDate();
-                else if (b['date'] is Timestamp)
-                  db = (b['date'] as Timestamp).toDate();
-                if (da == null && db == null) return 0;
-                if (da == null) return 1;
-                if (db == null) return -1;
-                return db.compareTo(da);
-              });
-            }
-            // Pagination
-            int pageCount = (filteredRows.length / _detailsPageSize).ceil();
-            final pagedRows = filteredRows.length > _detailsPageSize
-                ? filteredRows.sublist(
-                    localDetailsPage * _detailsPageSize,
-                    (localDetailsPage + 1) * _detailsPageSize >
-                            filteredRows.length
-                        ? filteredRows.length
-                        : (localDetailsPage + 1) * _detailsPageSize)
-                : filteredRows;
-
-            // Champs de tri dispos
-            final triFields = rows.isNotEmpty
-                ? rows.first.keys
-                    .where((k) => rows.any((r) => r[k] != null))
-                    .toList()
-                : [];
-
-            // Plage de dates mini-maxi
-            DateTime? minDate, maxDate;
-            for (final row in rows) {
-              DateTime? dt;
-              if (row['dateCollecte'] is Timestamp)
-                dt = (row['dateCollecte'] as Timestamp).toDate();
-              else if (row['dateVente'] is Timestamp)
-                dt = (row['dateVente'] as Timestamp).toDate();
-              else if (row['date'] is Timestamp)
-                dt = (row['date'] as Timestamp).toDate();
-              if (dt != null) {
-                if (minDate == null || dt.isBefore(minDate)) minDate = dt;
-                if (maxDate == null || dt.isAfter(maxDate)) maxDate = dt;
-              }
-            }
-
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "$label - Détail (${filteredRows.length}/${rows.length})",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  if (rows.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10.0, bottom: 0),
-                      child: Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        runSpacing: 6,
-                        spacing: 10,
-                        children: [
-                          // Recherche texte (ne pas recréer le controller à chaque build)
-                          SizedBox(
-                            width: 220,
-                            child: TextField(
-                              controller: searchController,
-                              decoration: InputDecoration(
-                                hintText: "Recherche (tous champs)",
-                                prefixIcon: Icon(Icons.search, size: 17),
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(
-                                    vertical: 8, horizontal: 10),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                ),
-                              ),
-                              onChanged: (v) {
-                                setStateDialog(() {
-                                  localSearch = v;
-                                  localDetailsPage = 0;
-                                });
-                              },
-                            ),
-                          ),
-                          // Tri champ
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text("Trier par: "),
-                              DropdownButton<String>(
-                                value: localSortField.isNotEmpty
-                                    ? localSortField
-                                    : null,
-                                hint: Text("Champ"),
-                                items: triFields
-                                    .map((k) => DropdownMenuItem<String>(
-                                          value: k,
-                                          child: Text(k),
-                                        ))
-                                    .toList(),
-                                onChanged: (v) {
-                                  setStateDialog(() {
-                                    localSortField = v ?? '';
-                                    localSortAscending = true;
-                                    localDetailsPage = 0;
-                                  });
-                                },
-                              ),
-                              IconButton(
-                                icon: Icon(localSortAscending
-                                    ? Icons.arrow_downward
-                                    : Icons.arrow_upward),
-                                tooltip: "Inverser l'ordre",
-                                onPressed: localSortField.isEmpty
-                                    ? null
-                                    : () {
-                                        setStateDialog(() {
-                                          localSortAscending =
-                                              !localSortAscending;
-                                          localDetailsPage = 0;
-                                        });
-                                      },
-                              ),
-                            ],
-                          ),
-                          // Filtre date
-                          if (minDate != null && maxDate != null)
-                            OutlinedButton.icon(
-                              icon: Icon(Icons.date_range, size: 18),
-                              label: Text(
-                                localFilterStart != null &&
-                                        localFilterEnd != null
-                                    ? "${DateFormat('dd/MM/yy').format(localFilterStart!)} - ${DateFormat('dd/MM/yy').format(localFilterEnd!)}"
-                                    : "Filtrer dates",
-                                style: TextStyle(fontSize: 13),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                padding: EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 2),
-                                shape: StadiumBorder(),
-                                minimumSize: Size(0, 32),
-                              ),
-                              onPressed: () async {
-                                final picked = await showDateRangePicker(
-                                  context: context,
-                                  initialDateRange: (localFilterStart != null &&
-                                          localFilterEnd != null)
-                                      ? DateTimeRange(
-                                          start: localFilterStart!,
-                                          end: localFilterEnd!)
-                                      : DateTimeRange(
-                                          start: minDate!, end: maxDate!),
-                                  firstDate: minDate!,
-                                  lastDate: maxDate!,
-                                );
-                                if (picked != null) {
-                                  setStateDialog(() {
-                                    localFilterStart = picked.start;
-                                    localFilterEnd = picked.end;
-                                    localDetailsPage = 0;
-                                  });
-                                }
-                              },
-                            ),
-                          if (localFilterStart != null ||
-                              localFilterEnd != null)
-                            IconButton(
-                              icon: Icon(Icons.clear),
-                              tooltip: "Supprimer filtre date",
-                              onPressed: () {
-                                setStateDialog(() {
-                                  localFilterStart = null;
-                                  localFilterEnd = null;
-                                  localDetailsPage = 0;
-                                });
-                              },
-                            ),
-                          // Pagination
-                          if (filteredRows.length > _detailsPageSize)
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: Icon(Icons.chevron_left),
-                                  onPressed: localDetailsPage > 0
-                                      ? () => setStateDialog(() {
-                                            localDetailsPage--;
-                                          })
-                                      : null,
-                                ),
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 6),
-                                  child: Text(
-                                      "${localDetailsPage + 1} / $pageCount"),
-                                ),
-                                IconButton(
-                                  icon: Icon(Icons.chevron_right),
-                                  onPressed: localDetailsPage < pageCount - 1
-                                      ? () => setStateDialog(() {
-                                            localDetailsPage++;
-                                          })
-                                      : null,
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-              content: SizedBox(
-                width: MediaQuery.of(context).size.width * 0.7,
-                height: 480,
-                child: pagedRows.isEmpty
-                    ? Center(
-                        child: Text(
-                            "Aucun détail à afficher sur la période/filtre/texte."))
-                    : Scrollbar(
-                        thumbVisibility: true,
-                        child: ListView.separated(
-                          itemCount: pagedRows.length,
-                          separatorBuilder: (_, __) => Divider(),
-                          itemBuilder: (_, i) {
-                            final data = pagedRows[i];
-                            if (label.toLowerCase().contains("vente")) {
-                              return _venteDetailCard(data);
-                            } else if (label
-                                .toLowerCase()
-                                .contains("collecte")) {
-                              return _collecteDetailCard(data);
-                            } else if (label.toLowerCase().contains("stock")) {
-                              return _stockDetailCard(data);
-                            } else if (label.toLowerCase().contains("crédit")) {
-                              return _creditDetailCard(data);
-                            }
-                            return _genericDetailCard(data);
-                          },
-                        ),
-                      ),
-              ),
-              actions: [
-                TextButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                    },
-                    child: Text("Fermer"))
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-// Remplace ton _collecteDetailCard par celui-ci pour un affichage complet et lisible
-  Widget _collecteDetailCard(Map<String, dynamic> data) {
-    DateTime? dt;
-    if (data['dateCollecte'] is Timestamp)
-      dt = (data['dateCollecte'] as Timestamp).toDate();
-    else if (data['date'] is Timestamp)
-      dt = (data['date'] as Timestamp).toDate();
-
-    final quantite = data['quantite'] ?? data['quantiteKg'];
-    final lot = data['lotOrigine'] ?? data['lot'];
-    final collecteur = data['nomCollecteur'] ?? data['collecteur'] ?? "";
-
-    return Card(
-      color: Colors.green[50],
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              collecteur.toString().isNotEmpty ? collecteur : "Collecte",
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 17,
-                  color: Colors.green[900]),
-            ),
-            SizedBox(height: 2),
-            Text(
-                "Date : ${dt != null ? DateFormat('dd/MM/yyyy').format(dt) : ''}",
-                style: TextStyle(color: Colors.grey[700])),
-            if (quantite != null)
-              Text("Quantité : $quantite kg",
-                  style: TextStyle(fontWeight: FontWeight.w600)),
-            if (lot != null) Text("Lot origine : $lot"),
-            if (data['commentaire'] != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 4.0),
-                child: Text("Commentaire : ${data['commentaire']}",
-                    style: TextStyle(color: Colors.black54)),
-              ),
-            ...data.entries
-                .where((e) => ![
-                      'nomCollecteur',
-                      'collecteur',
-                      'dateCollecte',
-                      'date',
-                      'quantite',
-                      'quantiteKg',
-                      'lotOrigine',
-                      'lot',
-                      'commentaire'
-                    ].contains(e.key))
-                .map((e) => Padding(
-                      padding: const EdgeInsets.only(top: 2.0),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("${e.key} : ",
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.grey[800])),
-                          Expanded(
-                              child: Text('${e.value}',
-                                  style: TextStyle(color: Colors.grey[700])))
-                        ],
-                      ),
-                    )),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _drilldownCard(String label, IconData icon, num value,
-      {required List<Map<String, dynamic>> details}) {
-    return FadeTransition(
-      opacity: _fadeInAnimation,
-      child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        margin: EdgeInsets.symmetric(vertical: 7, horizontal: 3),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap:
-              details.isEmpty ? null : () => _showDetailsPopup(label, details),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Icon(
-                    label == "Stock"
-                        ? Icons.storage
-                        : label.toLowerCase().contains("vente")
-                            ? Icons.shopping_cart
-                            : label.toLowerCase().contains("collecte")
-                                ? Icons.api
-                                : label.toLowerCase().contains("crédit")
-                                    ? Icons.money_off
-                                    : Icons.info_outline,
-                    size: 32,
-                    color: label == "Stock"
-                        ? Colors.orange[800]
-                        : label.toLowerCase().contains("vente")
-                            ? Colors.amber[800]
-                            : label.toLowerCase().contains("collecte")
-                                ? Colors.green[800]
-                                : label.toLowerCase().contains("crédit")
-                                    ? Colors.red[800]
-                                    : Colors.grey[700]),
-                SizedBox(width: 18),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(label,
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
-                      Text("$value",
-                          style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              color: label == "Stock"
-                                  ? Colors.orange[800]
-                                  : label.toLowerCase().contains("vente")
-                                      ? Colors.amber[800]
-                                      : label.toLowerCase().contains("collecte")
-                                          ? Colors.green[800]
-                                          : label
-                                                  .toLowerCase()
-                                                  .contains("crédit")
-                                              ? Colors.red[800]
-                                              : Colors.grey[700])),
-                    ],
-                  ),
-                ),
-                if (details.isNotEmpty)
-                  Icon(Icons.arrow_forward_ios,
-                      color: Colors.amber[800], size: 19)
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _venteDetailCard(Map<String, dynamic> data) {
-    final emb = (data['emballagesVendus'] as List?) ?? [];
-    return Card(
-      color: Colors.blue[50],
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "${data['nomClient'] ?? data['nomBoutique'] ?? 'Vente'}",
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 17,
-                  color: Colors.blue[900]),
-            ),
-            Text("Date : ${_formatDate(data['dateVente'])}",
-                style: TextStyle(color: Colors.grey[700])),
-            Text("Montant : ${data['montantTotal'] ?? 0} FCFA",
-                style: TextStyle(
-                    fontWeight: FontWeight.w600, color: Colors.green)),
-            if (data['typeVente'] != null)
-              Text("Type : ${data['typeVente']}",
-                  style: TextStyle(color: Colors.deepPurple)),
-            if (emb.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 6.0),
-                child: Text("Emballages vendus :",
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-              ),
-            ...emb
-                .map((e) => Text("- ${e['contenanceKg']}kg x ${e['nombre']}")),
-            if (data['commentaire'] != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 4.0),
-                child: Text("Commentaire : ${data['commentaire']}",
-                    style: TextStyle(color: Colors.black54)),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _stockDetailCard(Map<String, dynamic> data) {
-    return Card(
-      color: Colors.orange[50],
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Lot : ${data['lotOrigine'] ?? 'Stock'}",
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 17,
-                    color: Colors.orange[900])),
-            Text("Date : ${_formatDate(data['date'])}",
-                style: TextStyle(color: Colors.grey[700])),
-            Text("Quantité restante : ${data['quantiteRestante'] ?? 0} kg",
-                style: TextStyle(fontWeight: FontWeight.w600)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _creditDetailCard(Map<String, dynamic> data) {
-    return Card(
-      color: Colors.red[50],
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("${data['nomClient'] ?? data['nomBoutique'] ?? 'Crédit'}",
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 17,
-                    color: Colors.red[900])),
-            Text("Date vente : ${_formatDate(data['dateVente'])}",
-                style: TextStyle(color: Colors.grey[700])),
-            Text("Montant restant : ${data['montantRestant'] ?? 0} FCFA",
-                style: TextStyle(
-                    fontWeight: FontWeight.w600, color: Colors.red[800])),
-            Text("Montant total : ${data['montantTotal'] ?? 0} FCFA"),
-            if (data['dateEcheance'] != null)
-              Text("Échéance : ${_formatDate(data['dateEcheance'])}",
-                  style: TextStyle(color: Colors.red[400])),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _genericDetailCard(Map<String, dynamic> data) {
-    return Card(
-      color: Colors.amber[50],
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: data.entries.map((e) {
-            return Text("${e.key} : ${e.value}");
-          }).toList(),
-        ),
-      ),
-    );
-  }
-
-  String _formatDate(dynamic ts) {
-    if (ts is Timestamp) {
-      return DateFormat('dd/MM/yyyy').format(ts.toDate());
-    } else if (ts is DateTime) {
-      return DateFormat('dd/MM/yyyy').format(ts);
-    } else if (ts != null) {
-      return ts.toString();
-    } else {
-      return "";
-    }
-  }
-
-  Future<void> _loadAlertes() async {
-    List<Map<String, dynamic>> alertes = [];
-    try {
-      final filtrageSnap = await FirebaseFirestore.instance
-          .collection('filtrage')
-          .where('statutFiltrage', isEqualTo: 'Filtrage total')
-          .get();
-      int lotsNonCond = 0;
-      for (var doc in filtrageSnap.docs) {
-        final data = doc.data() as Map<String, dynamic>;
-        if (data['statutConditionnement'] != 'Conditionné') lotsNonCond++;
-      }
-      if (lotsNonCond > 0) {
-        alertes.add({
-          "type": "Stock bas",
-          "message": "$lotsNonCond lots filtrés à conditionner",
-        });
-      }
-      final ventesSnap = await FirebaseFirestore.instance
-          .collectionGroup('ventes_effectuees')
-          .where('typeVente', isEqualTo: 'Crédit')
-          .get();
-      int credits = ventesSnap.docs.length;
-      if (credits > 0) {
-        alertes.add({
-          "type": "Crédit en attente",
-          "message": "$credits ventes à crédit à recouvrer",
-        });
-      }
-    } catch (_) {}
-    setState(() => _alertes = alertes);
-  }
-
-  Future<void> _loadLogs() async {
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('logs')
-          .orderBy('date', descending: true)
-          .limit(20)
-          .get();
-      _logs = snap.docs.map((d) {
-        final data = d.data();
-        return {
-          "date": (data['date'] as Timestamp).toDate(),
-          "action": data['action'] ?? "",
-          "user": data['user'] ?? "",
-          "details": data['details'] ?? "",
-        };
-      }).toList();
-      setState(() {});
-    } catch (_) {
-      _logs = [];
-      setState(() {});
-    }
-  }
-
-  Widget _buildHeader(BuildContext context) {
-    final userSession = Get.find<UserSession>();
-    final role = userSession.role ?? "";
-    final isAdmin = role.toLowerCase() == "admin";
-    final allowedModules = roleModules[role] ?? [];
-
-    final navButtons = [
-      _headerBtn("collecte", Icons.api, () => _onModuleSelected("collecte"),
-          enabled: isAdmin || allowedModules.contains("collecte")),
-      _headerBtn(
-          "controle", Icons.verified, () => _onModuleSelected("controle"),
-          enabled: isAdmin || allowedModules.contains("controle")),
-      _headerBtn(
-          "extraction", Icons.science, () => _onModuleSelected("extraction"),
-          enabled: isAdmin || allowedModules.contains("extraction")),
-      _headerBtn("filtrage", Icons.science, () => _onModuleSelected("filtrage"),
-          enabled: isAdmin || allowedModules.contains("filtrage")),
-      _headerBtn("conditionnement", Icons.science,
-          () => _onModuleSelected("conditionnement"),
-          enabled: isAdmin || allowedModules.contains("conditionnement")),
-      _headerBtn("gestion de ventes", Icons.science,
-          () => _onModuleSelected("gestion de ventes"),
-          enabled: isAdmin || allowedModules.contains("gestion de ventes")),
-      _headerBtn(
-          "ventes", Icons.shopping_cart, () => _onModuleSelected("ventes"),
-          enabled: isAdmin || allowedModules.contains("ventes")),
-      _headerBtn("stock", Icons.storage, () => _onModuleSelected("stock"),
-          enabled: isAdmin || allowedModules.contains("stock")),
-      _headerBtn(
-          "rapports", Icons.bar_chart, () => _onModuleSelected("rapports"),
-          enabled: isAdmin || allowedModules.contains("rapports")),
-    ];
-
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      color: Colors.amber[50],
-      child: Row(
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.asset(
-                "assets/logo/logo.jpeg",
-                width: 60,
-                height: 60,
-              ),
-              SizedBox(width: 10),
-              Text(
-                "Apisavana",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.amber[900],
-                  fontSize: 22,
-                  letterSpacing: 2,
-                ),
-              )
-            ],
-          ),
-          Spacer(),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (userSession.photoUrl != null)
-                CircleAvatar(
-                  backgroundImage: NetworkImage(userSession.photoUrl!),
-                  radius: 17,
-                  backgroundColor: Colors.amber[100],
-                )
-              else
-                CircleAvatar(
-                  radius: 17,
-                  backgroundColor: Colors.amber[100],
-                  child: Icon(Icons.person, color: Colors.amber[800], size: 18),
-                ),
-              SizedBox(width: 7),
-              Text(
-                "${userSession.nom ?? ''} (${userSession.role ?? ''})",
-                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
-              ),
-              SizedBox(width: 16),
-            ],
-          ),
-          if (isLargeScreen)
-            Expanded(
-              flex: 8,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    ...navButtons,
-                    SizedBox(width: 8),
-                    IconButton(
-                      icon: Icon(Icons.settings, color: Colors.blueGrey[900]),
-                      tooltip: "Paramètres",
-                      onPressed: _onSettings,
-                      splashRadius: 22,
-                    ),
-                    SizedBox(width: 4),
-                    IconButton(
-                      icon: Icon(Icons.logout, color: Colors.red[900]),
-                      tooltip: "Déconnexion",
-                      onPressed: () => Get.offAllNamed('/login'),
-                      splashRadius: 22,
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            IconButton(
-              icon: Icon(Icons.menu, color: Colors.amber[900], size: 32),
-              tooltip: "Menu",
-              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-              splashRadius: 28,
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDrawerMenu() {
-    final userSession = Get.find<UserSession>();
-    final role = userSession.role ?? "";
-    final isAdmin = role.toLowerCase() == "admin";
-    final allowedModules = roleModules[role] ?? [];
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: BoxDecoration(color: Colors.amber[100]),
-            child: Row(
-              children: [
-                Image.asset("assets/logo/logo.jpeg", width: 40, height: 40),
-                SizedBox(width: 90),
-                Text(
-                  "Apisavana",
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.amber[900],
-                      fontSize: 22),
-                ),
-              ],
-            ),
-          ),
-          _drawerItem("Collecte", Icons.api, "collecte",
-              isAdmin || allowedModules.contains("collecte")),
-          _drawerItem("Contrôle", Icons.verified, "controle",
-              isAdmin || allowedModules.contains("controle")),
-          _drawerItem("Extraction", Icons.science, "extraction",
-              isAdmin || allowedModules.contains("extraction")),
-          _drawerItem("Filtrage", Icons.science, "filtrage",
-              isAdmin || allowedModules.contains("filtrage")),
-          _drawerItem("Conditionnement", Icons.science, "conditionnement",
-              isAdmin || allowedModules.contains("conditionnement")),
-          _drawerItem("Gestion de ventes", Icons.science, "gestion de ventes",
-              isAdmin || allowedModules.contains("gestion de ventes")),
-          _drawerItem("Ventes", Icons.shopping_cart, "ventes",
-              isAdmin || allowedModules.contains("ventes")),
-          _drawerItem("Stock", Icons.storage, "stock",
-              isAdmin || allowedModules.contains("stock")),
-          _drawerItem("Rapports", Icons.bar_chart, "rapports",
-              isAdmin || allowedModules.contains("rapports")),
-          Divider(),
-          ListTile(
-            leading: Icon(Icons.settings, color: Colors.blueGrey[900]),
-            title: Text("Paramètres"),
-            onTap: _onSettings,
-          ),
-          ListTile(
-            leading: Icon(Icons.logout, color: Colors.red[900]),
-            title: Text("Déconnexion"),
-            onTap: () => Get.offAllNamed('/login'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _drawerItem(String title, IconData icon, String module, bool enabled) {
-    return ListTile(
-      leading:
-          Icon(icon, color: enabled ? Colors.amber[900] : Colors.grey[400]),
-      title: Text(
-        title,
-        style: TextStyle(
-          color: enabled ? Colors.amber[900] : Colors.grey[400],
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      enabled: enabled,
-      onTap: enabled ? () => _onModuleSelected(module) : null,
-    );
-  }
-
-  Widget _filterDropdown<T>({
-    required String hint,
-    required List<T> values,
-    required T? selected,
-    required void Function(T?) onChanged,
-  }) {
-    return SizedBox(
-      width: 170,
-      child: DropdownButton<T>(
-        value: selected,
-        isExpanded: true,
-        hint: Text(hint),
-        items: [
-          DropdownMenuItem<T>(value: null, child: Text('Tous')),
-          ...values.map(
-              (v) => DropdownMenuItem<T>(value: v, child: Text(v.toString()))),
-        ],
-        onChanged: onChanged,
-      ),
-    );
-  }
-
-  Widget _logsSection() {
-    if (_logs.isEmpty) {
-      return Card(
-        child: ListTile(
-          leading: Icon(Icons.history, color: Colors.amber[900]),
-          title: Text("Aucune activité récente",
-              style: TextStyle(color: Colors.grey[700])),
-        ),
-      );
-    }
-    return Card(
-      elevation: 2,
-      margin: EdgeInsets.symmetric(vertical: 12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Historique des actions",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            Divider(),
-            ..._logs.map((log) => ListTile(
-                  leading: Icon(Icons.circle_rounded,
-                      color: Colors.amber[900], size: 16),
-                  title: Text(log["action"],
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text(
-                    "${DateFormat('dd/MM/yy HH:mm').format(log["date"])} • ${log["user"]} • ${log["details"]}",
-                    style: TextStyle(fontSize: 13),
-                  ),
-                )),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAlertCard(Map alerte) {
-    Color color;
-    IconData icon;
-    if (alerte["type"] == "Stock bas") {
-      color = Colors.orange[200]!;
-      icon = Icons.warning_amber_rounded;
-    } else if (alerte["type"] == "Crédit en attente") {
-      color = Colors.red[100]!;
-      icon = Icons.money_off;
-    } else {
-      color = Colors.red[50]!;
-      icon = Icons.error_outline;
-    }
-    return FadeTransition(
-      opacity: _fadeInAnimation,
-      child: Card(
-        color: color,
-        child: ListTile(
-          leading: Icon(icon, color: Colors.red[700]),
-          title: Text(
-            alerte["type"],
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          subtitle: Text(alerte["message"]),
-        ),
-      ),
-    );
-  }
-
-  Widget _sectionTitle(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 12.0, top: 24.0),
-        child: Text(
-          text,
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-        ),
-      );
-
-  void _onModuleSelected(String module) {
-    Get.snackbar(
-      "Navigation",
-      "Aller au module $module",
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: Colors.amber[100],
-      duration: Duration(seconds: 1),
-    );
-    String route = "";
-    switch (module.toLowerCase()) {
-      case "collecte":
-        route = "/collecte";
-        break;
-      case "controle":
-        route = "/controle";
-        break;
-      case "extraction":
-        route = "/extraction";
-        break;
-      case "filtrage":
-        route = "/filtrage";
-        break;
-      case "conditionnement":
-        route = "/conditionnement";
-        break;
-      case "gestion de ventes":
-        route = "/gestion_de_ventes";
-        break;
-      case "ventes":
-        route = "/ventes";
-        break;
-      case "stock":
-        route = "/stock";
-        break;
-      case "rapports":
-        route = "/rapports";
-        break;
-      default:
-        route = "/";
-    }
-    if (route.isNotEmpty) {
-      Get.toNamed(route);
-    }
-  }
-
-  Widget _headerBtn(String label, IconData icon, VoidCallback onPressed,
-      {bool enabled = true}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2.0),
-      child: TextButton.icon(
-        onPressed: enabled ? onPressed : null,
-        icon: Icon(icon,
-            color: enabled ? Colors.amber[900] : Colors.grey[400], size: 21),
-        label: Text(
-          label,
-          style: TextStyle(
-              color: enabled ? Colors.amber[900] : Colors.grey[400],
-              fontWeight: FontWeight.w600,
-              fontSize: 14),
-        ),
-        style: TextButton.styleFrom(
-          foregroundColor: enabled ? Colors.amber[900] : Colors.grey[400],
-          backgroundColor:
-              enabled ? Colors.amber[100]?.withOpacity(0.4) : Colors.grey[200],
-          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          shape: StadiumBorder(),
-        ),
-      ),
-    );
-  }
-
-  void _onSettings() {
-    Get.snackbar(
-      "Paramètres",
-      "Ici tu peux gérer les paramètres de l'application.",
-      backgroundColor: Colors.blue[100],
-      snackPosition: SnackPosition.BOTTOM,
-      duration: Duration(seconds: 1),
-    );
-  }
+// Skeleton Loader
+class DashboardSkeleton extends StatelessWidget {
+  final bool isMobile, isTablet, isDesktop;
+  const DashboardSkeleton(
+      {required this.isMobile,
+      required this.isTablet,
+      required this.isDesktop,
+      Key? key})
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final userSession = Get.find<UserSession>();
-    final role = userSession.role ?? "";
-    final isAdmin = role.toLowerCase() == "admin";
-    final allowedModules = roleModules[role] ?? [];
-
-    final cards = [
-      _drilldownCard("Ventes", Icons.shopping_cart, kpis["Ventes"] ?? 0,
-          details: details["Ventes"] ?? []),
-      _drilldownCard("Collecte", Icons.api, kpis["Collecte"] ?? 0,
-          details: details["Collecte"] ?? []),
-      _drilldownCard("Stock", Icons.storage, kpis["Stock"] ?? 0,
-          details: details["Stock"] ?? []),
-      _drilldownCard("Crédits à recouvrer", Icons.money_off,
-          kpis["Crédits à recouvrer"] ?? 0,
-          details: details["Crédits à recouvrer"] ?? []),
-    ];
-
-    return Scaffold(
-      key: _scaffoldKey,
-      drawer: isLargeScreen ? null : _buildDrawerMenu(),
-      backgroundColor: Colors.amber[50],
-      body: Column(
-        children: [
-          _buildHeader(context),
-          Expanded(
-            child: FadeTransition(
-              opacity: _fadeInAnimation,
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: 1200),
-                  child: ListView(
-                    padding: EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                    children: [
-                      _sectionTitle("Résumé des informations clés"),
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          int crossAxisCount =
-                              constraints.maxWidth > 900 ? 2 : 1;
-                          return Wrap(
-                            spacing: 24,
-                            runSpacing: 18,
-                            children: List.generate(
-                              cards.length,
-                              (i) => SizedBox(
-                                width: constraints.maxWidth / crossAxisCount -
-                                    (crossAxisCount == 2 ? 24 : 0),
-                                child: cards[i],
-                              ),
-                            ),
-                          );
-                        },
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        Padding(
+          padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 6 : 22, vertical: isMobile ? 8 : 18),
+          child: Row(
+            children: List.generate(
+                4,
+                (i) => Expanded(
+                      child: Container(
+                        margin: EdgeInsets.symmetric(horizontal: 6),
+                        height: isMobile ? 80 : 120,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                      _sectionTitle("Activité principale"),
-                      _activityBarChart(),
-                      _sectionTitle("Alertes"),
-                      _alertes.isEmpty
-                          ? Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: Text("Aucune alerte",
-                                  style: TextStyle(
-                                      color: Colors.green[700],
-                                      fontWeight: FontWeight.w500)),
-                            )
-                          : Column(
-                              children: _alertes.map(_buildAlertCard).toList(),
-                            ),
-                      _sectionTitle("Historique"),
-                      _logsSection(),
-                    ],
-                  ),
-                ),
-              ),
+                    )),
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 6 : 22, vertical: isMobile ? 8 : 18),
+          child: Container(
+            height: isMobile ? 120 : 200,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(12),
             ),
           ),
-        ],
-      ),
+        ),
+        Padding(
+          padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 6 : 22, vertical: isMobile ? 8 : 18),
+          child: Column(
+            children: List.generate(
+                2,
+                (i) => Container(
+                      margin: EdgeInsets.only(bottom: 12),
+                      height: isMobile ? 60 : 80,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    )),
+          ),
+        ),
+      ],
     );
   }
 }

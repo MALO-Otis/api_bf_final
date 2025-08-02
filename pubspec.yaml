@@ -43,6 +43,7 @@ dependencies:
   google_maps_flutter:
   geolocator: ^11.0.0
   http:
+  firebase_data_connect:
   dropdown_search: ^5.0.6
   multi_select_flutter: ^4.1.1
   flutter_multi_select_items:

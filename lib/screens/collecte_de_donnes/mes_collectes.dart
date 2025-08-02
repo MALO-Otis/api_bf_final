@@ -1,5 +1,3 @@
-import 'dart:html' as html;
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -1015,22 +1013,17 @@ class _MesCollectesPageState extends State<MesCollectesPage> {
     );
 
     final pdfData = await pdf.save();
-    final filename = "recu_$docId.pdf";
+    openPdf(pdfData, "recu_$docId.pdf");
+  }
+
+  void openPdf(Uint8List pdfData, String fileName) async {
     if (kIsWeb) {
-      final blob = html.Blob([pdfData], 'application/pdf');
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      final anchor = html.AnchorElement(href: url)
-        ..target = 'blank'
-        ..download = filename;
-      html.document.body!.append(anchor);
-      anchor.click();
-      anchor.remove();
-      html.Url.revokeObjectUrl(url);
+      // Ancienne logique web (à adapter si besoin)
+      // Utilise printing pour le web aussi
+      await Printing.layoutPdf(onLayout: (format) async => pdfData);
     } else {
-      await Printing.layoutPdf(
-        name: filename,
-        onLayout: (format) async => pdfData,
-      );
+      // Mobile/desktop : utilise printing
+      await Printing.layoutPdf(onLayout: (format) async => pdfData);
     }
   }
 }

@@ -1,11 +1,8 @@
-import 'dart:io';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloudinary_public/cloudinary_public.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'login.dart';
 
@@ -19,439 +16,697 @@ class SignupPage extends StatefulWidget {
 class _SignupPageState extends State<SignupPage> {
   final _formKey = GlobalKey<FormState>();
 
-  late final TextEditingController nameController;
-  late final TextEditingController emailController;
-  late final TextEditingController passwordController;
-  late final TextEditingController confirmPasswordController;
+  // --- Controllers pour chaque champ ---
+  final TextEditingController firstNameController = TextEditingController();
+  final TextEditingController lastNameController = TextEditingController();
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController phoneController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
+  final TextEditingController confirmPasswordController =
+      TextEditingController();
 
-  final RxBool isLoading = false.obs;
-  final RxString errorMessage = ''.obs;
+  // --- Etats UI ---
+  bool showPassword = false;
+  bool showConfirmPassword = false;
+  int passwordStrength = 0;
+  bool isLoading = false;
 
+  // --- Validation ---
+  Map<String, String?> errors = {};
+
+  // --- Affectation ---
+  String? selectedSite;
   String? selectedRole;
-  String? magazinierType; // "Principale" ou "Simple"
-  String? localite; // "Koudougou", "Ouagadougou", "Bobo"
-  bool passwordVisible = false;
-  bool confirmPasswordVisible = false;
+  List<String> availableRoles = [];
 
-  File? _selectedImage;
-  String? _imageUrl; // Stocke l'URL Cloudinary
-
-  // Liste des rôles
-  final List<String> roles = [
-    "Admin",
-    "Collecteur",
-    "Contrôleur",
-    "Extracteur",
-    "Filtreur",
-    "Conditionneur",
-    "Commercial",
-    "Gestionaire Commerciale",
-    "Magazinier",
-    "Caissier",
+  // --- Sites et rôles ---
+  final List<Map<String, String>> sites = [
+    {'value': 'ouagadougou', 'label': 'Ouagadougou'},
+    {'value': 'koudougou', 'label': 'Koudougou'},
+    {'value': 'bobo', 'label': 'Bobo-Dioulasso'},
+    {'value': 'mangodara', 'label': 'Mangodara'},
+    {'value': 'bagre', 'label': 'Bagré'},
+    {'value': 'po', 'label': 'Pô'},
   ];
 
-  final List<String> magazinierTypes = [
-    "Principale",
-    "Simple",
-  ];
-
-  final List<String> localites = [
-    "Koudougou",
-    "Ouagadougou",
-    "Bobo",
-  ];
-
-  // Cloudinary instance (remplace par tes vraies valeurs)
-  final cloudinary = CloudinaryPublic(
-    'dq4mp3l7w', // <-- remplace
-    'apisavana_proj', // <-- tu dois créer un 'unsigned upload preset' sur cloudinary console
-    cache: false,
-  );
-
-  @override
-  void initState() {
-    super.initState();
-    nameController = TextEditingController();
-    emailController = TextEditingController();
-    passwordController = TextEditingController();
-    confirmPasswordController = TextEditingController();
-  }
+  final Map<String, List<String>> rolesBySite = {
+    'ouagadougou': [
+      'Magazinier',
+      'Commercial',
+      'Gestionnaire Commercial',
+      'Caissier'
+    ],
+    'koudougou': [
+      'Admin',
+      'Collecteur',
+      'Contrôleur',
+      'Extracteur',
+      'Filtreur',
+      'Conditionneur',
+      'Magazinier',
+      'Gestionnaire Commercial',
+      'Commercial',
+      'Caissier'
+    ],
+    'bobo': [
+      'Admin',
+      'Collecteur',
+      'Contrôleur',
+      'Extracteur',
+      'Filtreur',
+      'Conditionneur',
+      'Magazinier',
+      'Gestionnaire Commercial',
+      'Commercial',
+      'Caissier'
+    ],
+    'mangodara': ['Collecteur', 'Contrôleur'],
+    'bagre': ['Collecteur', 'Contrôleur', 'Filtreur', 'Commercial', 'Caissier'],
+    'po': [
+      'Admin',
+      'Collecteur',
+      'Contrôleur',
+      'Extracteur',
+      'Filtreur',
+      'Conditionneur',
+      'Magazinier',
+      'Gestionnaire Commercial',
+      'Commercial',
+      'Caissier'
+    ],
+  };
 
   @override
   void dispose() {
-    nameController.dispose();
+    firstNameController.dispose();
+    lastNameController.dispose();
     emailController.dispose();
+    phoneController.dispose();
     passwordController.dispose();
     confirmPasswordController.dispose();
     super.dispose();
   }
 
-  // Sélection ou prise de photo
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final picked = await showModalBottomSheet<XFile?>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: Icon(Icons.photo_library),
-              title: Text('Choisir depuis la galerie'),
-              onTap: () async {
-                final image = await picker.pickImage(
-                    source: ImageSource.gallery, imageQuality: 80);
-                Navigator.pop(ctx, image);
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.camera_alt),
-              title: Text('Prendre une photo'),
-              onTap: () async {
-                final image = await picker.pickImage(
-                    source: ImageSource.camera, imageQuality: 80);
-                Navigator.pop(ctx, image);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-    if (picked != null) {
-      setState(() => _selectedImage = File(picked.path));
+  // --- Validation en temps réel ---
+  String? validateField(String name, String value) {
+    switch (name) {
+      case 'firstName':
+      case 'lastName':
+        return value.length < 2 ? 'Minimum 2 caractères' : null;
+      case 'email':
+        final emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+');
+        return !emailRegex.hasMatch(value) ? 'Format email invalide' : null;
+      case 'phone':
+        final phoneRegex = RegExp(r'^(\+226|00226)?[0-9]{8}');
+        return !phoneRegex.hasMatch(value.replaceAll(' ', ''))
+            ? 'Format téléphone invalide'
+            : null;
+      case 'password':
+        if (value.length < 8) return 'Minimum 8 caractères';
+        if (!RegExp(r'[a-z]').hasMatch(value)) return 'Au moins 1 minuscule';
+        if (!RegExp(r'[A-Z]').hasMatch(value)) return 'Au moins 1 majuscule';
+        if (!RegExp(r'[0-9]').hasMatch(value)) return 'Au moins 1 chiffre';
+        return null;
+      case 'confirmPassword':
+        return value != passwordController.text
+            ? 'Les mots de passe ne correspondent pas'
+            : null;
+      case 'site':
+        return value.isEmpty ? 'Site obligatoire' : null;
+      case 'role':
+        return value.isEmpty ? 'Rôle obligatoire' : null;
+      default:
+        return null;
     }
   }
 
-  // Upload image sur Cloudinary
-  Future<String?> _uploadToCloudinary(File file) async {
-    try {
-      final response = await cloudinary.uploadFile(
-        CloudinaryFile.fromFile(file.path,
-            resourceType: CloudinaryResourceType.Image),
-      );
-      return response.secureUrl;
-    } catch (e) {
-      Get.snackbar('Erreur image', 'Upload image échoué : $e');
-      return null;
-    }
+  void handleInputChange(String name, String value) {
+    setState(() {
+      switch (name) {
+        case 'firstName':
+          errors['firstName'] = validateField('firstName', value);
+          break;
+        case 'lastName':
+          errors['lastName'] = validateField('lastName', value);
+          break;
+        case 'email':
+          errors['email'] = validateField('email', value);
+          break;
+        case 'phone':
+          errors['phone'] = validateField('phone', value);
+          break;
+        case 'password':
+          errors['password'] = validateField('password', value);
+          passwordStrength = calculatePasswordStrength(value);
+          if (confirmPasswordController.text.isNotEmpty) {
+            errors['confirmPassword'] = validateField(
+                'confirmPassword', confirmPasswordController.text);
+          }
+          break;
+        case 'confirmPassword':
+          errors['confirmPassword'] = validateField('confirmPassword', value);
+          break;
+        case 'site':
+          errors['site'] = validateField('site', value);
+          selectedSite = value;
+          availableRoles = rolesBySite[value] ?? [];
+          if (selectedRole != null && !availableRoles.contains(selectedRole)) {
+            selectedRole = null;
+          }
+          break;
+        case 'role':
+          errors['role'] = validateField('role', value);
+          selectedRole = value;
+          break;
+      }
+      // Correction : efface l'erreur globale si le formulaire est valide
+      if (isFormValid()) {
+        errors['form'] = null;
+      }
+    });
   }
 
-  Future<void> signup() async {
-    // Validation champs
-    if (!_formKey.currentState!.validate() || selectedRole == null) return;
-    // Validation Magazinier
-    if (selectedRole == "Magazinier") {
-      if (magazinierType == null) {
-        errorMessage.value = "Veuillez choisir le type de magasinier.";
-        return;
-      }
-      if (magazinierType == "Simple" && localite == null) {
-        errorMessage.value = "Veuillez choisir la localité.";
-        return;
-      }
-    }
+  int calculatePasswordStrength(String password) {
+    int strength = 0;
+    if (password.length >= 8) strength += 25;
+    if (RegExp(r'[a-z]').hasMatch(password)) strength += 25;
+    if (RegExp(r'[A-Z]').hasMatch(password)) strength += 25;
+    if (RegExp(r'[0-9]').hasMatch(password)) strength += 25;
+    return strength;
+  }
 
-    isLoading.value = true;
-    errorMessage.value = '';
-    if (passwordController.text != confirmPasswordController.text) {
-      errorMessage.value = "Les mots de passe ne correspondent pas.";
-      isLoading.value = false;
+  Color getPasswordStrengthColor() {
+    if (passwordStrength < 50) return Color(0xFFD32F2F); // rouge
+    if (passwordStrength < 75) return Color(0xFFF49101); // orange
+    return Color(0xFF2D0C0D); // vert foncé (validation)
+  }
+
+  String getPasswordStrengthText() {
+    if (passwordStrength < 25) return 'Très faible';
+    if (passwordStrength < 50) return 'Faible';
+    if (passwordStrength < 75) return 'Moyenne';
+    return 'Forte';
+  }
+
+  bool isFormValid() {
+    final hasNoErrors = errors.values.every((e) => e == null || e.isEmpty);
+    final hasAllFields = firstNameController.text.trim().isNotEmpty &&
+        lastNameController.text.trim().isNotEmpty &&
+        emailController.text.trim().isNotEmpty &&
+        phoneController.text.trim().isNotEmpty &&
+        passwordController.text.trim().isNotEmpty &&
+        confirmPasswordController.text.trim().isNotEmpty &&
+        selectedSite != null &&
+        selectedRole != null;
+    return hasNoErrors && hasAllFields && passwordStrength == 100;
+  }
+
+  Future<void> handleSubmit() async {
+    if (!isFormValid()) {
+      setState(() {
+        errors['form'] = 'Veuillez corriger les erreurs dans le formulaire';
+      });
       return;
     }
+    setState(() => isLoading = true);
     try {
-      String? imageUrl;
-      if (_selectedImage != null) {
-        imageUrl = await _uploadToCloudinary(_selectedImage!);
-        setState(() => _imageUrl = imageUrl);
-      }
-
       UserCredential userCred =
           await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
-      await FirebaseAuth.instance.currentUser
-          ?.updateDisplayName(nameController.text.trim());
-
-      // Préparation des données utilisateur (structure optimisée)
-      Map<String, dynamic> userData = {
-        "uid": userCred.user!.uid,
-        "nom": nameController.text.trim(),
-        "email": emailController.text.trim(),
-        "role": selectedRole,
-        "photoUrl": imageUrl,
-        "createdAt": FieldValue.serverTimestamp(),
-        "statistiques": {
-          // Prêt pour de futures stats par utilisateur
-          "nbConnexions": 1,
-          "derniereConnexion": FieldValue.serverTimestamp(),
-          // Ajoute d'autres stats ici si besoin
-        },
-      };
-
-      // Gestion spécifique pour magazinier
-      if (selectedRole == "Magazinier") {
-        userData["magazinier"] = {
-          "type": magazinierType,
-          "localite": magazinierType == "Principale"
-              ? "Koudougou"
-              : localite, // automatique ou sélectionnée
-        };
+      // Normalisation du site et du rôle avant enregistrement
+      String normalizedSite = '';
+      if ((selectedSite ?? '').isNotEmpty) {
+        normalizedSite = selectedSite![0].toUpperCase() +
+            selectedSite!.substring(1).toLowerCase();
       }
-
+      String normalizedRole = '';
+      if ((selectedRole ?? '').isNotEmpty) {
+        normalizedRole =
+            selectedRole![0].toUpperCase() + selectedRole!.substring(1);
+      }
       await FirebaseFirestore.instance
           .collection('utilisateurs')
           .doc(userCred.user!.uid)
-          .set(userData);
-
-      Get.offAllNamed('/login');
+          .set({
+        'uid': userCred.user!.uid,
+        'nom': lastNameController.text.trim(),
+        'prenom': firstNameController.text.trim(),
+        'email': emailController.text.trim(),
+        'telephone': phoneController.text.trim(),
+        'site': normalizedSite,
+        'role': normalizedRole,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      setState(() => isLoading = false);
+      // Affiche un message de succès puis redirige vers la page de login
+      Get.snackbar(
+        'Succès',
+        'Compte créé avec succès ! Connectez-vous.',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.green[100],
+        colorText: Colors.green[900],
+        duration: Duration(seconds: 2),
+      );
+      await Future.delayed(Duration(seconds: 2));
+      Get.offAll(() => LoginPage());
     } on FirebaseAuthException catch (e) {
-      errorMessage.value = e.message ?? "Erreur lors de l'inscription";
-      Get.snackbar('Compte non créé', "Erreur:  $e");
-    } finally {
-      isLoading.value = false;
+      setState(() {
+        isLoading = false;
+        errors['form'] = e.message ?? 'Erreur lors de la création du compte';
+      });
+    } catch (e) {
+      setState(() {
+        isLoading = false;
+        errors['form'] = 'Erreur inattendue: $e';
+      });
     }
-  }
-
-  Widget magazinierFields() {
-    if (selectedRole != "Magazinier") return SizedBox.shrink();
-
-    return Column(
-      children: [
-        SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          decoration: InputDecoration(
-            labelText: "Type de magasinier",
-            prefixIcon: Icon(Icons.storefront),
-          ),
-          value: magazinierType,
-          items: magazinierTypes
-              .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-              .toList(),
-          onChanged: (v) {
-            setState(() {
-              magazinierType = v;
-              if (magazinierType == "Principale") {
-                localite = "Koudougou";
-              } else {
-                localite = null;
-              }
-            });
-          },
-          validator: (v) =>
-              selectedRole == "Magazinier" && v == null ? "Obligatoire" : null,
-        ),
-        if (magazinierType == "Simple") ...[
-          SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            decoration: InputDecoration(
-              labelText: "Localité",
-              prefixIcon: Icon(Icons.location_on),
-            ),
-            value: localite,
-            items: localites
-                .map((l) => DropdownMenuItem(value: l, child: Text(l)))
-                .toList(),
-            onChanged: (v) => setState(() => localite = v),
-            validator: (v) =>
-                magazinierType == "Simple" && v == null ? "Obligatoire" : null,
-          ),
-        ],
-        if (magazinierType == "Principale") ...[
-          SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(Icons.location_on, color: Colors.amber[800]),
-              SizedBox(width: 8),
-              Text(
-                "Localité : KOUDOUGOU",
-                style: TextStyle(
-                    color: Colors.amber[800], fontWeight: FontWeight.w500),
-              ),
-            ],
-          ),
-        ],
-      ],
-    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 700;
     return Scaffold(
-      backgroundColor: Colors.amber[50],
+      backgroundColor: const Color(0xFFFFF8F0),
       body: Center(
         child: SingleChildScrollView(
-          child: Card(
-            margin: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            elevation: 8,
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: SizedBox(
-                width: 390,
-                child: Form(
-                  key: _formKey,
+          padding:
+              EdgeInsets.symmetric(horizontal: isMobile ? 8 : 0, vertical: 24),
+          child: Container(
+            constraints: BoxConstraints(maxWidth: 650),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Header
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 18.0),
                   child: Column(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // LOGO ENTREPRISE
-                      Image.asset(
-                        "assets/logo/logo.jpeg",
-                        height: 80,
-                        fit: BoxFit.contain,
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        "Créer un compte Apisavana",
-                        style: TextStyle(
-                          fontSize: 25,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.amber[800],
-                        ),
-                      ),
-                      SizedBox(height: 18),
-
-                      TextFormField(
-                        key: ValueKey('signup-name'),
-                        controller: nameController,
-                        decoration: InputDecoration(
-                          labelText: "Nom complet",
-                          prefixIcon: Icon(Icons.person),
-                        ),
-                        validator: (v) => v == null || v.trim().isEmpty
-                            ? "Obligatoire"
-                            : null,
-                      ),
-                      SizedBox(height: 16),
-                      TextFormField(
-                        key: ValueKey('signup-email'),
-                        controller: emailController,
-                        decoration: InputDecoration(
-                          labelText: "Email",
-                          prefixIcon: Icon(Icons.email),
-                        ),
-                        validator: (v) => v == null || v.trim().isEmpty
-                            ? "Obligatoire"
-                            : null,
-                      ),
-                      SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        decoration: InputDecoration(
-                          labelText: "Type d'utilisateur",
-                          prefixIcon: Icon(Icons.account_box_outlined),
-                        ),
-                        value: selectedRole,
-                        items: roles
-                            .map((role) => DropdownMenuItem(
-                                  value: role,
-                                  child: Text(role),
-                                ))
-                            .toList(),
-                        onChanged: (v) {
-                          setState(() {
-                            selectedRole = v;
-                            magazinierType = null;
-                            localite = null;
-                          });
-                        },
-                        validator: (v) => v == null ? "Obligatoire" : null,
-                      ),
-                      magazinierFields(),
-                      SizedBox(height: 16),
-                      GestureDetector(
-                        onTap: _pickImage,
-                        child: Column(
-                          children: [
-                            CircleAvatar(
-                              radius: 36,
-                              backgroundImage: _selectedImage != null
-                                  ? FileImage(_selectedImage!)
-                                  : null,
-                              backgroundColor: Colors.grey[200],
-                              child: _selectedImage == null
-                                  ? Icon(Icons.camera_alt,
-                                      color: Colors.amber[600], size: 34)
-                                  : null,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                colors: [Color(0xFFF49101), Color(0xFFFFC46B)],
+                              ),
                             ),
-                            SizedBox(height: 5),
-                            Text(
-                              "Ajouter une photo (optionnel)",
+                            child: Center(
+                                child:
+                                    Text('🍯', style: TextStyle(fontSize: 24))),
+                          ),
+                          SizedBox(width: 12),
+                          Text('ApiSavana',
                               style: TextStyle(
-                                  color: Colors.grey[700], fontSize: 13.5),
-                            ),
-                          ],
-                        ),
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFF49101))),
+                        ],
                       ),
-                      SizedBox(height: 16),
-                      TextFormField(
-                        key: ValueKey('signup-password'),
-                        controller: passwordController,
-                        obscureText: !passwordVisible,
-                        decoration: InputDecoration(
-                          labelText: "Mot de passe",
-                          prefixIcon: Icon(Icons.lock),
-                          suffixIcon: IconButton(
-                            icon: Icon(passwordVisible
-                                ? Icons.visibility
-                                : Icons.visibility_off),
-                            onPressed: () {
-                              setState(
-                                  () => passwordVisible = !passwordVisible);
-                            },
-                          ),
-                        ),
-                        validator: (v) =>
-                            v == null || v.isEmpty ? "Obligatoire" : null,
-                      ),
-                      SizedBox(height: 16),
-                      TextFormField(
-                        key: ValueKey('signup-confirm-password'),
-                        controller: confirmPasswordController,
-                        obscureText: !confirmPasswordVisible,
-                        decoration: InputDecoration(
-                          labelText: "Confirmer le mot de passe",
-                          prefixIcon: Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            icon: Icon(confirmPasswordVisible
-                                ? Icons.visibility
-                                : Icons.visibility_off),
-                            onPressed: () {
-                              setState(() => confirmPasswordVisible =
-                                  !confirmPasswordVisible);
-                            },
-                          ),
-                        ),
-                        validator: (v) =>
-                            v == null || v.isEmpty ? "Obligatoire" : null,
-                      ),
-                      SizedBox(height: 16),
-                      Obx(() => errorMessage.value.isNotEmpty
-                          ? Text(
-                              errorMessage.value,
-                              style: TextStyle(color: Colors.red),
-                            )
-                          : SizedBox.shrink()),
-                      SizedBox(height: 16),
-                      Obx(
-                        () => ElevatedButton(
-                          onPressed: isLoading.value ? null : signup,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.amber[800],
-                            minimumSize: Size(double.infinity, 48),
-                          ),
-                          child: isLoading.value
-                              ? CircularProgressIndicator(color: Colors.white)
-                              : Text("S'inscrire"),
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      TextButton(
-                        onPressed: () => Get.offAll(LoginPage()),
-                        child: Text("Déjà un compte ? Se connecter"),
+                      SizedBox(height: 8),
+                      Text(
+                        "Dashboard > Gestion > Création de compte",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: Color(0xFFF49101).withOpacity(0.7),
+                            fontSize: 13),
                       ),
                     ],
                   ),
                 ),
-              ),
+                Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(32.0),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Titre
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.person, color: Color(0xFF2D0C0D)),
+                              SizedBox(width: 8),
+                              Text(
+                                "Création de Compte",
+                                style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF2D0C0D)),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 6),
+                          Text(
+                            "Créez un nouveau compte utilisateur pour la plateforme",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: Color(0xFF2D0C0D).withOpacity(0.7)),
+                          ),
+                          SizedBox(height: 24),
+                          // --- Section Informations personnelles ---
+                          Row(
+                            children: [
+                              Icon(Icons.person_outline,
+                                  color: Color(0xFFF49101)),
+                              SizedBox(width: 8),
+                              Text("Informations Personnelles",
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF2D0C0D))),
+                            ],
+                          ),
+                          SizedBox(height: 12),
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final isWide = constraints.maxWidth > 500;
+                              return Wrap(
+                                spacing: 16,
+                                runSpacing: 16,
+                                children: [
+                                  SizedBox(
+                                    width: isWide
+                                        ? (constraints.maxWidth / 2) - 12
+                                        : constraints.maxWidth,
+                                    child: TextFormField(
+                                      controller: firstNameController,
+                                      decoration: InputDecoration(
+                                        labelText: "Prénom *",
+                                        prefixIcon: Icon(Icons.person_outline),
+                                        errorText: errors['firstName'],
+                                      ),
+                                      onChanged: (v) =>
+                                          handleInputChange('firstName', v),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: isWide
+                                        ? (constraints.maxWidth / 2) - 12
+                                        : constraints.maxWidth,
+                                    child: TextFormField(
+                                      controller: lastNameController,
+                                      decoration: InputDecoration(
+                                        labelText: "Nom *",
+                                        prefixIcon: Icon(Icons.person),
+                                        errorText: errors['lastName'],
+                                      ),
+                                      onChanged: (v) =>
+                                          handleInputChange('lastName', v),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: isWide
+                                        ? (constraints.maxWidth / 2) - 12
+                                        : constraints.maxWidth,
+                                    child: TextFormField(
+                                      controller: emailController,
+                                      decoration: InputDecoration(
+                                        labelText: "Email professionnel *",
+                                        prefixIcon: Icon(Icons.email_outlined),
+                                        errorText: errors['email'],
+                                      ),
+                                      onChanged: (v) =>
+                                          handleInputChange('email', v),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: isWide
+                                        ? (constraints.maxWidth / 2) - 12
+                                        : constraints.maxWidth,
+                                    child: TextFormField(
+                                      controller: phoneController,
+                                      decoration: InputDecoration(
+                                        labelText: "Téléphone *",
+                                        prefixIcon: Icon(Icons.phone),
+                                        errorText: errors['phone'],
+                                      ),
+                                      keyboardType: TextInputType.phone,
+                                      onChanged: (v) =>
+                                          handleInputChange('phone', v),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: isWide
+                                        ? (constraints.maxWidth / 2) - 12
+                                        : constraints.maxWidth,
+                                    child: TextFormField(
+                                      controller: passwordController,
+                                      obscureText: !showPassword,
+                                      decoration: InputDecoration(
+                                        labelText: "Mot de passe *",
+                                        prefixIcon: Icon(Icons.lock_outline),
+                                        suffixIcon: IconButton(
+                                          icon: Icon(showPassword
+                                              ? Icons.visibility_off
+                                              : Icons.visibility),
+                                          onPressed: () => setState(() =>
+                                              showPassword = !showPassword),
+                                        ),
+                                        errorText: errors['password'],
+                                      ),
+                                      onChanged: (v) =>
+                                          handleInputChange('password', v),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: isWide
+                                        ? (constraints.maxWidth / 2) - 12
+                                        : constraints.maxWidth,
+                                    child: TextFormField(
+                                      controller: confirmPasswordController,
+                                      obscureText: !showConfirmPassword,
+                                      decoration: InputDecoration(
+                                        labelText:
+                                            "Confirmer le mot de passe *",
+                                        prefixIcon: Icon(Icons.lock),
+                                        suffixIcon: IconButton(
+                                          icon: Icon(showConfirmPassword
+                                              ? Icons.visibility_off
+                                              : Icons.visibility),
+                                          onPressed: () => setState(() =>
+                                              showConfirmPassword =
+                                                  !showConfirmPassword),
+                                        ),
+                                        errorText: errors['confirmPassword'],
+                                      ),
+                                      onChanged: (v) => handleInputChange(
+                                          'confirmPassword', v),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                          if (passwordController.text.isNotEmpty)
+                            Padding(
+                              padding:
+                                  const EdgeInsets.only(top: 8.0, bottom: 4),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text("Force du mot de passe:",
+                                          style: TextStyle(fontSize: 12)),
+                                      Text(getPasswordStrengthText(),
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              color:
+                                                  getPasswordStrengthColor())),
+                                    ],
+                                  ),
+                                  SizedBox(height: 2),
+                                  LinearProgressIndicator(
+                                    value: passwordStrength / 100,
+                                    minHeight: 6,
+                                    backgroundColor: Colors.grey[200],
+                                    valueColor: AlwaysStoppedAnimation(
+                                        getPasswordStrengthColor()),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          SizedBox(height: 24),
+                          // --- Section Affectation ---
+                          Row(
+                            children: [
+                              Icon(Icons.location_on_outlined,
+                                  color: Color(0xFFF49101)),
+                              SizedBox(width: 8),
+                              Text("Affectation",
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF2D0C0D))),
+                            ],
+                          ),
+                          SizedBox(height: 12),
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final isWide = constraints.maxWidth > 500;
+                              return Wrap(
+                                spacing: 16,
+                                runSpacing: 16,
+                                children: [
+                                  SizedBox(
+                                    width: isWide
+                                        ? (constraints.maxWidth / 2) - 12
+                                        : constraints.maxWidth,
+                                    child: DropdownButtonFormField<String>(
+                                      value: selectedSite,
+                                      decoration: InputDecoration(
+                                        labelText: "Site d'affectation *",
+                                        prefixIcon:
+                                            Icon(Icons.location_on_outlined),
+                                        errorText: errors['site'],
+                                      ),
+                                      items: sites
+                                          .map((site) => DropdownMenuItem(
+                                                value: site['value'],
+                                                child: Text(site['label']!),
+                                              ))
+                                          .toList(),
+                                      onChanged: (v) =>
+                                          handleInputChange('site', v ?? ''),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: isWide
+                                        ? (constraints.maxWidth / 2) - 12
+                                        : constraints.maxWidth,
+                                    child: DropdownButtonFormField<String>(
+                                      value: selectedRole != null &&
+                                              availableRoles
+                                                  .contains(selectedRole)
+                                          ? selectedRole
+                                          : null,
+                                      decoration: InputDecoration(
+                                        labelText: "Rôle *",
+                                        prefixIcon: Icon(Icons.shield_outlined),
+                                        errorText: errors['role'],
+                                      ),
+                                      items: availableRoles
+                                          .map((role) => DropdownMenuItem(
+                                                value: role,
+                                                child: Text(
+                                                  role,
+                                                  style:
+                                                      TextStyle(fontSize: 12),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ))
+                                          .toList(),
+                                      onChanged: selectedSite == null
+                                          ? null
+                                          : (v) => handleInputChange(
+                                              'role', v ?? ''),
+                                      disabledHint:
+                                          Text("Choisir un site d'abord"),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                          if (selectedSite != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Text(
+                                "${availableRoles.length} rôle(s) disponible(s) pour " +
+                                    (sites.firstWhere((s) =>
+                                            s['value'] ==
+                                            selectedSite)['label'] ??
+                                        ''),
+                                style: TextStyle(
+                                    fontSize: 12, color: Color(0xFFF49101)),
+                              ),
+                            ),
+                          SizedBox(height: 24),
+                          // --- Message d'erreur global ---
+                          if (errors['form'] != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12.0),
+                              child: Text(
+                                errors['form']!,
+                                style:
+                                    TextStyle(color: Colors.red, fontSize: 14),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          // --- Boutons ---
+                          SizedBox(height: 6),
+                          ElevatedButton.icon(
+                            onPressed: isLoading ? null : handleSubmit,
+                            style: ElevatedButton.styleFrom(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              backgroundColor: Color(0xFFF49101),
+                            ),
+                            icon: isLoading
+                                ? SizedBox(
+                                    height: 24,
+                                    width: 24,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 3,
+                                    ),
+                                  )
+                                : Icon(Icons.check, color: Colors.white),
+                            label: Text(
+                              isLoading
+                                  ? "Création en cours..."
+                                  : "Créer le compte",
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white),
+                            ),
+                          ),
+                          SizedBox(height: 18),
+                          OutlinedButton.icon(
+                            onPressed: () => Get.offAll(DashboardPage()),
+                            icon: Icon(Icons.arrow_back,
+                                color: Color(0xFF2D0C0D)),
+                            label: Text("Retour au dashboard",
+                                style: TextStyle(color: Color(0xFF2D0C0D))),
+                            style: OutlinedButton.styleFrom(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              side: BorderSide(color: Color(0xFFF49101)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
+                          SizedBox(height: 12),
+                          // --- Lien vers la page de login ---
+                          Center(
+                            child: TextButton(
+                              onPressed: () {
+                                Get.off(() => LoginPage());
+                              },
+                              child: Text(
+                                "Déjà un compte ? Connectez-vous",
+                                style: TextStyle(color: Color(0xFF2D0C0D)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

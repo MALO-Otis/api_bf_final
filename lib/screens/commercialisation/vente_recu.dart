@@ -1,6 +1,3 @@
-// Pour le téléchargement web
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -178,6 +175,14 @@ class VenteReceiptsPage extends StatelessWidget {
     return bytes.buffer.asUint8List();
   }
 
+  void openPdf(Uint8List pdfBytes, String fileName) async {
+    if (kIsWeb) {
+      await Printing.layoutPdf(onLayout: (format) async => pdfBytes);
+    } else {
+      await Printing.layoutPdf(onLayout: (format) async => pdfBytes);
+    }
+  }
+
   void _handleDownload(
       BuildContext context, Map<String, dynamic> vente, String docId) async {
     final logoBytes = await _loadLogoBytes();
@@ -192,22 +197,7 @@ class VenteReceiptsPage extends StatelessWidget {
     );
 
     final filename = "recu_$docId.pdf";
-    if (kIsWeb) {
-      final blob = html.Blob([pdfBytes], 'application/pdf');
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      final anchor = html.AnchorElement(href: url)
-        ..target = 'blank'
-        ..download = filename;
-      html.document.body!.append(anchor);
-      anchor.click();
-      anchor.remove();
-      html.Url.revokeObjectUrl(url);
-    } else {
-      await Printing.layoutPdf(
-        onLayout: (_) async => pdfBytes,
-        name: filename,
-      );
-    }
+    openPdf(pdfBytes, filename);
   }
 
   @override
