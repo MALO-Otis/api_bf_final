@@ -1,15 +1,127 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:apisavana_gestion/screens/collecte_de_donnes/collecte_donnes.dart';
+// import 'package:apisavana_gestion/screens/collecte_de_donnes/collecte_donnes.dart'; // ANCIEN CODE - DÉSACTIVÉ
 import 'package:get/get.dart';
 import 'package:apisavana_gestion/authentication/user_session.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:apisavana_gestion/authentication/login.dart';
-import 'package:apisavana_gestion/screens/collecte_de_donnes/nouvelle_collecte_recolte.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collectes.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nouvelle_collecte_individuelle.dart';
+
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_achats_scoop_contenants/nouvel_achat_scoop_contenants.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_achats_scoop/nouvel_achat_scoop.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_mielleurie/nouvelle_collecte_miellerie.dart';
+import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
+import 'package:apisavana_gestion/screens/extraction/extraction_page.dart';
 
 // Color palette
 const Color kHighlightColor = Color(0xFFF49101);
 const Color kValidationColor = Color(0xFF2D0C0D);
+
+// Controller pour la navigation du dashboard
+class DashboardController extends GetxController {
+  final Rx<Widget?> currentPage = Rx<Widget?>(null);
+  final RxBool isSliderOpen = false.obs;
+
+  void navigateTo(String moduleName, {String? subModule}) {
+    // DEBUG: Afficher les valeurs reçues
+    print(
+        '🔍 navigateTo appelé avec: moduleName="$moduleName", subModule="$subModule"');
+
+    // Navigation spéciale pour retour au dashboard
+    if (moduleName == 'DASHBOARD') {
+      isSliderOpen.value = false;
+      currentPage.value = null; // Retourne au dashboard principal
+      return;
+    }
+
+    // Ne ferme le menu que si on ouvre une vraie page (sous-module)
+    if (subModule != null) {
+      isSliderOpen.value = false;
+
+      if (moduleName == 'COLLECTE' && subModule == 'Nouvelle collecte') {
+        currentPage.value = NouvelleCollecteRecoltePage();
+        return;
+      }
+      if (moduleName == 'COLLECTE' && subModule == 'Historique collectes') {
+        currentPage.value = HistoriquesCollectesPage();
+        return;
+      }
+      if (moduleName == 'COLLECTE' && subModule == 'Achats Individuels') {
+        currentPage.value = const NouvelleCollecteIndividuellePage();
+        return;
+      }
+      if (moduleName == 'COLLECTE' && subModule == 'Achats SCOOPS') {
+        currentPage.value = const NouvelAchatScoopPage();
+        return;
+      }
+      if (moduleName == 'COLLECTE' &&
+          subModule == 'Achats SCOOPS - Contenants') {
+        currentPage.value = const NouvelAchatScoopContenantsPage();
+        return;
+      }
+      if (moduleName == 'COLLECTE' && subModule == 'Collecte Mielleries') {
+        currentPage.value = const NouvelleCollecteMielleriePage();
+        return;
+      }
+
+      // NOUVEAU : Module de contrôle avancé
+      if (moduleName == 'CONTRÔLE' && subModule == 'Contrôle avancé') {
+        print('✅ Navigation vers Contrôle avancé');
+        currentPage.value = const ControlePageDashboard();
+        return;
+      }
+      if (moduleName == 'CONTRÔLE' &&
+          (subModule == 'Contrôle a gerer' ||
+              subModule == 'Contrôles en attente')) {
+        print('✅ Navigation vers ${subModule} -> ControlePageDashboard');
+        currentPage.value = const ControlePageDashboard();
+        return;
+      }
+
+      // NOUVEAU : Module d'extraction
+      if (moduleName == 'EXTRACTION' && subModule == 'Extraction de données') {
+        print('✅ Navigation vers Extraction de données');
+        currentPage.value = const ExtractionPage();
+        return;
+      }
+      if (moduleName == 'EXTRACTION' &&
+          (subModule == 'Extractions en cours' ||
+              subModule == 'Nouvelle extraction' ||
+              subModule == 'Historique extractions' ||
+              subModule == 'Rapports qualité')) {
+        print('✅ Navigation vers ${subModule} -> ExtractionPage');
+        currentPage.value = const ExtractionPage();
+        return;
+      }
+
+      switch (moduleName) {
+        case 'COLLECTE':
+          currentPage.value = NouvelleCollecteRecoltePage();
+          break;
+        case 'CONTRÔLE':
+          print('✅ Navigation par défaut vers CONTRÔLE');
+          currentPage.value =
+              const ControlePageDashboard(); // Nouvelle page de contrôle avancé
+          break;
+        case 'EXTRACTION':
+          print('✅ Navigation par défaut vers EXTRACTION');
+          currentPage.value =
+              const ExtractionPage(); // Nouvelle page d'extraction
+          break;
+        default:
+          print('❌ Module non géré: $moduleName');
+          currentPage.value = null;
+      }
+    }
+    // Si on clique juste sur le module (pour déplier), ne rien faire
+  }
+
+  void toggleSlider() {
+    isSliderOpen.value = !isSliderOpen.value;
+  }
+}
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({Key? key}) : super(key: key);
@@ -19,13 +131,15 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  bool isSliderOpen = false;
   bool _isLoading = true;
-  Widget? _currentPage;
+  late DashboardController _dashboardController;
 
   @override
   void initState() {
     super.initState();
+    // Initialiser le controller
+    _dashboardController = Get.put(DashboardController());
+
     // Ne pas utiliser MediaQuery ici !
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
@@ -75,27 +189,6 @@ class _DashboardPageState extends State<DashboardPage> {
     });
   }
 
-  void _navigateTo(String moduleName, {String? subModule}) {
-    // Ne ferme le menu que si on ouvre une vraie page (sous-module)
-    if (subModule != null) {
-      setState(() {
-        isSliderOpen = false;
-        if (moduleName == 'COLLECTE' && subModule == 'Nouvelle collecte') {
-          _currentPage = NouvelleCollecteRecoltePage();
-          return;
-        }
-        switch (moduleName) {
-          case 'COLLECTE':
-            _currentPage = CollectePage();
-            break;
-          default:
-            _currentPage = null;
-        }
-      });
-    }
-    // Si on clique juste sur le module (pour déplier), ne rien faire
-  }
-
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -103,82 +196,85 @@ class _DashboardPageState extends State<DashboardPage> {
     final isTablet = screenWidth >= 600 && screenWidth < 1200;
     final isDesktop = screenWidth >= 1200;
 
-    Widget navigationSlider = NavigationSlider(
-      isOpen: isDesktop || isSliderOpen,
-      onToggle: () => setState(() => isSliderOpen = !isSliderOpen),
-      isMobile: isMobile,
-      isTablet: isTablet,
-      isDesktop: isDesktop,
-      onModuleSelected: (moduleName, {subModule}) =>
-          _navigateTo(moduleName, subModule: subModule),
-    );
-
-    Widget mainContent = _isLoading
-        ? DashboardSkeleton(
-            isMobile: isMobile,
-            isTablet: isTablet,
-            isDesktop: isDesktop,
-          )
-        : (_currentPage ??
-            MainDashboardContent(
-              isMobile: isMobile,
-              isTablet: isTablet,
-              isDesktop: isDesktop,
-            ));
-
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Stack(
-          children: [
-            Row(
-              children: [
-                // Main Content
-                Expanded(
-                  child: Column(
-                    children: [
-                      DashboardHeader(
-                        onMenuToggle: () =>
-                            setState(() => isSliderOpen = !isSliderOpen),
-                        isMobile: isMobile,
-                        isTablet: isTablet,
-                      ),
-                      Expanded(child: mainContent),
-                    ],
+        child: Obx(() {
+          Widget navigationSlider = NavigationSlider(
+            isOpen: isDesktop || _dashboardController.isSliderOpen.value,
+            onToggle: _dashboardController.toggleSlider,
+            isMobile: isMobile,
+            isTablet: isTablet,
+            isDesktop: isDesktop,
+            onModuleSelected: (moduleName, {subModule}) => _dashboardController
+                .navigateTo(moduleName, subModule: subModule),
+          );
+
+          Widget mainContent = _isLoading
+              ? DashboardSkeleton(
+                  isMobile: isMobile,
+                  isTablet: isTablet,
+                  isDesktop: isDesktop,
+                )
+              : (_dashboardController.currentPage.value ??
+                  MainDashboardContent(
+                    isMobile: isMobile,
+                    isTablet: isTablet,
+                    isDesktop: isDesktop,
+                  ));
+
+          return Stack(
+            children: [
+              Row(
+                children: [
+                  // Main Content
+                  Expanded(
+                    child: Column(
+                      children: [
+                        DashboardHeader(
+                          onMenuToggle: _dashboardController.toggleSlider,
+                          isMobile: isMobile,
+                          isTablet: isTablet,
+                        ),
+                        Expanded(child: mainContent),
+                      ],
+                    ),
+                  ),
+                  // Desktop slider
+                  if (isDesktop)
+                    SizedBox(
+                      width: 270,
+                      child: navigationSlider,
+                    ),
+                ],
+              ),
+              // Voile sombre DERRIÈRE le sidebar (ordre important!)
+              if (_dashboardController.isSliderOpen.value && !isDesktop)
+                AnimatedOpacity(
+                  opacity: _dashboardController.isSliderOpen.value ? 1.0 : 0.0,
+                  duration: Duration(milliseconds: 300),
+                  child: GestureDetector(
+                    onTap: _dashboardController.toggleSlider,
+                    child: Container(
+                      color: Colors.black.withOpacity(0.4),
+                      child: SizedBox.expand(),
+                    ),
                   ),
                 ),
-                // Desktop slider
-                if (isDesktop)
-                  SizedBox(
-                    width: 270,
-                    child: navigationSlider,
-                  ),
-              ],
-            ),
-            // Overlay for mobile/tablet
-            if (!isDesktop)
-              AnimatedPositioned(
-                duration: Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-                right: isSliderOpen ? 0 : -270,
-                top: 0,
-                bottom: 0,
-                width: 250,
-                child: Material(
-                  color: Colors.white,
-                  elevation: 16,
+              // Overlay for mobile/tablet avec animation améliorée - AU-DESSUS du voile
+              if (!isDesktop)
+                AnimatedPositioned(
+                  duration: Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  left: _dashboardController.isSliderOpen.value ? 0 : -270,
+                  top: 0,
+                  bottom: 0,
+                  width: 270,
                   child: navigationSlider,
                 ),
-              ),
-            if (isSliderOpen && !isDesktop)
-              // Utilise ModalBarrier pour éviter la fermeture au scroll
-              ModalBarrier(
-                color: Colors.black.withOpacity(0.3),
-                dismissible: true,
-                onDismiss: () => setState(() => isSliderOpen = false),
-              ),
-          ],
-        ),
+            ],
+          );
+        }),
       ),
     );
   }
@@ -1724,7 +1820,6 @@ class NavigationSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Correction : s'assure que UserSession est bien enregistré dans GetX
     UserSession user;
     try {
       user = Get.find<UserSession>();
@@ -1748,10 +1843,13 @@ class NavigationSlider extends StatelessWidget {
         "name": "COLLECTE",
         "badge": 5,
         "subModules": [
-          {"name": "Nouvelle collecte"},
-          {"name": "Récoltes", "badge": 3},
-          {"name": "Achats SCOOPS"},
-          {"name": "Achats Individuels", "badge": 2}
+          {"name": "Nouvelle collecte", "icon": Icons.add_circle_outline},
+          {"name": "Historique collectes", "icon": Icons.history},
+          {"name": "Récoltes", "badge": 3, "icon": Icons.agriculture},
+          {"name": "Achats SCOOPS", "icon": Icons.group},
+          {"name": "Achats SCOOPS - Contenants", "icon": Icons.inventory_2},
+          {"name": "Achats Individuels", "badge": 2, "icon": Icons.person},
+          {"name": "Collecte Mielleries", "icon": Icons.factory}
         ]
       },
       {
@@ -1759,9 +1857,30 @@ class NavigationSlider extends StatelessWidget {
         "name": "CONTRÔLE",
         "badge": 5,
         "subModules": [
-          {"name": "Contrôles en attente", "badge": 7},
+          {
+            "name": "Contrôle avancé",
+            "icon": Icons.analytics_outlined,
+            "badge": 1
+          },
+          {"name": "Contrôle a gerer", "badge": 7},
           {"name": "Nouveau contrôle"},
           {"name": "Historique contrôles"}
+        ]
+      },
+      {
+        "icon": Icons.science,
+        "name": "EXTRACTION",
+        "badge": 12,
+        "subModules": [
+          {
+            "name": "Extraction de données",
+            "icon": Icons.analytics_outlined,
+            "badge": 5
+          },
+          {"name": "Nouvelle extraction"},
+          {"name": "Extractions en cours", "badge": 3},
+          {"name": "Historique extractions"},
+          {"name": "Rapports qualité", "badge": 2}
         ]
       },
       {
@@ -1806,80 +1925,297 @@ class NavigationSlider extends StatelessWidget {
       },
     ];
     final filteredModules = filterModulesByUser(modules, user);
-    return Material(
-      elevation: isDesktop ? 0 : 10,
-      child: Container(
-        color: Colors.white,
-        child: Column(
-          children: [
-            if (!isDesktop)
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+
+    return AnimatedContainer(
+      duration: Duration(milliseconds: 400),
+      curve: Curves.easeInOutCubic,
+      width: isOpen
+          ? (isMobile ? MediaQuery.of(context).size.width * 0.85 : 280)
+          : 0,
+      child: isOpen
+          ? ClipRRect(
+              borderRadius: isMobile
+                  ? BorderRadius.only(
+                      topLeft: Radius.circular(20),
+                      bottomLeft: Radius.circular(20),
+                    )
+                  : BorderRadius.only(
+                      topRight: Radius.circular(20),
+                      bottomRight: Radius.circular(20),
+                    ),
+              child: Container(
                 decoration: BoxDecoration(
-                  color: kHighlightColor.withOpacity(0.17),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.orange.shade50,
+                      Colors.white,
+                      Colors.orange.shade50,
+                    ],
+                  ),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Modules",
-                        style: TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.bold)),
-                    IconButton(
-                      icon: Icon(Icons.close, size: 18),
-                      onPressed: onToggle,
+                    // Header moderne avec animation
+                    Container(
+                      padding: EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [kHighlightColor, Colors.orange.shade600],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              CircleAvatar(
+                                backgroundColor: Colors.white.withOpacity(0.2),
+                                child:
+                                    Icon(Icons.dashboard, color: Colors.white),
+                              ),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Navigation',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Apisavana Dashboard',
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.8),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (isMobile || isTablet)
+                                IconButton(
+                                  icon: Icon(Icons.close, color: Colors.white),
+                                  onPressed: onToggle,
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Bouton retour au dashboard avec design moderne
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(15),
+                          onTap: () {
+                            if (isMobile || isTablet) onToggle();
+                            if (onModuleSelected != null) {
+                              onModuleSelected!('DASHBOARD', subModule: null);
+                            }
+                          },
+                          child: Container(
+                            padding: EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(15),
+                              border: Border.all(color: Colors.blue.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.home, color: Colors.blue.shade600),
+                                SizedBox(width: 12),
+                                Text(
+                                  'Retour au dashboard',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.blue.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // Liste des modules avec animations
+                    Expanded(
+                      child: ListView.builder(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        itemCount: filteredModules.length,
+                        itemBuilder: (context, index) {
+                          final module = filteredModules[index];
+                          return TweenAnimationBuilder<double>(
+                            duration:
+                                Duration(milliseconds: 300 + (index * 100)),
+                            tween: Tween(begin: 0.0, end: 1.0),
+                            builder: (context, value, child) {
+                              return Transform.translate(
+                                offset: Offset(50 * (1 - value), 0),
+                                child: Opacity(
+                                  opacity: value,
+                                  child: _buildModuleCard(module),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
                     ),
                   ],
                 ),
               ),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: filteredModules.map((module) {
-                  return ExpansionTile(
-                    leading: Icon(module["icon"] as IconData,
-                        color: kHighlightColor),
-                    title: Text(module["name"] as String,
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    trailing: (module["badge"] as int? ?? 0) > 0
-                        ? CircleAvatar(
-                            radius: 12,
-                            backgroundColor: kHighlightColor.withOpacity(0.2),
-                            child: Text((module["badge"] as int).toString(),
-                                style: TextStyle(
-                                    color: kHighlightColor,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold)),
-                          )
-                        : null,
-                    children:
-                        (module["subModules"] as List<Map<String, dynamic>>? ??
-                                [])
-                            .map((sub) {
-                      return ListTile(
-                        onTap: () => onModuleSelected?.call(
-                            module["name"] as String,
-                            subModule: sub["name"] as String?),
-                        title: Text(sub["name"] as String,
-                            style: TextStyle(fontSize: 13)),
-                        trailing: (sub["badge"] as int? ?? 0) > 0
-                            ? CircleAvatar(
-                                radius: 10,
-                                backgroundColor: Colors.green.withOpacity(0.2),
-                                child: Text((sub["badge"] as int).toString(),
-                                    style: TextStyle(
-                                        color: Colors.green,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold)),
-                              )
-                            : null,
-                      );
-                    }).toList(),
-                  );
-                }).toList(),
+            )
+          : SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildModuleCard(Map<String, dynamic> module) {
+    return Container(
+      margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: Theme(
+          data: ThemeData().copyWith(dividerColor: Colors.transparent),
+          child: GestureDetector(
+            // Empêche la propagation des événements vers le parent
+            onTap: () {
+              // Ne rien faire ici, laisse l'ExpansionTile gérer les clics
+            },
+            child: ExpansionTile(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
               ),
+              collapsedShape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+              backgroundColor: Colors.white.withOpacity(0.7),
+              collapsedBackgroundColor: Colors.white.withOpacity(0.5),
+              leading: Container(
+                padding: EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: kHighlightColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  module["icon"] as IconData,
+                  color: kHighlightColor,
+                  size: 20,
+                ),
+              ),
+              title: Text(
+                module["name"] as String,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if ((module["badge"] as int? ?? 0) > 0)
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade500,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        (module["badge"] as int).toString(),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  SizedBox(width: 8),
+                  Icon(Icons.expand_more),
+                ],
+              ),
+              children:
+                  (module["subModules"] as List<Map<String, dynamic>>? ?? [])
+                      .map((sub) {
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () {
+                      // DEBUG: clic côté sidebar
+                      try {
+                        final moduleName = module["name"] as String?;
+                        final subName = sub["name"] as String?;
+                        print(
+                            '🟡 Sidebar tap -> module="$moduleName", subModule="$subName"');
+                      } catch (_) {}
+                      // Seulement fermer le sidebar lors de la sélection d'un sous-module
+                      if (isMobile || isTablet) onToggle();
+                      onModuleSelected?.call(
+                        module["name"] as String,
+                        subModule: sub["name"] as String?,
+                      );
+                    },
+                    child: Container(
+                      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                      padding: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: kHighlightColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              sub["name"] as String,
+                              style: TextStyle(fontSize: 13),
+                            ),
+                          ),
+                          if ((sub["badge"] as int? ?? 0) > 0)
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green.shade500,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                (sub["badge"] as int).toString(),
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
             ),
-          ],
+          ),
         ),
       ),
     );

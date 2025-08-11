@@ -1,7 +1,14 @@
-import 'package:apisavana_gestion/controllers/collecte_controller.dart';
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+/*
+ * ANCIEN COMPOSANT - DÉSACTIVÉ
+ * Utilisé par l'ancien système de collecte
+ * Conservé pour référence et extraction de données
+ */
 
+// import 'package:apisavana_gestion/controllers/collecte_controller.dart';
+// import 'package:flutter/material.dart';
+// import 'package:get/get.dart';
+
+/*
 class MultiSelectFlorale extends StatelessWidget {
   final CollecteController c;
   final String label;
@@ -95,3 +102,6 @@ class MultiSelectFlorale extends StatelessWidget {
     );
   }
 }
+*/
+
+// FIN DE L'ANCIEN COMPOSANT - CONSERVÉ POUR RÉFÉRENCE

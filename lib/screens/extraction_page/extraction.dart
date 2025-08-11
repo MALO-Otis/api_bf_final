@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:apisavana_gestion/controllers/extraction_controller.dart';
+import 'package:apisavana_gestion/utils/smart_appbar.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -20,15 +21,11 @@ class ExtractionPage extends StatelessWidget {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            tooltip: "Retour au Dashboard",
-            icon: Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-            onPressed: () => Get.offAllNamed('/dashboard'),
-          ),
-          title: Text("Extraction"),
+        appBar: SmartAppBar(
+          title: "Extraction",
           backgroundColor: Colors.teal[700],
-          elevation: 4,
+          backTooltip: "Retour au Dashboard",
+          onBackPressed: () => Get.offAllNamed('/dashboard'),
           bottom: TabBar(
             indicatorColor: Colors.white,
             labelColor: Colors.white,

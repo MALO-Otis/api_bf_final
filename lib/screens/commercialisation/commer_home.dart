@@ -3,6 +3,7 @@ import 'package:apisavana_gestion/screens/commercialisation/prelevement_magazini
 import 'package:apisavana_gestion/screens/commercialisation/vente_form.dart';
 import 'package:apisavana_gestion/screens/commercialisation/vente_recu.dart';
 import 'package:apisavana_gestion/screens/commercialisation/widgets/rapport.dart';
+import 'package:apisavana_gestion/utils/smart_appbar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -76,14 +77,10 @@ class _CommercialisationHomePageState extends State<CommercialisationHomePage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          tooltip: "Retour au Dashboard",
-          icon: Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-          onPressed: () => Get.offAllNamed('/dashboard'),
-        ),
-        title: const Text("💰 Commercialisation"),
+      appBar: SmartAppBar(
+        title: "💰 Commercialisation",
         backgroundColor: Colors.green[700],
+        onBackPressed: () => Get.offAllNamed('/dashboard'),
         bottom: TabBar(
           controller: _tabController,
           tabs: myTabs,

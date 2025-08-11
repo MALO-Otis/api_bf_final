@@ -1,7 +1,9 @@
-import 'package:apisavana_gestion/screens/collecte_de_donnes/collecte_donnes.dart';
+// import 'package:apisavana_gestion/screens/collecte_de_donnes/collecte_donnes.dart'; // ANCIEN CODE - DÉSACTIVÉ
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collectes.dart';
 import 'package:apisavana_gestion/screens/commercialisation/commer_home.dart';
 import 'package:apisavana_gestion/screens/conditionnement/condionnement_home.dart';
-import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes.dart';
+import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
 import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
 import 'package:apisavana_gestion/screens/extraction_page/extraction.dart';
 import 'package:apisavana_gestion/screens/filtrage/filtrage_page.dart';
@@ -13,6 +15,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'authentication/login.dart';
 import 'authentication/sign_up.dart';
 import 'authentication/user_session.dart';
+import 'utils/auth_wrapper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,13 +51,21 @@ class ApisavanaApp extends StatelessWidget {
         fontFamily: 'Montserrat',
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      initialRoute: '/login',
+      // Utilisation de l'AuthWrapper comme page d'accueil
+      home: const AuthWrapper(),
       getPages: [
-        GetPage(name: '/login', page: () => LoginPage()),
-        GetPage(name: '/dashboard', page: () => DashboardPage()),
-        GetPage(name: '/signup', page: () => SignupPage()),
-        GetPage(name: '/collecte', page: () => CollectePage()),
-        GetPage(name: '/controle', page: () => ControlePage()),
+        GetPage(name: '/login', page: () => const LoginPage()),
+        GetPage(name: '/dashboard', page: () => const DashboardPage()),
+        GetPage(name: '/signup', page: () => const SignupPage()),
+        GetPage(
+            name: '/collecte', page: () => const NouvelleCollecteRecoltePage()),
+        GetPage(
+            name: '/nouvelle_collecte_recolte',
+            page: () => const NouvelleCollecteRecoltePage()),
+        GetPage(
+            name: '/historiques_collectes',
+            page: () => HistoriquesCollectesPage()),
+        GetPage(name: '/controle', page: () => const ControlePageDashboard()),
         GetPage(name: '/extraction', page: () => ExtractionPage()),
         GetPage(name: '/filtrage', page: () => FiltragePage()),
         GetPage(

@@ -1,4 +1,5 @@
 import 'package:apisavana_gestion/data/geographe/geographie.dart';
+import 'package:apisavana_gestion/authentication/user_session.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -557,8 +558,12 @@ class CollecteController extends GetxController {
   /// Enregistre une nouvelle SCOOPS dans la collection SCOOPS
   /// Enregistre une nouvelle SCOOPS dans la collection SCOOPS
   Future<DocumentReference?> enregistrerNouvelleSCOOPS() async {
+    print("🟡 enregistrerNouvelleSCOOPS - Début enregistrement");
+
     final champs = champsManquantsScoops();
     if (champs.isNotEmpty) {
+      print(
+          "🔴 enregistrerNouvelleSCOOPS - Champs manquants: ${champs.join(", ")}");
       Get.snackbar(
         "Erreur",
         "Veuillez remplir les champs suivants :\n${champs.join(", ")}",
@@ -571,78 +576,161 @@ class CollecteController extends GetxController {
       return null;
     }
 
-    final scoopsData = {
-      'nom': nomScoopsAjout.text,
-      'nomPresident': nomPresidentAjout.text,
-      "numeroPresident": numeroPresidentCtrl.text,
-      'region': regionScoopsAjout.value,
-      'province': provinceScoopsAjout.value,
-      'commune': communeScoopsAjout.value,
-      'predominanceFlorale': predominancesFloralesSelected.toList(),
-      'nbRuchesTrad': int.parse(nbRuchesTradScoopsAjout.text),
-      'nbRuchesMod': int.parse(nbRuchesModScoopsAjout.text),
-      'nbMembres': int.parse(nbMembreScoopsAjout.text),
-      'nbHommes': int.parse(nbHommeScoopsAjout.text),
-      'nbFemmes': nbFemmeScoopsAjout.value,
-      'nbJeunes': int.parse(nbJeuneScoopsAjout.text),
-      'nbVieux': nbVieuxScoopsAjout.value,
-      'recipise': recipiseFile.value ?? "",
-      'createdAt': FieldValue.serverTimestamp(),
-    };
+    try {
+      print("🟡 enregistrerNouvelleSCOOPS - Préparation données");
+      print(
+          "🟡 enregistrerNouvelleSCOOPS - Nom SCOOPS: ${nomScoopsAjout.text}");
+      print(
+          "🟡 enregistrerNouvelleSCOOPS - Président: ${nomPresidentAjout.text}");
+      print(
+          "🟡 enregistrerNouvelleSCOOPS - Région: ${regionScoopsAjout.value}");
+      print(
+          "🟡 enregistrerNouvelleSCOOPS - Province: ${provinceScoopsAjout.value}");
+      print(
+          "🟡 enregistrerNouvelleSCOOPS - Commune: ${communeScoopsAjout.value}");
 
-    // Champs géographiques dynamiques
-    if (["Ouagadougou", "BOBO-DIOULASSO", "Bobo-Dioulasso"]
-        .contains(communeScoopsAjout.value)) {
-      scoopsData['arrondissement'] = arrondissementScoopsAjout.value;
-      scoopsData['secteur'] = secteurScoopsAjout.value;
-      scoopsData['quartier'] = quartierScoopsAjout.value;
-    } else {
-      scoopsData['village'] = villageScoopsAjout.value;
+      final scoopsData = {
+        'nom': nomScoopsAjout.text,
+        'nomPresident': nomPresidentAjout.text,
+        "numeroPresident": numeroPresidentCtrl.text,
+        'region': regionScoopsAjout.value,
+        'province': provinceScoopsAjout.value,
+        'commune': communeScoopsAjout.value,
+        'predominanceFlorale': predominancesFloralesSelected.toList(),
+        'nbRuchesTrad': int.parse(nbRuchesTradScoopsAjout.text),
+        'nbRuchesMod': int.parse(nbRuchesModScoopsAjout.text),
+        'nbMembres': int.parse(nbMembreScoopsAjout.text),
+        'nbHommes': int.parse(nbHommeScoopsAjout.text),
+        'nbFemmes': nbFemmeScoopsAjout.value,
+        'nbJeunes': int.parse(nbJeuneScoopsAjout.text),
+        'nbVieux': nbVieuxScoopsAjout.value,
+        'recipise': recipiseFile.value ?? "",
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      // Champs géographiques dynamiques
+      if (["Ouagadougou", "BOBO-DIOULASSO", "Bobo-Dioulasso"]
+          .contains(communeScoopsAjout.value)) {
+        print(
+            "🟡 enregistrerNouvelleSCOOPS - Commune urbaine détectée, ajout arrondissement/secteur/quartier");
+        scoopsData['arrondissement'] = arrondissementScoopsAjout.value;
+        scoopsData['secteur'] = secteurScoopsAjout.value;
+        scoopsData['quartier'] = quartierScoopsAjout.value;
+      } else {
+        print(
+            "🟡 enregistrerNouvelleSCOOPS - Commune rurale détectée, ajout village");
+        scoopsData['village'] = villageScoopsAjout.value;
+      }
+
+      print(
+          "🟡 enregistrerNouvelleSCOOPS - Données préparées: ${scoopsData.keys.toList()}");
+      print("🟡 enregistrerNouvelleSCOOPS - Début sauvegarde Firestore");
+
+      // Obtenir le site depuis UserSession
+      final userSession = Get.find<UserSession>();
+      final nomSite = userSession.site ?? 'DefaultSite';
+
+      // Créer un ID personnalisé basé sur le nom (comme pour les producteurs)
+      final scoopId =
+          'scoop_${nomScoopsAjout.text.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}';
+
+      await FirebaseFirestore.instance
+          .collection('Sites')
+          .doc(nomSite)
+          .collection('listes_scoop')
+          .doc(scoopId)
+          .set(scoopsData);
+
+      print("✅ enregistrerNouvelleSCOOPS - SCOOPS enregistrée avec succès");
+      print("🟡 enregistrerNouvelleSCOOPS - ID document: $scoopId");
+
+      Get.snackbar("Succès", "SCOOPS ajoutée !");
+      reset();
+      await chargerScoopsConnues();
+
+      // Créer une référence factice pour la compatibilité
+      final docRef = FirebaseFirestore.instance
+          .collection('Sites')
+          .doc(nomSite)
+          .collection('listes_scoop')
+          .doc(scoopId);
+      return docRef;
+    } catch (e, stackTrace) {
+      print("🔴 enregistrerNouvelleSCOOPS - ERREUR: $e");
+      print("🔴 enregistrerNouvelleSCOOPS - STACK TRACE: $stackTrace");
+      Get.snackbar("Erreur", "Erreur lors de l'enregistrement: $e");
+      return null;
     }
-
-    final ref =
-        await FirebaseFirestore.instance.collection('SCOOPS').add(scoopsData);
-    Get.snackbar("Succès", "SCOOPS ajoutée !");
-    reset();
-    await chargerScoopsConnues();
-    return ref;
   }
 
   /// Enregistre un nouvel Individuel dans la collection Individuels
   Future<DocumentReference?> enregistrerNouvelIndividuel() async {
-    final indivData = {
-      'nomPrenom': nomPrenomIndivAjout.text,
-      "numeroIndividuel": numeroIndividuelCtrl.text,
-      'region': regionIndivAjout.value,
-      'province': provinceIndivAjout.value,
-      'commune': communeIndivAjout.value,
-      // Dynamique pour Ouaga/Bobo ou Village classique
-      if (["Ouagadougou", "BOBO-DIOULASSO", "Bobo-Dioulasso"]
-          .contains(communeIndivAjout.value)) ...{
-        'arrondissement': arrondissementIndivAjout.value,
-        'secteur': secteurIndivAjout.value,
-        'quartier': quartierIndivAjout.value,
-      } else
-        'village': villageIndivAjout.value,
-      'sexe': sexeIndivAjout.value,
-      'age': ageIndivAjout.value,
-      'cooperative': cooperativeIndivAjout.value,
-      'predominanceFlorale': predominancesFloralesSelected.toList(),
-      'nbRuchesTrad': int.parse(nbRuchesTradIndivAjout.text),
-      'nbRuchesMod': int.parse(nbRuchesModIndivAjout.text),
-      'createdAt': FieldValue.serverTimestamp(),
-    };
-    final ref = await FirebaseFirestore.instance
-        .collection('Individuels')
-        .add(indivData);
-    Get.snackbar("Succès", "Producteur individuel ajouté !");
-    await chargerIndividuelsConnus();
-    reset();
-    return ref;
+    print("🟡 enregistrerNouvelIndividuel - Début enregistrement");
+
+    try {
+      print("🟡 enregistrerNouvelIndividuel - Préparation données");
+      print(
+          "🟡 enregistrerNouvelIndividuel - Nom: ${nomPrenomIndivAjout.text}");
+      print(
+          "🟡 enregistrerNouvelIndividuel - Numéro: ${numeroIndividuelCtrl.text}");
+      print(
+          "🟡 enregistrerNouvelIndividuel - Région: ${regionIndivAjout.value}");
+      print(
+          "🟡 enregistrerNouvelIndividuel - Province: ${provinceIndivAjout.value}");
+      print(
+          "🟡 enregistrerNouvelIndividuel - Commune: ${communeIndivAjout.value}");
+
+      final indivData = {
+        'nomPrenom': nomPrenomIndivAjout.text,
+        "numeroIndividuel": numeroIndividuelCtrl.text,
+        'region': regionIndivAjout.value,
+        'province': provinceIndivAjout.value,
+        'commune': communeIndivAjout.value,
+        // Dynamique pour Ouaga/Bobo ou Village classique
+        if (["Ouagadougou", "BOBO-DIOULASSO", "Bobo-Dioulasso"]
+            .contains(communeIndivAjout.value)) ...{
+          'arrondissement': arrondissementIndivAjout.value,
+          'secteur': secteurIndivAjout.value,
+          'quartier': quartierIndivAjout.value,
+        } else
+          'village': villageIndivAjout.value,
+        'sexe': sexeIndivAjout.value,
+        'age': ageIndivAjout.value,
+        'cooperative': cooperativeIndivAjout.value,
+        'predominanceFlorale': predominancesFloralesSelected.toList(),
+        'nbRuchesTrad': int.parse(nbRuchesTradIndivAjout.text),
+        'nbRuchesMod': int.parse(nbRuchesModIndivAjout.text),
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      print(
+          "🟡 enregistrerNouvelIndividuel - Données préparées: ${indivData.keys.toList()}");
+      print("🟡 enregistrerNouvelIndividuel - Début sauvegarde Firestore");
+
+      final ref = await FirebaseFirestore.instance
+          .collection('Individuels')
+          .add(indivData);
+
+      print(
+          "✅ enregistrerNouvelIndividuel - Producteur individuel enregistré avec succès");
+      print("🟡 enregistrerNouvelIndividuel - ID document: ${ref.id}");
+
+      Get.snackbar("Succès", "Producteur individuel ajouté !");
+      await chargerIndividuelsConnus();
+      reset();
+      return ref;
+    } catch (e, stackTrace) {
+      print("🔴 enregistrerNouvelIndividuel - ERREUR: $e");
+      print("🔴 enregistrerNouvelIndividuel - STACK TRACE: $stackTrace");
+      Get.snackbar("Erreur", "Erreur lors de l'enregistrement: $e");
+      return null;
+    }
   }
 
   // ENREGISTREMENT DANS FIRESTORE
   Future<void> enregistrerCollecteRecolte() async {
+    print("🟡 enregistrerCollecteRecolte - Début enregistrement");
+
     if (dateCollecte.value == null ||
         nomRecolteur.value == null ||
         region.value == null ||
@@ -662,50 +750,82 @@ class CollecteController extends GetxController {
         (!["Ouagadougou", "BOBO-DIOULASSO", "Bobo-Dioulasso"]
                 .contains(commune.value) &&
             (village.value == null || village.value!.isEmpty))) {
+      print("🔴 enregistrerCollecteRecolte - Champs manquants détectés");
       Get.snackbar("Erreur", "Veuillez remplir tous les champs !");
       return;
     }
 
     User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
+      print("🔴 enregistrerCollecteRecolte - Utilisateur non connecté");
       Get.snackbar("Erreur", "Utilisateur non connecté !");
       return;
     }
 
-    final collecteRef =
-        await FirebaseFirestore.instance.collection('collectes').add({
-      'type': 'récolte',
-      'dateCollecte': dateCollecte.value ?? DateTime.now(),
-      'utilisateurId': user.uid,
-      'utilisateurNom': user.displayName ?? user.email ?? '',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    try {
+      print(
+          "🟡 enregistrerCollecteRecolte - Validation réussie, début enregistrement");
+      print("🟡 enregistrerCollecteRecolte - Récolteur: ${nomRecolteur.value}");
+      print(
+          "🟡 enregistrerCollecteRecolte - Localisation: ${region.value}/${province.value}/${commune.value}");
+      print(
+          "🟡 enregistrerCollecteRecolte - Quantité: ${quantiteRecolte.value} kg");
+      print(
+          "🟡 enregistrerCollecteRecolte - Nb ruches: ${nbRuchesRecoltees.value}");
+      print(
+          "🟡 enregistrerCollecteRecolte - Prédominance florale: ${predominancesFloralesSelected.toList()}");
 
-    final Map<String, dynamic> sousDocData = {
-      'nomRecolteur': nomRecolteur.value,
-      'region': region.value,
-      'province': province.value,
-      'commune': commune.value,
-      'quantiteKg': quantiteRecolte.value,
-      'nbRuchesRecoltees': nbRuchesRecoltees.value,
-      'predominanceFlorale': predominancesFloralesSelected.toList(),
-      'dateRecolte': dateCollecte.value,
-      "typeProduit": "Miel brute",
-    };
-    if (["Ouagadougou", "BOBO-DIOULASSO", "Bobo-Dioulasso"]
-        .contains(commune.value)) {
-      sousDocData['arrondissement'] = arrondissement.value;
-      sousDocData['secteur'] = secteur.value;
-      sousDocData['quartier'] = quartier.value;
-    } else {
-      sousDocData['village'] = village.value;
+      final collecteRef =
+          await FirebaseFirestore.instance.collection('collectes').add({
+        'type': 'récolte',
+        'dateCollecte': dateCollecte.value ?? DateTime.now(),
+        'utilisateurId': user.uid,
+        'utilisateurNom': user.displayName ?? user.email ?? '',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      print(
+          "🟡 enregistrerCollecteRecolte - Document collecte principal créé: ${collecteRef.id}");
+
+      final Map<String, dynamic> sousDocData = {
+        'nomRecolteur': nomRecolteur.value,
+        'region': region.value,
+        'province': province.value,
+        'commune': commune.value,
+        'quantiteKg': quantiteRecolte.value,
+        'nbRuchesRecoltees': nbRuchesRecoltees.value,
+        'predominanceFlorale': predominancesFloralesSelected.toList(),
+        'dateRecolte': dateCollecte.value,
+        "typeProduit": "Miel brute",
+      };
+
+      if (["Ouagadougou", "BOBO-DIOULASSO", "Bobo-Dioulasso"]
+          .contains(commune.value)) {
+        print(
+            "🟡 enregistrerCollecteRecolte - Commune urbaine, ajout données urbaines");
+        sousDocData['arrondissement'] = arrondissement.value;
+        sousDocData['secteur'] = secteur.value;
+        sousDocData['quartier'] = quartier.value;
+      } else {
+        print("🟡 enregistrerCollecteRecolte - Commune rurale, ajout village");
+        sousDocData['village'] = village.value;
+      }
+
+      print(
+          "🟡 enregistrerCollecteRecolte - Données sous-document préparées: ${sousDocData.keys.toList()}");
+
+      await collecteRef.collection('Récolte').add(sousDocData);
+
+      print(
+          "✅ enregistrerCollecteRecolte - Collecte récolte enregistrée avec succès");
+      Get.snackbar("Succès", "Collecte (Récolte) enregistrée !");
+      reset();
+      Get.back();
+    } catch (e, stackTrace) {
+      print("🔴 enregistrerCollecteRecolte - ERREUR: $e");
+      print("🔴 enregistrerCollecteRecolte - STACK TRACE: $stackTrace");
+      Get.snackbar("Erreur", "Erreur lors de l'enregistrement: $e");
     }
-
-    await collecteRef.collection('Récolte').add(sousDocData);
-
-    Get.snackbar("Succès", "Collecte (Récolte) enregistrée !");
-    reset();
-    Get.back();
   }
 
   /// Enregistre une collecte de type ACHAT
@@ -714,93 +834,152 @@ class CollecteController extends GetxController {
     required Map<String, dynamic> achatDetails,
     required Map<String, dynamic> fournisseurDetails,
   }) async {
+    print("🟡 enregistrerCollecteAchat - Début enregistrement");
+    print(
+        "🟡 enregistrerCollecteAchat - Type: ${isScoops ? 'SCOOPS' : 'Individuel'}");
+
     User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
+      print("🔴 enregistrerCollecteAchat - Utilisateur non connecté");
       Get.snackbar("Erreur", "Utilisateur non connecté !");
       return;
     }
 
-    final collecteRef =
-        await FirebaseFirestore.instance.collection('collectes').add({
-      'type': 'achat',
-      'dateCollecte': dateCollecte.value ?? DateTime.now(),
-      'utilisateurId': user.uid,
-      'utilisateurNom': user.displayName ?? user.email ?? '',
-      'createdAt': FieldValue.serverTimestamp(),
-      if (isScoops) 'nomSCOOPS': selectedSCOOPS.value,
-      if (!isScoops) 'nomIndividuel': selectedIndividuel.value,
-    });
+    try {
+      print(
+          "🟡 enregistrerCollecteAchat - Création document collecte principal");
+      print(
+          "🟡 enregistrerCollecteAchat - Utilisateur: ${user.displayName ?? user.email}");
+      print("🟡 enregistrerCollecteAchat - Date: ${dateCollecte.value}");
+      if (isScoops) {
+        print(
+            "🟡 enregistrerCollecteAchat - SCOOPS sélectionnée: ${selectedSCOOPS.value}");
+      } else {
+        print(
+            "🟡 enregistrerCollecteAchat - Individuel sélectionnée: ${selectedIndividuel.value}");
+      }
 
-    final String sousCollection = isScoops ? 'SCOOP' : 'Individuel';
+      final collecteRef =
+          await FirebaseFirestore.instance.collection('collectes').add({
+        'type': 'achat',
+        'dateCollecte': dateCollecte.value ?? DateTime.now(),
+        'utilisateurId': user.uid,
+        'utilisateurNom': user.displayName ?? user.email ?? '',
+        'createdAt': FieldValue.serverTimestamp(),
+        if (isScoops) 'nomSCOOPS': selectedSCOOPS.value,
+        if (!isScoops) 'nomIndividuel': selectedIndividuel.value,
+      });
 
-    // On ajoute la dateAchat ici si elle n'est pas déjà dans achatDetails
-    final Map<String, dynamic> achatData = {
-      ...achatDetails,
-      'dateAchat': achatDetails['dateAchat'] ?? DateTime.now(),
-      if (isScoops &&
-          (typeProduitAchatScoops.value?.toLowerCase() == 'cire') &&
-          couleurCireScoops.value != null)
-        'cireCouleur': couleurCireScoops.value,
-      if (!isScoops &&
-          (typeProduitIndiv.value?.toLowerCase() == 'cire') &&
-          couleurCireIndiv.value != null)
-        'cireCouleur': couleurCireIndiv.value,
-    };
+      print(
+          "🟡 enregistrerCollecteAchat - Document collecte créé: ${collecteRef.id}");
 
-    final achatDocRef =
-        await collecteRef.collection(sousCollection).add(achatData);
+      final String sousCollection = isScoops ? 'SCOOP' : 'Individuel';
+      print("🟡 enregistrerCollecteAchat - Sous-collection: $sousCollection");
 
-    final String fournisseurCollection =
-        isScoops ? 'SCOOP_info' : 'Individuel_info';
+      // On ajoute la dateAchat ici si elle n'est pas déjà dans achatDetails
+      final Map<String, dynamic> achatData = {
+        ...achatDetails,
+        'dateAchat': achatDetails['dateAchat'] ?? DateTime.now(),
+        if (isScoops &&
+            (typeProduitAchatScoops.value?.toLowerCase() == 'cire') &&
+            couleurCireScoops.value != null)
+          'cireCouleur': couleurCireScoops.value,
+        if (!isScoops &&
+            (typeProduitIndiv.value?.toLowerCase() == 'cire') &&
+            couleurCireIndiv.value != null)
+          'cireCouleur': couleurCireIndiv.value,
+      };
 
-    // LOGIQUE LOCALISATION AVANCÉE POUR SCOOPS / INDIVIDUEL
-    final commune =
-        isScoops ? communeScoopsAjout.value : communeIndivAjout.value;
-    final quartier =
-        isScoops ? quartierScoopsAjout.value : quartierIndivAjout.value;
-    final arrondissement = isScoops
-        ? arrondissementScoopsAjout.value
-        : arrondissementIndivAjout.value;
-    final secteur =
-        isScoops ? secteurScoopsAjout.value : secteurIndivAjout.value;
-    final village =
-        isScoops ? villageScoopsAjout.value : villageIndivAjout.value;
+      print(
+          "🟡 enregistrerCollecteAchat - Données achat préparées: ${achatData.keys.toList()}");
 
-    Map<String, dynamic> fournisseurDetailsFinal = {
-      ...fournisseurDetails,
-      'commune': commune,
-      'region': isScoops ? regionScoopsAjout.value : regionIndivAjout.value,
-      'province':
-          isScoops ? provinceScoopsAjout.value : provinceIndivAjout.value,
-    };
+      final achatDocRef =
+          await collecteRef.collection(sousCollection).add(achatData);
 
-    if (["Ouagadougou", "BOBO-DIOULASSO", "Bobo-Dioulasso"].contains(commune)) {
-      fournisseurDetailsFinal["arrondissement"] = arrondissement;
-      fournisseurDetailsFinal["secteur"] = secteur;
-      fournisseurDetailsFinal["quartier"] = quartier;
-      fournisseurDetailsFinal["localite"] =
-          "${quartier ?? ''} || ${commune ?? ''}";
-    } else {
-      fournisseurDetailsFinal["village"] = village;
-      fournisseurDetailsFinal["localite"] = village;
+      print(
+          "🟡 enregistrerCollecteAchat - Document achat créé: ${achatDocRef.id}");
+
+      final String fournisseurCollection =
+          isScoops ? 'SCOOP_info' : 'Individuel_info';
+
+      print(
+          "🟡 enregistrerCollecteAchat - Collection fournisseur: $fournisseurCollection");
+
+      // LOGIQUE LOCALISATION AVANCÉE POUR SCOOPS / INDIVIDUEL
+      final commune =
+          isScoops ? communeScoopsAjout.value : communeIndivAjout.value;
+      final quartier =
+          isScoops ? quartierScoopsAjout.value : quartierIndivAjout.value;
+      final arrondissement = isScoops
+          ? arrondissementScoopsAjout.value
+          : arrondissementIndivAjout.value;
+      final secteur =
+          isScoops ? secteurScoopsAjout.value : secteurIndivAjout.value;
+      final village =
+          isScoops ? villageScoopsAjout.value : villageIndivAjout.value;
+
+      print("🟡 enregistrerCollecteAchat - Localisation: $commune");
+
+      Map<String, dynamic> fournisseurDetailsFinal = {
+        ...fournisseurDetails,
+        'commune': commune,
+        'region': isScoops ? regionScoopsAjout.value : regionIndivAjout.value,
+        'province':
+            isScoops ? provinceScoopsAjout.value : provinceIndivAjout.value,
+      };
+
+      if (["Ouagadougou", "BOBO-DIOULASSO", "Bobo-Dioulasso"]
+          .contains(commune)) {
+        print(
+            "🟡 enregistrerCollecteAchat - Commune urbaine, ajout données urbaines");
+        fournisseurDetailsFinal["arrondissement"] = arrondissement;
+        fournisseurDetailsFinal["secteur"] = secteur;
+        fournisseurDetailsFinal["quartier"] = quartier;
+        fournisseurDetailsFinal["localite"] =
+            "${quartier ?? ''} || ${commune ?? ''}";
+      } else {
+        print("🟡 enregistrerCollecteAchat - Commune rurale, ajout village");
+        fournisseurDetailsFinal["village"] = village;
+        fournisseurDetailsFinal["localite"] = village;
+      }
+
+      print(
+          "🟡 enregistrerCollecteAchat - Données fournisseur finalisées: ${fournisseurDetailsFinal.keys.toList()}");
+
+      await achatDocRef
+          .collection(fournisseurCollection)
+          .add(fournisseurDetailsFinal);
+
+      print(
+          "✅ enregistrerCollecteAchat - Collecte achat enregistrée avec succès");
+      Get.snackbar("Succès", "Collecte (Achat) enregistrée !");
+      reset();
+      Get.back();
+    } catch (e, stackTrace) {
+      print("🔴 enregistrerCollecteAchat - ERREUR: $e");
+      print("🔴 enregistrerCollecteAchat - STACK TRACE: $stackTrace");
+      Get.snackbar("Erreur", "Erreur lors de l'enregistrement: $e");
     }
-
-    await achatDocRef
-        .collection(fournisseurCollection)
-        .add(fournisseurDetailsFinal);
-
-    Get.snackbar("Succès", "Collecte (Achat) enregistrée !");
-    reset();
-    Get.back();
   }
 
   /// Enregistre une collecte de type ACHAT SCOOPS (multi-ruche, multi-produit)
 
   Future<void> chargerScoopsConnues() async {
-    final snapshot =
-        await FirebaseFirestore.instance.collection('SCOOPS').get();
-    scoopsConnues.clear();
-    scoopsConnues.addAll(snapshot.docs.map((doc) => doc['nom'] as String));
+    try {
+      final userSession = Get.find<UserSession>();
+      final nomSite = userSession.site ?? 'DefaultSite';
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection('Sites')
+          .doc(nomSite)
+          .collection('listes_scoop')
+          .get();
+
+      scoopsConnues.clear();
+      scoopsConnues.addAll(snapshot.docs.map((doc) => doc['nom'] as String));
+    } catch (e) {
+      print('❌ Erreur chargement SCOOPs: $e');
+    }
   }
 
   Future<void> chargerIndividuelsConnus() async {

@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:apisavana_gestion/utils/smart_appbar.dart';
 
 class ClientFormPage extends StatefulWidget {
   final String commercialId;
@@ -290,8 +291,8 @@ class _ClientFormPageState extends State<ClientFormPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Nouveau client"),
+      appBar: SmartAppBar(
+        title: "Nouveau client",
         backgroundColor: Colors.orange[700],
       ),
       body: Padding(

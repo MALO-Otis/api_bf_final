@@ -106,7 +106,7 @@ class _LoginPageState extends State<LoginPage> {
       );
       print('SESSION - site: \'$normalizedSite\', role: \'$normalizedRole\'');
       // Navigation GetX vers le dashboard sans routes nommées
-      Get.offAll(() => DashboardPage());
+      Get.offAll(() => const DashboardPage());
     } on FirebaseAuthException catch (e) {
       errorMessage = e.message ?? "Erreur lors de la connexion";
     } finally {

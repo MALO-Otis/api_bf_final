@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:apisavana_gestion/utils/smart_appbar.dart';
 
 import 'conditionnement_edit.dart';
 
@@ -10,15 +11,10 @@ class ConditionnementHomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          tooltip: "Retour au Dashboard",
-          icon:
-              const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-          onPressed: () => Get.offAllNamed('/dashboard'),
-        ),
-        title: const Text("🧊 Conditionnement - Lots filtrés"),
+      appBar: SmartAppBar(
+        title: "🧊 Conditionnement - Lots filtrés",
         backgroundColor: Colors.amber[700],
+        onBackPressed: () => Get.offAllNamed('/dashboard'),
       ),
       backgroundColor: Colors.amber[50],
       body: StreamBuilder<QuerySnapshot>(

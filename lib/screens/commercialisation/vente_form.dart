@@ -144,39 +144,56 @@ class _VenteFormPageState extends State<VenteFormPage> {
   }
 
   Future<void> _saveVente() async {
+    print("🟡 _saveVente - Début enregistrement vente");
+
     FocusScope.of(context).unfocus();
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      print("🔴 _saveVente - Validation formulaire échoué");
+      return;
+    }
     if (_clientId == null || _clientId!.isEmpty) {
+      print("🔴 _saveVente - Client non sélectionné");
       Get.snackbar("Erreur", "Sélectionnez un client !");
       return;
     }
     if (_dateVente == null) {
+      print("🔴 _saveVente - Date de vente non sélectionnée");
       Get.snackbar("Erreur", "Sélectionnez la date de vente !");
       return;
     }
     if (quantiteTotale <= 0) {
+      print("🔴 _saveVente - Quantité totale invalide: $quantiteTotale");
       Get.snackbar("Erreur", "Saisissez au moins une quantité à vendre !");
       return;
     }
     if (montantTotal <= 0) {
+      print("🔴 _saveVente - Montant total invalide: $montantTotal");
       Get.snackbar("Erreur", "Le montant total doit être supérieur à zéro !");
       return;
     }
+
+    print("🟡 _saveVente - Vérification quantités par type");
     for (final e in widget.prelevement['emballages'] ?? []) {
       final type = e['type'];
       final n = quantiteParType[type] ?? 0;
       final maxPots = maxPotsRestants[type] ?? 0;
+      print("🟡 _saveVente - Type $type: $n/$maxPots");
       if (n < 0) {
+        print("🔴 _saveVente - Quantité négative pour $type: $n");
         Get.snackbar("Erreur", "Quantité négative non autorisée !");
         return;
       }
       if (n > maxPots) {
+        print(
+            "🔴 _saveVente - Quantité $type supérieure au disponible: $n > $maxPots");
         Get.snackbar(
             "Erreur", "Quantité pour $type supérieure au disponible !");
         return;
       }
     }
     if (montantPaye < 0 || montantRestant < 0) {
+      print(
+          "🔴 _saveVente - Montants invalides - Payé: $montantPaye, Restant: $montantRestant");
       Get.snackbar("Erreur", "Montants invalides !");
       return;
     }
@@ -186,6 +203,17 @@ class _VenteFormPageState extends State<VenteFormPage> {
     });
 
     try {
+      print("🟡 _saveVente - Validation réussie, préparation données");
+      print("🟡 _saveVente - Client ID: $_clientId");
+      print("🟡 _saveVente - Date vente: $_dateVente");
+      print("🟡 _saveVente - Type vente: $typeVente");
+      print("🟡 _saveVente - Quantité totale: $quantiteTotale kg");
+      print("🟡 _saveVente - Montant total: $montantTotal FCFA");
+      print("🟡 _saveVente - Montant payé: $montantPaye FCFA");
+      print(
+          "🟡 _saveVente - Montant restant: ${montantTotal - montantPaye} FCFA");
+      print("🟡 _saveVente - Prélèvement ID: ${widget.prelevement['id']}");
+
       final venteData = {
         "dateVente":
             _dateVente != null ? Timestamp.fromDate(_dateVente!) : null,
@@ -210,16 +238,27 @@ class _VenteFormPageState extends State<VenteFormPage> {
         "montantRestant": montantTotal - montantPaye,
         "createdAt": FieldValue.serverTimestamp(),
       };
-      await FirebaseFirestore.instance
+
+      print("🟡 _saveVente - Données préparées: ${venteData.keys.toList()}");
+      print(
+          "🟡 _saveVente - Emballages vendus: ${venteData['emballagesVendus']}");
+      print("🟡 _saveVente - Début sauvegarde Firestore");
+
+      final docRef = await FirebaseFirestore.instance
           .collection('ventes')
           .doc(widget.prelevement['commercialId'])
           .collection('ventes_effectuees')
           .add(venteData);
 
+      print("✅ _saveVente - Vente enregistrée avec succès");
+      print("🟡 _saveVente - ID document: ${docRef.id}");
+
       Get.snackbar("Succès", "Vente enregistrée !");
       // On revient à la page précédente et on déclenche un refresh
       Navigator.of(context).pop(true);
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print("🔴 _saveVente - ERREUR: $e");
+      print("🔴 _saveVente - STACK TRACE: $stackTrace");
       Get.snackbar("Erreur", "Erreur lors de l'enregistrement : $e");
     } finally {
       if (mounted) {
