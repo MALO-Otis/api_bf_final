@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../data/models/collecte_models.dart';
 import 'package:intl/intl.dart';
+import '../../../data/geographe/geographie.dart';
 
 /// Widget custom pour le dialogue de confirmation de collecte - VERSION PROFESSIONNELLE
 class DialogueConfirmationCollecte extends StatelessWidget {
@@ -1327,6 +1328,10 @@ class DialogueConfirmationCollecte extends StatelessWidget {
 
   Widget _buildLocalisationRow(
       Map<String, String> localisation, bool isSmallScreen) {
+    // Utilisation du formatage avec codes
+    final localisationAvecCode =
+        GeographieData.formatLocationCodeFromMap(localisation);
+
     final localisationComplete = [
       localisation['region'],
       localisation['province'],
@@ -1355,15 +1360,28 @@ class DialogueConfirmationCollecte extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: Text(
-            localisationComplete.isEmpty
-                ? 'Non spécifiée'
-                : localisationComplete,
-            style: TextStyle(
-              fontSize: isSmallScreen ? 11 : 13,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey.shade800,
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                localisationAvecCode.isEmpty
+                    ? 'Non spécifiée'
+                    : localisationAvecCode,
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 10 : 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade800,
+                ),
+              ),
+              if (localisationComplete.isNotEmpty)
+                Text(
+                  localisationComplete,
+                  style: TextStyle(
+                    fontSize: isSmallScreen ? 9 : 10,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+            ],
           ),
         ),
       ],

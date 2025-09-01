@@ -69,7 +69,7 @@ class _EditCollecteRecoltePageState extends State<EditCollecteRecoltePage> {
   }
 
   final List<String> hiveTypes = ['Traditionnel', 'Moderne'];
-  final List<String> containerTypes = ['Bidon', 'Pot'];
+  final List<String> containerTypes = ['Bidon', 'Seau', 'Fût'];
 
   // Listes de données géographiques et personnel
   final List<String> sites = sitesApisavana;

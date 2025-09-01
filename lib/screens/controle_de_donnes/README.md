@@ -13,7 +13,7 @@ lib/screens/controle_de_donnes/
 ├── models/                     # Modèles de données
 │   └── collecte_models.dart   # Définitions des types de collectes
 ├── services/                   # Services de données
-│   └── mock_data_service.dart # Génération de données de test
+│   └── [SUPPRIMÉ] mock_data_service.dart # Service de génération de données de test (supprimé)
 ├── utils/                      # Utilitaires
 │   └── formatters.dart       # Formatage des données
 ├── widgets/                    # Composants réutilisables
@@ -84,12 +84,14 @@ lib/screens/controle_de_donnes/
 
 ## Configuration
 
-### Génération de données mock
-Le service `MockDataService` génère automatiquement :
-- 48 collectes par section par défaut
-- Données réalistes avec variations
-- Relations cohérentes entre les champs
-- Options de filtrage extraites automatiquement
+### Génération de données mock [SUPPRIMÉE]
+~~Le service `MockDataService` générait automatiquement :~~
+- ~~48 collectes par section par défaut~~
+- ~~Données réalistes avec variations~~
+- ~~Relations cohérentes entre les champs~~
+- ~~Options de filtrage extraites automatiquement~~
+
+**Note :** La génération automatique de données fictives a été supprimée pour éviter la pollution de la base de données.
 
 ### Personnalisation
 - **Pagination** : Taille de page configurable (défaut: 20)

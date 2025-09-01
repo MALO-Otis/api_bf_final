@@ -95,7 +95,10 @@ class _EditCollecteIndividuellePageState
 
   void _addContenant() {
     setState(() {
+      final contenantId =
+          'C${(_contenants.length + 1).toString().padLeft(3, '0')}_individuel';
       _contenants.add(ContenantModel(
+        id: contenantId, // 🆕 ID avec suffixe individuel
         typeRuche: '',
         typeMiel: 'Liquide',
         typeContenant: 'Bidon',

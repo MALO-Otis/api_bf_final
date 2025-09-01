@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -7,6 +8,8 @@ import 'models/extraction_models.dart';
 import 'services/extraction_service.dart';
 import 'widgets/extraction_card.dart';
 import 'widgets/extraction_modals.dart';
+import 'widgets/control_attribution_stats_widget.dart';
+import 'pages/attribution_page.dart';
 
 /// Page principale d'extraction de données
 class ExtractionPage extends StatefulWidget {
@@ -32,6 +35,9 @@ class _ExtractionPageState extends State<ExtractionPage>
   late AnimationController _counterController;
   late Animation<double> _counterAnimation;
 
+  // Contrôleur de tabs
+  late TabController _tabController;
+
   // Contrôleurs de texte
   final TextEditingController _searchController = TextEditingController();
 
@@ -45,6 +51,7 @@ class _ExtractionPageState extends State<ExtractionPage>
   void initState() {
     super.initState();
     _initializeAnimations();
+    _initializeTabs();
     _loadData();
     _startClock();
     _simulateNotifications();
@@ -54,6 +61,7 @@ class _ExtractionPageState extends State<ExtractionPage>
   void dispose() {
     _headerGlowController.dispose();
     _counterController.dispose();
+    _tabController.dispose();
     _searchController.dispose();
     _clockTimer?.cancel();
     super.dispose();
@@ -80,18 +88,29 @@ class _ExtractionPageState extends State<ExtractionPage>
     ));
   }
 
-  /// Charge les données
+  /// Initialise les tabs
+  void _initializeTabs() {
+    _tabController = TabController(
+      length: 2, // Ancienne interface + Nouveaux produits attribués
+      vsync: this,
+    );
+  }
+
+  /// Charge les données depuis le module contrôle et les données mock
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
-    await Future.delayed(
-        const Duration(milliseconds: 500)); // Simule le chargement
-
-    _allProducts = _service.getAllProducts();
-    _applyFilters();
-
-    setState(() => _isLoading = false);
-    _counterController.forward();
+    // Écouter les produits en temps réel depuis le module contrôle
+    _service.getAllProductsStream().listen((products) {
+      if (mounted) {
+        setState(() {
+          _allProducts = products;
+          _applyFilters();
+          _isLoading = false;
+        });
+        _counterController.forward();
+      }
+    });
   }
 
   /// Démarre l'horloge temps réel
@@ -157,6 +176,11 @@ class _ExtractionPageState extends State<ExtractionPage>
     );
   }
 
+  /// Ouvre la page d'attribution
+  void _openAttributionPage() {
+    Get.to(() => const AttributionPage());
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -171,6 +195,14 @@ class _ExtractionPageState extends State<ExtractionPage>
           : isMobile
               ? _buildMobileLayout(theme)
               : _buildDesktopLayout(theme, isTablet),
+      floatingActionButton: isMobile
+          ? FloatingActionButton.extended(
+              onPressed: _openAttributionPage,
+              icon: const Icon(Icons.assignment),
+              label: const Text('Attributions'),
+              backgroundColor: Colors.blue.shade600,
+            )
+          : null,
     );
   }
 
@@ -198,6 +230,11 @@ class _ExtractionPageState extends State<ExtractionPage>
             padding: const EdgeInsets.all(16),
             child: _buildHeader(theme, true),
           ),
+        ),
+
+        // Statistiques des attributions du module contrôle
+        const SliverToBoxAdapter(
+          child: ControlAttributionStatsWidget(),
         ),
 
         // Stats dashboard
@@ -235,6 +272,11 @@ class _ExtractionPageState extends State<ExtractionPage>
         children: [
           // Header
           _buildHeader(theme, false),
+
+          const SizedBox(height: 24),
+
+          // Statistiques des attributions du module contrôle
+          const ControlAttributionStatsWidget(),
 
           const SizedBox(height: 24),
 
@@ -536,6 +578,35 @@ class _ExtractionPageState extends State<ExtractionPage>
 
             const SizedBox(width: 16),
 
+            // Bouton Attributions
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.blue.shade600, Colors.purple.shade600],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ElevatedButton.icon(
+                onPressed: _openAttributionPage,
+                icon: const Icon(Icons.assignment, size: 18),
+                label: const Text('Attributions'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(width: 16),
+
             // Notifications
             Stack(
               children: [
@@ -636,12 +707,20 @@ class _ExtractionPageState extends State<ExtractionPage>
             LayoutBuilder(
               builder: (context, constraints) {
                 int columns;
+                double cardAspectRatio;
+
                 if (constraints.maxWidth < 600) {
                   columns = 2; // Mobile: 2 colonnes
+                  cardAspectRatio = 1.4;
                 } else if (constraints.maxWidth < 900) {
                   columns = 3; // Tablette: 3 colonnes
-                } else {
+                  cardAspectRatio = 1.3;
+                } else if (constraints.maxWidth < 1400) {
                   columns = 4; // Desktop: 4 colonnes
+                  cardAspectRatio = 1.3;
+                } else {
+                  columns = 5; // Écrans très larges: 5 colonnes
+                  cardAspectRatio = 1.2;
                 }
 
                 final statCards = [
@@ -712,8 +791,8 @@ class _ExtractionPageState extends State<ExtractionPage>
                     crossAxisCount: columns,
                     crossAxisSpacing: 16,
                     mainAxisSpacing: 16,
-                    // Plus d'espace vertical pour éviter les overflows
-                    childAspectRatio: isMobile ? 1.3 : 1.3,
+                    // Ratio adaptatif selon le nombre de colonnes
+                    childAspectRatio: cardAspectRatio,
                   ),
                   itemCount: statCards.length,
                   itemBuilder: (context, index) => statCards[index],
@@ -1032,10 +1111,18 @@ class _ExtractionPageState extends State<ExtractionPage>
 
   /// Filtres desktop (horizontal)
   Widget _buildDesktopFilters(ThemeData theme) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: IntrinsicHeight(
-        child: Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Calcul de la largeur disponible pour déterminer si on a besoin du scroll
+        const minFilterWidth = 200.0;
+        const searchWidth = 300.0;
+        const spacing = 16.0;
+        final totalFiltersWidth =
+            searchWidth + (minFilterWidth * 5) + (spacing * 5);
+
+        final needsScroll = totalFiltersWidth > constraints.maxWidth;
+
+        Widget filtersRow = Row(
           children: [
             // Recherche
             SizedBox(
@@ -1144,8 +1231,18 @@ class _ExtractionPageState extends State<ExtractionPage>
               ),
             ),
           ],
-        ),
-      ),
+        );
+
+        // Retourner avec ou sans scroll selon l'espace disponible
+        if (needsScroll) {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: IntrinsicHeight(child: filtersRow),
+          );
+        } else {
+          return filtersRow;
+        }
+      },
     );
   }
 

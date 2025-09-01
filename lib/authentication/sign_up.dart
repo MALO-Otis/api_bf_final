@@ -235,6 +235,10 @@ class _SignupPageState extends State<SignupPage> {
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
+
+      // Envoi de l'email de vérification
+      await userCred.user!.sendEmailVerification();
+
       // Normalisation du site et du rôle avant enregistrement
       String normalizedSite = '';
       if ((selectedSite ?? '').isNotEmpty) {
@@ -257,20 +261,14 @@ class _SignupPageState extends State<SignupPage> {
         'telephone': phoneController.text.trim(),
         'site': normalizedSite,
         'role': normalizedRole,
+        'emailVerified': false, // Ajout du statut de vérification
         'createdAt': FieldValue.serverTimestamp(),
       });
+
       setState(() => isLoading = false);
-      // Affiche un message de succès puis redirige vers la page de login
-      Get.snackbar(
-        'Succès',
-        'Compte créé avec succès ! Connectez-vous.',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.green[100],
-        colorText: Colors.green[900],
-        duration: Duration(seconds: 2),
-      );
-      await Future.delayed(Duration(seconds: 2));
-      Get.offAll(() => LoginPage());
+
+      // Affichage du popup de vérification d'email
+      _showEmailVerificationDialog();
     } on FirebaseAuthException catch (e) {
       setState(() {
         isLoading = false;
@@ -282,6 +280,193 @@ class _SignupPageState extends State<SignupPage> {
         errors['form'] = 'Erreur inattendue: $e';
       });
     }
+  }
+
+  void _showEmailVerificationDialog() {
+    // Sauvegarder l'email pour le renvoi
+    final userEmail = emailController.text.trim();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.email, color: Color(0xFFF49101)),
+              SizedBox(width: 8),
+              Text(
+                'Vérification Email',
+                style: TextStyle(
+                  color: Color(0xFF2D0C0D),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Compte créé avec succès !',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.green[700],
+                ),
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Un email de vérification a été envoyé à :',
+                style: TextStyle(fontSize: 14),
+              ),
+              SizedBox(height: 4),
+              Container(
+                padding: EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Color(0xFFF49101).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  emailController.text.trim(),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFF49101),
+                  ),
+                ),
+              ),
+              SizedBox(height: 12),
+              Container(
+                padding: EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.info_outline,
+                            color: Colors.blue.shade600, size: 18),
+                        SizedBox(width: 6),
+                        Text(
+                          'Vérifiez bien votre adresse email !',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.blue.shade700,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      '• Assurez-vous que l\'adresse ci-dessus est correcte\n• Vérifiez vos spams/courriers indésirables\n• Le lien de vérification expire dans 24h',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 12),
+              Text(
+                '⚠️ Vous devez vérifier votre email avant de pouvoir vous connecter.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.orange[700],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                // Permettre de modifier l'email si il y a une erreur
+              },
+              child: Text(
+                'Modifier l\'email',
+                style: TextStyle(color: Colors.orange[700]),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Get.offAll(() => LoginPage());
+              },
+              child: Text(
+                'Continuer',
+                style: TextStyle(color: Color(0xFF2D0C0D)),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                try {
+                  print('🔄 Tentative de renvoi d\'email...');
+
+                  // Vérifier si un utilisateur est connecté
+                  final currentUser = FirebaseAuth.instance.currentUser;
+                  if (currentUser == null) {
+                    print(
+                        '❌ Aucun utilisateur connecté pour renvoyer l\'email');
+                    Get.snackbar(
+                      'Erreur',
+                      'Aucun utilisateur connecté. Veuillez recréer le compte.',
+                      snackPosition: SnackPosition.TOP,
+                      backgroundColor: Colors.red[100],
+                      colorText: Colors.red[900],
+                    );
+                    Navigator.of(context).pop();
+                    return;
+                  }
+
+                  print('📧 Renvoi d\'email à: ${currentUser.email}');
+                  await currentUser.sendEmailVerification();
+
+                  Navigator.of(context).pop();
+                  Get.snackbar(
+                    'Email renvoyé',
+                    'Un nouvel email de vérification a été envoyé à ${userEmail}',
+                    snackPosition: SnackPosition.TOP,
+                    backgroundColor: Colors.green[100],
+                    colorText: Colors.green[900],
+                    duration: Duration(seconds: 4),
+                  );
+
+                  print('✅ Email de vérification renvoyé avec succès');
+                } catch (e) {
+                  print('❌ Erreur lors du renvoi d\'email: $e');
+                  Navigator.of(context).pop();
+                  Get.snackbar(
+                    'Erreur',
+                    'Impossible de renvoyer l\'email: ${e.toString()}',
+                    snackPosition: SnackPosition.TOP,
+                    backgroundColor: Colors.red[100],
+                    colorText: Colors.red[900],
+                    duration: Duration(seconds: 5),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(0xFFF49101),
+              ),
+              child: Text(
+                'Renvoyer',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -329,7 +514,7 @@ class _SignupPageState extends State<SignupPage> {
                       ),
                       SizedBox(height: 8),
                       Text(
-                        "Dashboard > Gestion > Création de compte",
+                        "Administration > Gestion des utilisateurs > Nouveau compte",
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             color: Color(0xFFF49101).withOpacity(0.7),
@@ -367,7 +552,7 @@ class _SignupPageState extends State<SignupPage> {
                           ),
                           SizedBox(height: 6),
                           Text(
-                            "Créez un nouveau compte utilisateur pour la plateforme",
+                            "Créez un nouveau compte utilisateur (accès administrateur requis)",
                             textAlign: TextAlign.center,
                             style: TextStyle(
                                 color: Color(0xFF2D0C0D).withOpacity(0.7)),

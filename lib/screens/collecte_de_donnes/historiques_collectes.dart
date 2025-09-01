@@ -7,13 +7,12 @@ import 'package:dropdown_search/dropdown_search.dart';
 import 'package:get/get.dart';
 import 'package:apisavana_gestion/authentication/user_session.dart';
 import 'package:apisavana_gestion/utils/smart_appbar.dart';
+import 'package:apisavana_gestion/data/geographe/geographie.dart';
 import 'nos_collecte_recoltes/edit_collecte_recolte.dart';
 import 'nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
 import 'nouvelle_collecte_scoop.dart';
 import 'nouvelle_collecte_individuelle.dart' hide SizedBox;
 import 'nos_collectes_individuels/edit_collecte_individuelle.dart';
-import 'nos_achats_scoop/nouvel_achat_scoop.dart';
-import 'nos_achats_scoop/edit_achat_scoop.dart';
 import '../dashboard/dashboard.dart';
 import 'nos_achats_scoop_contenants/nouvel_achat_scoop_contenants.dart';
 import 'nos_collecte_mielleurie/nouvelle_collecte_miellerie.dart';
@@ -231,33 +230,76 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
   Future<void> _loadCollectesRecolte(
       String userSite, List<Map<String, dynamic>> allCollectes) async {
     try {
-      final recoltesSnapshot = await FirebaseFirestore.instance
-          .collection(userSite) // Collection nommée selon le site
-          .doc('collectes_recolte') // Document principal
-          .collection('collectes_recolte') // Sous-collection
-          .orderBy('createdAt', descending: true)
-          .get();
+      // Essayer la nouvelle architecture d'abord : Sites/{site}/nos_collectes_recoltes
+      try {
+        final recoltesSnapshot = await FirebaseFirestore.instance
+            .collection('Sites') // Collection principale Sites
+            .doc(userSite) // Document du site
+            .collection(
+                'nos_collectes_recoltes') // Nouvelle sous-collection des récoltes
+            .orderBy('createdAt', descending: true)
+            .get();
 
-      for (final doc in recoltesSnapshot.docs) {
-        final data = doc.data();
-        allCollectes.add({
-          'id': doc.id,
-          'type': 'Récoltes',
-          'collection': '$userSite/collectes_recolte/collectes_recolte',
-          'date': (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-          'site': data['site'] ?? userSite,
-          'technicien_nom': data['technicien_nom'] ?? '',
-          'totalWeight': data['totalWeight'] ?? 0,
-          'totalAmount': data['totalAmount'] ?? 0,
-          'status': data['status'] ?? 'en_attente',
-          'contenants': data['contenants'] ?? [],
-          'region': data['region'] ?? '',
-          'province': data['province'] ?? '',
-          'commune': data['commune'] ?? '',
-          'village': data['village'] ?? '',
-          'predominances_florales': data['predominances_florales'] ?? [],
-          ...data,
-        });
+        for (final doc in recoltesSnapshot.docs) {
+          final data = doc.data();
+          allCollectes.add({
+            'id': doc.id,
+            'type': 'Récoltes',
+            'collection': 'Sites/$userSite/nos_collectes_recoltes',
+            'date':
+                (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+            'site': data['site'] ?? userSite,
+            'technicien_nom': data['technicien_nom'] ?? '',
+            'totalWeight': data['totalWeight'] ?? 0,
+            'totalAmount': data['totalAmount'] ?? 0,
+            'status': data['status'] ?? 'en_attente',
+            'contenants': data['contenants'] ?? [],
+            'region': data['region'] ?? '',
+            'province': data['province'] ?? '',
+            'commune': data['commune'] ?? '',
+            'village': data['village'] ?? '',
+            'predominances_florales': data['predominances_florales'] ?? [],
+            ...data,
+          });
+        }
+      } catch (e) {
+        print('Erreur chargement Récoltes depuis Sites/$userSite : $e');
+
+        // Fallback : essayer l'ancienne architecture pour les données existantes
+        try {
+          final recoltesSnapshot = await FirebaseFirestore.instance
+              .collection(userSite) // Collection nommée selon le site
+              .doc('collectes_recolte') // Document principal
+              .collection('collectes_recolte') // Sous-collection
+              .orderBy('createdAt', descending: true)
+              .get();
+
+          for (final doc in recoltesSnapshot.docs) {
+            final data = doc.data();
+            allCollectes.add({
+              'id': doc.id,
+              'type': 'Récoltes (Ancien)',
+              'collection': '$userSite/collectes_recolte/collectes_recolte',
+              'date':
+                  (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+              'site': data['site'] ?? userSite,
+              'technicien_nom': data['technicien_nom'] ?? '',
+              'totalWeight': data['totalWeight'] ?? 0,
+              'totalAmount': data['totalAmount'] ?? 0,
+              'status': data['status'] ?? 'en_attente',
+              'contenants': data['contenants'] ?? [],
+              'region': data['region'] ?? '',
+              'province': data['province'] ?? '',
+              'commune': data['commune'] ?? '',
+              'village': data['village'] ?? '',
+              'predominances_florales': data['predominances_florales'] ?? [],
+              ...data,
+            });
+          }
+        } catch (oldE) {
+          print(
+              'Erreur chargement Récoltes depuis ancienne architecture : $oldE');
+        }
       }
     } catch (e) {
       print('Erreur lors du chargement des récoltes depuis $userSite : $e');
@@ -1900,10 +1942,45 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
                                   .titleMedium
                                   ?.copyWith(color: kPrimaryColor)),
                           const SizedBox(height: 8),
-                          _buildDetailItem('Région', collecte['region']),
-                          _buildDetailItem('Province', collecte['province']),
-                          _buildDetailItem('Commune', collecte['commune']),
-                          _buildDetailItem('Village', collecte['village']),
+                          // Affichage avec code de localisation
+                          Builder(
+                            builder: (context) {
+                              final localisation = {
+                                'region': collecte['region']?.toString() ?? '',
+                                'province':
+                                    collecte['province']?.toString() ?? '',
+                                'commune':
+                                    collecte['commune']?.toString() ?? '',
+                                'village':
+                                    collecte['village']?.toString() ?? '',
+                              };
+
+                              final localisationAvecCode =
+                                  GeographieData.formatLocationCodeFromMap(
+                                      localisation);
+                              final localisationComplete = [
+                                localisation['region'],
+                                localisation['province'],
+                                localisation['commune'],
+                                localisation['village']
+                              ]
+                                  .where((element) =>
+                                      element != null && element.isNotEmpty)
+                                  .join(' > ');
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (localisationAvecCode.isNotEmpty)
+                                    _buildDetailItem('Code localisation',
+                                        localisationAvecCode),
+                                  if (localisationComplete.isNotEmpty)
+                                    _buildDetailItem('Localisation complète',
+                                        localisationComplete),
+                                ],
+                              );
+                            },
+                          ),
                           if (collecte['predominances_florales'] != null &&
                               collecte['predominances_florales']
                                   .isNotEmpty) ...[
@@ -2003,18 +2080,55 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
                                         color: Colors.blue.shade700,
                                       )),
                                   const SizedBox(height: 8),
-                                  if (collecte['region'] != null)
-                                    _buildDetailItem(
-                                        'Région', collecte['region']),
-                                  if (collecte['province'] != null)
-                                    _buildDetailItem(
-                                        'Province', collecte['province']),
-                                  if (collecte['commune'] != null)
-                                    _buildDetailItem(
-                                        'Commune', collecte['commune']),
-                                  if (collecte['village'] != null)
-                                    _buildDetailItem(
-                                        'Village', collecte['village']),
+                                  // Affichage avec code de localisation
+                                  Builder(
+                                    builder: (context) {
+                                      final localisation = {
+                                        'region':
+                                            collecte['region']?.toString() ??
+                                                '',
+                                        'province':
+                                            collecte['province']?.toString() ??
+                                                '',
+                                        'commune':
+                                            collecte['commune']?.toString() ??
+                                                '',
+                                        'village':
+                                            collecte['village']?.toString() ??
+                                                '',
+                                      };
+
+                                      final localisationAvecCode =
+                                          GeographieData
+                                              .formatLocationCodeFromMap(
+                                                  localisation);
+                                      final localisationComplete = [
+                                        localisation['region'],
+                                        localisation['province'],
+                                        localisation['commune'],
+                                        localisation['village']
+                                      ]
+                                          .where((element) =>
+                                              element != null &&
+                                              element.isNotEmpty)
+                                          .join(' > ');
+
+                                      return Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          if (localisationAvecCode.isNotEmpty)
+                                            _buildDetailItem(
+                                                'Code localisation',
+                                                localisationAvecCode),
+                                          if (localisationComplete.isNotEmpty)
+                                            _buildDetailItem(
+                                                'Localisation complète',
+                                                localisationComplete),
+                                        ],
+                                      );
+                                    },
+                                  ),
                                 ],
                               ],
                             ),
@@ -2401,8 +2515,6 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
           Get.to(() => NouvelleCollecteRecoltePage());
         } else if (subModule == 'Achats Individuels') {
           Get.to(() => const NouvelleCollecteIndividuellePage());
-        } else if (subModule == 'Achats SCOOPS') {
-          Get.to(() => const NouvelAchatScoopPage());
         } else if (subModule == 'Achats SCOOPS - Contenants') {
           Get.to(() => const NouvelAchatScoopContenantsPage());
         } else if (subModule == 'Collecte Mielleries') {
@@ -2419,12 +2531,6 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
       final docPath =
           'Sites/${collecte['site']}/nos_achats_individuels/${collecte['id']}';
       Get.to(() => EditCollecteIndividuellePage(documentPath: docPath));
-    } else if (collecte['type'] == 'Achat SCOOP') {
-      Get.to(() => EditAchatScoopPage(
-            collecteId: collecte['id'],
-            collection: collecte['collection'] ??
-                'Sites/${collecte['site']}/nos_achats_scoop',
-          ));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

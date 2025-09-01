@@ -31,9 +31,12 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
       ''; // Changement : sélecteur au lieu de TextEditingController
   String _appartenanceSelectionnee = '';
   String _regionSelectionnee = '';
-  String _departementSelectionne = '';
-  String _arrondissementSelectionne = '';
+  String _provinceSelectionnee = '';
   String _communeSelectionnee = '';
+  String _villageSelectionne = '';
+  bool _villagePersonnaliseActive = false;
+  final TextEditingController _villagePersonnaliseController =
+      TextEditingController();
   List<String> _predominancesFloralesSelectionnees = [];
 
   bool _isLoading = false;
@@ -54,16 +57,41 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
     'Manguier',
     'Citronnier',
     'Moringa',
-    'Tamarind',
-    'Autres'
+    'Tamarinier',
+    'Kapokier',
+    'Cajou',
+    'Détarium',
+    'Zaaba',
+    'Filao',
   ];
 
-  List<String> get _departements =>
-      GeographieUtils.getProvincesByRegion(_regionSelectionnee);
-  List<String> get _arrondissements =>
-      GeographieUtils.getCommunesByProvince(_departementSelectionne);
-  List<String> get _communes =>
-      GeographieUtils.getVillagesByCommune(_arrondissementSelectionne);
+  // Utilisation du nouveau système GeographieData
+  List<Map<String, dynamic>> get _provinces {
+    if (_regionSelectionnee.isEmpty) return [];
+    final regionCode = GeographieData.getRegionCodeByName(_regionSelectionnee);
+    return GeographieData.getProvincesForRegion(regionCode);
+  }
+
+  List<Map<String, dynamic>> get _communes {
+    if (_regionSelectionnee.isEmpty || _provinceSelectionnee.isEmpty) return [];
+    final regionCode = GeographieData.getRegionCodeByName(_regionSelectionnee);
+    final provinceCode =
+        GeographieData.getProvinceCodeByName(regionCode, _provinceSelectionnee);
+    return GeographieData.getCommunesForProvince(regionCode, provinceCode);
+  }
+
+  List<Map<String, dynamic>> get _villages {
+    if (_regionSelectionnee.isEmpty ||
+        _provinceSelectionnee.isEmpty ||
+        _communeSelectionnee.isEmpty) return [];
+    final regionCode = GeographieData.getRegionCodeByName(_regionSelectionnee);
+    final provinceCode =
+        GeographieData.getProvinceCodeByName(regionCode, _provinceSelectionnee);
+    final communeCode = GeographieData.getCommuneCodeByName(
+        regionCode, provinceCode, _communeSelectionnee);
+    return GeographieData.getVillagesForCommune(
+        regionCode, provinceCode, communeCode);
+  }
 
   @override
   void dispose() {
@@ -72,6 +100,7 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
     _nbRuchesTradController.dispose();
     _nbRuchesModController.dispose();
     _nomCooperativeController.dispose();
+    _villagePersonnaliseController.dispose();
     super.dispose();
   }
 
@@ -172,9 +201,10 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
       print("   - Catégorie d'âge: $_ageSelectionne");
       print("   - Appartenance: $_appartenanceSelectionnee");
       print("   - Région: $_regionSelectionnee");
-      print("   - Province: $_departementSelectionne");
+      print("   - Province: $_provinceSelectionnee");
       print("   - Commune: $_communeSelectionnee");
-      print("   - Village: $_arrondissementSelectionne");
+      print(
+          "   - Village: ${_villagePersonnaliseActive ? _villagePersonnaliseController.text.trim() : _villageSelectionne}");
       print("   - Ruches trad: $nbRuchesTrad");
       print("   - Ruches mod: $nbRuchesMod");
       print("   - Origines florales: $_predominancesFloralesSelectionnees");
@@ -191,9 +221,12 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
             : '',
         localisation: {
           'region': _regionSelectionnee,
-          'departement': _departementSelectionne,
-          'arrondissement': _arrondissementSelectionne,
+          'province': _provinceSelectionnee,
           'commune': _communeSelectionnee,
+          'village': _villagePersonnaliseActive
+              ? _villagePersonnaliseController.text.trim()
+              : _villageSelectionne,
+          'village_personnalise': _villagePersonnaliseActive.toString(),
         },
         nbRuchesTrad: nbRuchesTrad,
         nbRuchesMod: nbRuchesMod,
@@ -556,13 +589,17 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
                           _buildDropdown(
                             'Région *',
                             _regionSelectionnee,
-                            regionsBurkina,
+                            GeographieData.regionsBurkina
+                                .map((r) => r['nom'].toString())
+                                .toList(),
                             (value) {
                               setState(() {
                                 _regionSelectionnee = value!;
-                                _departementSelectionne = '';
-                                _arrondissementSelectionne = '';
+                                _provinceSelectionnee = '';
                                 _communeSelectionnee = '';
+                                _villageSelectionne = '';
+                                _villagePersonnaliseActive = false;
+                                _villagePersonnaliseController.clear();
                               });
                             },
                           ),
@@ -570,43 +607,138 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
                             const SizedBox(height: 12),
                             _buildDropdown(
                               'Province *',
-                              _departementSelectionne,
-                              _departements,
+                              _provinceSelectionnee,
+                              _provinces
+                                  .map((p) => p['nom'].toString())
+                                  .toList(),
                               (value) {
                                 setState(() {
-                                  _departementSelectionne = value!;
-                                  _arrondissementSelectionne = '';
+                                  _provinceSelectionnee = value!;
                                   _communeSelectionnee = '';
+                                  _villageSelectionne = '';
+                                  _villagePersonnaliseActive = false;
+                                  _villagePersonnaliseController.clear();
                                 });
                               },
                             ),
                           ],
-                          if (_departementSelectionne.isNotEmpty) ...[
+                          if (_provinceSelectionnee.isNotEmpty) ...[
                             const SizedBox(height: 12),
                             _buildDropdown(
                               'Commune *',
-                              _arrondissementSelectionne,
-                              _arrondissements,
+                              _communeSelectionnee,
+                              _communes
+                                  .map((c) => c['nom'].toString())
+                                  .toList(),
                               (value) {
                                 setState(() {
-                                  _arrondissementSelectionne = value!;
-                                  _communeSelectionnee = '';
+                                  _communeSelectionnee = value!;
+                                  _villageSelectionne = '';
+                                  _villagePersonnaliseActive = false;
+                                  _villagePersonnaliseController.clear();
                                 });
                               },
                             ),
                           ],
-                          if (_arrondissementSelectionne.isNotEmpty) ...[
+                          // Section Village avec option personnalisée
+                          if (_communeSelectionnee.isNotEmpty) ...[
                             const SizedBox(height: 12),
-                            _buildDropdown(
-                              'Village *',
-                              _communeSelectionnee,
-                              _communes,
-                              (value) {
-                                setState(() {
-                                  _communeSelectionnee = value!;
-                                });
-                              },
+                            // Option : Village de la liste ou personnalisé
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: RadioListTile<bool>(
+                                    title: Text('Village de la liste',
+                                        style: TextStyle(
+                                            fontSize: isSmallScreen ? 12 : 14)),
+                                    value: false,
+                                    groupValue: _villagePersonnaliseActive,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _villagePersonnaliseActive = value!;
+                                        if (!_villagePersonnaliseActive) {
+                                          _villagePersonnaliseController
+                                              .clear();
+                                        } else {
+                                          _villageSelectionne = '';
+                                        }
+                                      });
+                                    },
+                                  ),
+                                ),
+                                Expanded(
+                                  child: RadioListTile<bool>(
+                                    title: Text('Village non répertorié',
+                                        style: TextStyle(
+                                            fontSize: isSmallScreen ? 12 : 14)),
+                                    value: true,
+                                    groupValue: _villagePersonnaliseActive,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _villagePersonnaliseActive = value!;
+                                        if (!_villagePersonnaliseActive) {
+                                          _villagePersonnaliseController
+                                              .clear();
+                                        } else {
+                                          _villageSelectionne = '';
+                                        }
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ],
                             ),
+                            const SizedBox(height: 12),
+                            // Dropdown des villages ou champ de saisie selon le choix
+                            if (!_villagePersonnaliseActive) ...[
+                              _buildDropdown(
+                                'Village *',
+                                _villageSelectionne,
+                                _villages
+                                    .map((v) => v['nom'].toString())
+                                    .toList(),
+                                (value) {
+                                  setState(() {
+                                    _villageSelectionne = value!;
+                                  });
+                                },
+                              ),
+                              // Affichage du nombre de villages disponibles
+                              if (_villages.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    '${_villages.length} village(s) disponible(s)',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ),
+                            ] else ...[
+                              _buildTextField(
+                                _villagePersonnaliseController,
+                                'Nom du village non répertorié *',
+                                Icons.location_city,
+                                validator: (value) {
+                                  if (_villagePersonnaliseActive &&
+                                      (value?.isEmpty ?? true)) {
+                                    return 'Veuillez saisir le nom du village';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text(
+                                  'Ce village sera ajouté comme village personnalisé',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.orange.shade600,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ],
                         isSmallScreen,

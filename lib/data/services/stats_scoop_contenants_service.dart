@@ -15,16 +15,13 @@ class StatsScoopContenantsService {
           .collection('nos_achats_scoop_contenants')
           .get();
 
-      // Charger tous les SCOOPs
-      final scoopsSnapshot = await _firestore.collection('SCOOPs').get();
-
       final Map<String, Map<String, dynamic>> statsByScoops = {};
       double totalPoids = 0;
       double totalMontant = 0;
       int totalCollectes = 0;
       int totalContenants = 0;
       int totalBidons = 0;
-      int totalPots = 0;
+      int totalSeaux = 0;
       final Set<String> allMielTypes = {};
 
       // Traiter chaque collecte
@@ -35,7 +32,7 @@ class StatsScoopContenantsService {
         totalMontant += collecte.montantTotal;
         totalContenants += collecte.contenants.length;
         totalBidons += collecte.nombreBidons;
-        totalPots += collecte.nombrePots;
+        totalSeaux += collecte.nombreSeaux;
         allMielTypes.addAll(collecte.mielTypes);
 
         // Stats par SCOOP
@@ -47,7 +44,7 @@ class StatsScoopContenantsService {
             'totalMontant': 0.0,
             'totalContenants': 0,
             'totalBidons': 0,
-            'totalPots': 0,
+            'totalSeaux': 0,
             'contenants': <String, Map<String, dynamic>>{},
             'mielTypes': <String>{},
             'collectes': <Map<String, dynamic>>[],
@@ -65,8 +62,8 @@ class StatsScoopContenantsService {
             (scoopStats['totalContenants'] as int) + collecte.contenants.length;
         scoopStats['totalBidons'] =
             (scoopStats['totalBidons'] as int) + collecte.nombreBidons;
-        scoopStats['totalPots'] =
-            (scoopStats['totalPots'] as int) + collecte.nombrePots;
+        scoopStats['totalSeaux'] =
+            (scoopStats['totalSeaux'] as int) + collecte.nombreSeaux;
         (scoopStats['mielTypes'] as Set<String>).addAll(collecte.mielTypes);
 
         // Détails par contenant type
@@ -106,7 +103,7 @@ class StatsScoopContenantsService {
           'montant': collecte.montantTotal,
           'nombreContenants': collecte.contenants.length,
           'bidons': collecte.nombreBidons,
-          'pots': collecte.nombrePots,
+          'seaux': collecte.nombreSeaux,
         });
       }
 
@@ -118,7 +115,7 @@ class StatsScoopContenantsService {
           'totalMontant': totalMontant,
           'totalContenants': totalContenants,
           'totalBidons': totalBidons,
-          'totalPots': totalPots,
+          'totalSeaux': totalSeaux,
           'mielTypesCumules': allMielTypes.toList(),
         },
         'scoops': statsByScoops.entries.map((entry) {
@@ -170,7 +167,7 @@ class StatsScoopContenantsService {
     required double poidsDelta,
     required double montantDelta,
     required int deltaBidon,
-    required int deltaPot,
+    required int deltaSeau,
     List<String> mielTypesToUnion = const [],
   }) async {
     try {
@@ -191,11 +188,11 @@ class StatsScoopContenantsService {
         'montant_par_mois_scoop_contenants.$monthKey':
             FieldValue.increment(montantDelta),
         'contenant_collecter_par_mois_scoop_contenants.$monthKey.total':
-            FieldValue.increment((deltaBidon + deltaPot).toDouble()),
+            FieldValue.increment((deltaBidon + deltaSeau).toDouble()),
         'contenant_collecter_par_mois_scoop_contenants.$monthKey.Bidon':
             FieldValue.increment(deltaBidon.toDouble()),
-        'contenant_collecter_par_mois_scoop_contenants.$monthKey.Pot':
-            FieldValue.increment(deltaPot.toDouble()),
+        'contenant_collecter_par_mois_scoop_contenants.$monthKey.Seau':
+            FieldValue.increment(deltaSeau.toDouble()),
         'derniere_activite': FieldValue.serverTimestamp(),
       };
 
@@ -289,7 +286,7 @@ class StatsScoopContenantsService {
         poidsDelta: collecte.poidsTotal,
         montantDelta: collecte.montantTotal,
         deltaBidon: collecte.nombreBidons,
-        deltaPot: collecte.nombrePots,
+        deltaSeau: collecte.nombreSeaux,
         mielTypesToUnion: collecte.mielTypes.toList(),
       );
 

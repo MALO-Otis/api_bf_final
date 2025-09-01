@@ -262,10 +262,23 @@ class _ModalSelectionScoopState extends State<ModalSelectionScoop> {
                       size: 16, color: Colors.grey.shade600),
                   const SizedBox(width: 4),
                   Expanded(
-                    child: Text(
-                      scoop.localisation,
-                      style: TextStyle(color: Colors.grey.shade700),
-                      overflow: TextOverflow.ellipsis,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Code: ${scoop.codeLocalisation}',
+                          style: TextStyle(
+                            color: Colors.blue.shade700,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                        Text(
+                          scoop.localisation,
+                          style: TextStyle(color: Colors.grey.shade700),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
                   ),
                 ],

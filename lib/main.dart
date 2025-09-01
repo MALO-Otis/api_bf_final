@@ -6,7 +6,7 @@ import 'package:apisavana_gestion/screens/conditionnement/condionnement_home.dar
 import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
 import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
 import 'package:apisavana_gestion/screens/extraction_page/extraction.dart';
-import 'package:apisavana_gestion/screens/filtrage/filtrage_page.dart';
+import 'package:apisavana_gestion/screens/filtrage/filtrage.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -67,7 +67,7 @@ class ApisavanaApp extends StatelessWidget {
             page: () => HistoriquesCollectesPage()),
         GetPage(name: '/controle', page: () => const ControlePageDashboard()),
         GetPage(name: '/extraction', page: () => ExtractionPage()),
-        GetPage(name: '/filtrage', page: () => FiltragePage()),
+        GetPage(name: '/filtrage', page: () => const FiltrageMainPage()),
         GetPage(
             name: '/conditionnement', page: () => ConditionnementHomePage()),
         GetPage(

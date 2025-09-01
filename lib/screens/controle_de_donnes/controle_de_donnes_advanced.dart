@@ -1,16 +1,28 @@
 // Page principale du module de contrôle avancé
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter/services.dart';
 import '../../authentication/user_session.dart';
 import 'models/collecte_models.dart';
-import 'services/mock_data_service.dart';
+import 'models/attribution_models.dart';
+// import 'services/mock_data_service.dart'; // SERVICE SUPPRIMÉ - Générait des données fictives
+import 'services/firestore_data_service.dart';
+import 'services/pdf_statistics_service.dart';
+import 'services/quality_control_service.dart';
+import 'package:share_plus/share_plus.dart';
+import 'services/control_attribution_service.dart';
+import 'services/global_refresh_service.dart';
 import 'utils/formatters.dart';
 import 'widgets/stat_card.dart';
 import 'widgets/multi_select_popover.dart';
 import 'widgets/collecte_card.dart';
 import 'widgets/details_dialog.dart';
+import 'widgets/control_attribution_modal.dart';
 import '../extraction/extraction_page.dart';
+import 'historique_controle_page.dart';
+import 'attribution_intelligente_page.dart';
 
 class ControlePageDashboard extends StatefulWidget {
   const ControlePageDashboard({super.key});
@@ -25,6 +37,8 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ControlAttributionService _attributionService =
+      ControlAttributionService();
 
   // Données
   Map<Section, List<BaseCollecte>> _allData = {};
@@ -35,6 +49,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
   String _searchQuery = '';
   bool _showFilters = false;
   bool _isLoading = true;
+  bool _isGeneratingPDF = false;
 
   // Filtres et tri
   CollecteFilters _filters = CollecteFilters();
@@ -50,16 +65,24 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
   // Rôle utilisateur
   Role _userRole = Role.admin;
 
+  // Subscriptions pour les notifications globales
+  late StreamSubscription _qualityControlUpdateSubscription;
+  late StreamSubscription _collecteUpdateSubscription;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(
+        length: 4,
+        vsync:
+            this); // 4 onglets (récoltes, SCOOP, individuel, miellerie) + bouton historique séparé
     _tabController.addListener(_onTabChanged);
     _scrollController.addListener(_onScroll);
 
     _initializeUserRole();
     _loadData();
     _setupKeyboardShortcuts();
+    _setupGlobalRefreshListeners();
   }
 
   @override
@@ -67,6 +90,8 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
     _tabController.dispose();
     _searchController.dispose();
     _scrollController.dispose();
+    _qualityControlUpdateSubscription.cancel();
+    _collecteUpdateSubscription.cancel();
     super.dispose();
   }
 
@@ -80,15 +105,20 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
     }
   }
 
-  void _loadData() {
+  void _loadData() async {
     setState(() => _isLoading = true);
 
-    // Simulation d'un délai de chargement
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (!mounted) return;
+    try {
+      print('🔄 Chargement des données depuis Firestore...');
 
-      final data = MockDataService.generateMockData(countPerSection: 48);
-      final options = MockDataService.getFilterOptions(data);
+      // Chargement des vraies données depuis Firestore
+      final data = await FirestoreDataService.getCollectesFromFirestore();
+      final options = await FirestoreDataService.getFilterOptions(data);
+
+      // Charger les données de contrôle qualité en parallèle
+      QualityControlService().refreshAllData();
+
+      if (!mounted) return;
 
       setState(() {
         _allData = data;
@@ -96,11 +126,326 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
         _isLoading = false;
         _visibleItems = _pageSize;
       });
-    });
+
+      print('✅ Données Firestore chargées avec succès');
+      print('   - Récoltes: ${data[Section.recoltes]?.length ?? 0}');
+      print('   - SCOOP: ${data[Section.scoop]?.length ?? 0}');
+      print('   - Individuel: ${data[Section.individuel]?.length ?? 0}');
+      print('   - Miellerie: ${data[Section.miellerie]?.length ?? 0}');
+    } catch (e) {
+      print('❌ Erreur chargement Firestore: $e');
+
+      if (!mounted) return;
+
+      // Afficher l'erreur sans utiliser de données fictives
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Erreur lors du chargement des données: $e'),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+
+      // Initialiser avec des données vides
+      setState(() {
+        _allData = {
+          Section.recoltes: [],
+          Section.scoop: [],
+          Section.individuel: [],
+          Section.miellerie: [],
+        };
+        _filterOptions = {
+          'sites': [],
+          'techniciens': [],
+          'statuses': [],
+        };
+        _isLoading = false;
+        _visibleItems = _pageSize;
+      });
+    }
   }
 
   void _setupKeyboardShortcuts() {
     // Les raccourcis clavier sont gérés dans le widget build avec Focus
+  }
+
+  /// Configure les listeners pour les notifications globales de mise à jour
+  void _setupGlobalRefreshListeners() {
+    final globalRefreshService = GlobalRefreshService();
+
+    // Écouter les mises à jour de contrôles qualité
+    _qualityControlUpdateSubscription = globalRefreshService
+        .qualityControlUpdatesStream
+        .listen((containerCode) {
+      print(
+          '📢 Page principale: Notification contrôle mis à jour - $containerCode');
+      if (mounted) {
+        _refreshData();
+      }
+    });
+
+    // Écouter les mises à jour de collectes
+    _collecteUpdateSubscription =
+        globalRefreshService.collecteUpdatesStream.listen((collecteId) {
+      print(
+          '📢 Page principale: Notification collecte mise à jour - $collecteId');
+      if (mounted) {
+        _refreshData();
+      }
+    });
+  }
+
+  /// Rafraîchit les données depuis Firestore
+  Future<void> _refreshData() async {
+    _loadData();
+  }
+
+  /// Génère et télécharge le rapport PDF des statistiques
+  Future<void> _generatePDFReport() async {
+    setState(() => _isGeneratingPDF = true);
+
+    try {
+      print('🔄 Génération du rapport PDF...');
+
+      // Générer le PDF avec toutes les données (sans vérification de permissions)
+      final pdfFile =
+          await PDFStatisticsService.generateStatisticsReport(_allData);
+
+      print('✅ PDF généré: ${pdfFile.path}');
+
+      if (!mounted) return;
+
+      // Afficher une notification de succès avec option de partage
+      final isInDownloads = pdfFile.path.contains('Download');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Rapport PDF généré avec succès !',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    Text(
+                      isInDownloads
+                          ? 'Fichier sauvé dans Téléchargements'
+                          : 'Fichier sauvé dans Documents',
+                      style: TextStyle(
+                          fontSize: 12, color: Colors.white.withOpacity(0.8)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 8),
+          action: SnackBarAction(
+            label: 'OUVRIR DOSSIER',
+            textColor: Colors.white,
+            onPressed: () => _showFileLocation(pdfFile),
+          ),
+        ),
+      );
+    } catch (e) {
+      print('❌ Erreur génération PDF: $e');
+
+      if (!mounted) return;
+
+      // Gestion d'erreur spécifique pour les permissions
+      String errorMessage = 'Erreur lors de la génération du PDF';
+      if (e.toString().contains('MissingPluginException')) {
+        errorMessage =
+            'Problème de configuration des permissions. Le PDF sera sauvegardé dans le cache de l\'application.';
+        // Tenter une génération alternative
+        _generatePDFWithoutPermissions();
+        return;
+      } else if (e.toString().contains('Permission')) {
+        errorMessage =
+            'Permission de stockage requise. Veuillez autoriser l\'accès au stockage dans les paramètres.';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(errorMessage),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isGeneratingPDF = false);
+      }
+    }
+  }
+
+  /// Génère le PDF sans vérification de permissions (utilise le cache de l'app)
+  Future<void> _generatePDFWithoutPermissions() async {
+    try {
+      print('🔄 Génération PDF alternative (sans permissions)...');
+
+      // Créer un service PDF modifié qui utilise le cache temporaire
+      final pdfFile =
+          await PDFStatisticsService.generateStatisticsReportToCache(_allData);
+
+      print('✅ PDF généré dans le cache: ${pdfFile.path}');
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'PDF généré dans le cache temporaire !',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'PARTAGER',
+            textColor: Colors.white,
+            onPressed: () => _sharePDFFile(pdfFile),
+          ),
+        ),
+      );
+    } catch (e) {
+      print('❌ Erreur génération PDF alternative: $e');
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Impossible de générer le PDF: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Affiche l'emplacement du fichier PDF
+  void _showFileLocation(File pdfFile) {
+    final isInDownloads = pdfFile.path.contains('Download');
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.folder, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 8),
+            const Text('Fichier PDF sauvegardé'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Le fichier a été sauvegardé dans :',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceVariant,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isInDownloads
+                        ? '📁 Dossier Téléchargements'
+                        : '📁 Dossier Documents',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    pdfFile.path.split('/').last,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              isInDownloads
+                  ? 'Vous pouvez le retrouver dans l\'application Fichiers > Téléchargements'
+                  : 'Le fichier est dans le dossier Documents de l\'application',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _sharePDFFile(pdfFile);
+            },
+            icon: const Icon(Icons.share, size: 16),
+            label: const Text('Partager'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Partage le fichier PDF
+  Future<void> _sharePDFFile(File pdfFile) async {
+    try {
+      await Share.shareXFiles(
+        [XFile(pdfFile.path)],
+        text: 'Rapport statistique des collectes de miel',
+        subject: 'Rapport PDF - Statistiques des Collectes',
+      );
+    } catch (e) {
+      print('❌ Erreur partage PDF: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors du partage: $e'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
   }
 
   void _onTabChanged() {
@@ -124,6 +469,25 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
     if (_visibleItems < filtered.length) {
       setState(() {
         _visibleItems = (_visibleItems + _pageSize).clamp(0, filtered.length);
+      });
+    }
+  }
+
+  /// Gère l'attribution d'une collecte vers extraction ou filtration
+  void _handleAttribution(BaseCollecte collecte, AttributionType type) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => ControlAttributionModal(
+        collecte: collecte,
+        type: type,
+      ),
+    );
+
+    if (result == true) {
+      // L'attribution a été créée avec succès
+      // Optionnel: rafraîchir les données ou afficher un feedback
+      setState(() {
+        // Force un rafraîchissement de l'interface
       });
     }
   }
@@ -207,6 +571,10 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
               .toSet()
               .toList();
           break;
+        case Section.miellerie:
+          // Pour Miellerie, on peut utiliser une liste vide ou des prédominances spécifiques
+          itemFlorales = [];
+          break;
       }
       if (!_filters.florales.any((f) => itemFlorales.contains(f))) {
         return false;
@@ -273,6 +641,41 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
     );
   }
 
+  /// Calcule les statistiques avec les données de contrôle qualité
+  Future<CollecteStats> _calculateStatsWithQualityControl(
+      List<BaseCollecte> data) async {
+    final baseStats = _calculateStats(data);
+
+    try {
+      final qualityService = QualityControlService();
+      int totalControles = 0;
+
+      for (final collecte in data) {
+        final containerCount = collecte.containersCount ?? 0;
+        final containerCodes = List.generate(containerCount,
+            (index) => 'C${(index + 1).toString().padLeft(3, '0')}');
+
+        final controlStats = await qualityService.getControlStatsForContainers(
+            containerCodes, collecte.date);
+
+        totalControles += controlStats['controlled'] ?? 0;
+      }
+
+      final totalContenants = baseStats.contenants;
+      final tauxControle =
+          totalContenants > 0 ? (totalControles / totalContenants) * 100 : 0.0;
+
+      return baseStats.copyWith(
+        contenantsControles: totalControles,
+        contenantsNonControles: totalContenants - totalControles,
+        tauxControle: tauxControle,
+      );
+    } catch (e) {
+      print('❌ Erreur calcul statistiques contrôle: $e');
+      return baseStats;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -311,7 +714,40 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                       Expanded(child: _buildMainContent(theme, filteredData)),
                     ],
                   ),
-        floatingActionButton: _buildProductAttributionFAB(theme),
+        floatingActionButton: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Bouton Attribution Intelligente
+            FloatingActionButton.extended(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const AttributionIntelligentePage(),
+                  ),
+                );
+              },
+              backgroundColor: Colors.deepPurple.shade700,
+              icon: const Icon(Icons.assignment_turned_in, color: Colors.white),
+              label: const Text('Attribution',
+                  style: TextStyle(color: Colors.white)),
+            ),
+            const SizedBox(height: 12),
+            // Bouton Historique
+            FloatingActionButton.extended(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const HistoriqueControlePage(),
+                  ),
+                );
+              },
+              backgroundColor: Colors.blue.shade700,
+              icon: const Icon(Icons.history, color: Colors.white),
+              label: const Text('Historique',
+                  style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -461,6 +897,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                 Tab(text: 'Récoltes'),
                 Tab(text: 'SCOOP'),
                 Tab(text: 'Individuel'),
+                Tab(text: 'Miellerie'),
               ],
             ),
           ),
@@ -621,64 +1058,91 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
 
                     const SizedBox(width: 12),
 
-                    // Sélecteur de rôle moderne
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceVariant,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: theme.colorScheme.outline.withOpacity(0.2),
-                          ),
-                        ),
-                        child: DropdownButton<Role>(
-                          value: _userRole,
-                          isExpanded: true,
-                          underline: const SizedBox.shrink(),
-                          icon: Icon(
-                            Icons.expand_more_rounded,
-                            color: theme.colorScheme.onSurfaceVariant,
-                            size: 20,
-                          ),
-                          items: Role.values
-                              .map(
-                                (role) => DropdownMenuItem(
-                                  value: role,
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        role == Role.admin
-                                            ? Icons.admin_panel_settings
-                                            : Icons.person,
-                                        size: 16,
-                                        color:
-                                            theme.colorScheme.onSurfaceVariant,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        role == Role.admin
-                                            ? 'Admin'
-                                            : 'Contrôleur',
-                                        style: theme.textTheme.bodyMedium
-                                            ?.copyWith(
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
+                    // Bouton rafraîchir
+                    Material(
+                      color: theme.colorScheme.surfaceVariant,
+                      borderRadius: BorderRadius.circular(10),
+                      child: InkWell(
+                        onTap: _isLoading ? null : _refreshData,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          child: _isLoading
+                              ? SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      theme.colorScheme.onSurfaceVariant,
+                                    ),
                                   ),
+                                )
+                              : Icon(
+                                  Icons.refresh_rounded,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  size: 18,
                                 ),
-                              )
-                              .toList(),
-                          onChanged: (role) {
-                            if (role != null) {
-                              setState(() {
-                                _userRole = role;
-                                _visibleItems = _pageSize;
-                              });
-                            }
-                          },
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 12),
+
+                    // Bouton téléchargement PDF moderne
+                    Expanded(
+                      flex: 2,
+                      child: Material(
+                        color: theme.colorScheme.primary,
+                        borderRadius: BorderRadius.circular(10),
+                        child: InkWell(
+                          onTap: _isGeneratingPDF ? null : _generatePDFReport,
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 12),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                if (_isGeneratingPDF) ...[
+                                  SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        theme.colorScheme.onPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Génération...',
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onPrimary,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ] else ...[
+                                  Icon(
+                                    Icons.picture_as_pdf_rounded,
+                                    color: theme.colorScheme.onPrimary,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Rapport PDF',
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onPrimary,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -730,38 +1194,75 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                           : null,
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  // Bouton PDF pour tablette
+                  ElevatedButton.icon(
+                    onPressed: _isGeneratingPDF ? null : _generatePDFReport,
+                    icon: _isGeneratingPDF
+                        ? SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                theme.colorScheme.onPrimary,
+                              ),
+                            ),
+                          )
+                        : const Icon(Icons.picture_as_pdf_rounded, size: 16),
+                    label: Text(
+                        _isGeneratingPDF ? 'Génération...' : 'Rapport PDF'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.colorScheme.primary,
+                      foregroundColor: theme.colorScheme.onPrimary,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
-              // Sélecteur de rôle en bas
+              // 🆕 Affichage du rôle utilisateur (lecture seule)
               Align(
                 alignment: Alignment.centerRight,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    border: Border.all(color: theme.colorScheme.outline),
+                    color: _userRole == Role.admin
+                        ? theme.colorScheme.primary.withOpacity(0.1)
+                        : theme.colorScheme.secondary.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _userRole == Role.admin
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.secondary,
+                    ),
                   ),
-                  child: DropdownButton<Role>(
-                    value: _userRole,
-                    underline: const SizedBox.shrink(),
-                    items: Role.values
-                        .map(
-                          (role) => DropdownMenuItem(
-                            value: role,
-                            child: Text(
-                                role == Role.admin ? 'Admin' : 'Contrôleur'),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (role) {
-                      if (role != null) {
-                        setState(() {
-                          _userRole = role;
-                          _visibleItems = _pageSize;
-                        });
-                      }
-                    },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _userRole == Role.admin
+                            ? Icons.admin_panel_settings
+                            : Icons.verified_user,
+                        size: 16,
+                        color: _userRole == Role.admin
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.secondary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _userRole == Role.admin
+                            ? 'Administrateur'
+                            : 'Contrôleur',
+                        style: TextStyle(
+                          color: _userRole == Role.admin
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.secondary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -809,33 +1310,67 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                 ),
               ),
 
-              // Sélecteur de rôle (pour démonstration)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: BoxDecoration(
-                  border: Border.all(color: theme.colorScheme.outline),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: DropdownButton<Role>(
-                  value: _userRole,
-                  underline: const SizedBox.shrink(),
-                  items: Role.values
-                      .map(
-                        (role) => DropdownMenuItem(
-                          value: role,
-                          child:
-                              Text(role == Role.admin ? 'Admin' : 'Contrôleur'),
+              // Bouton PDF pour desktop
+              ElevatedButton.icon(
+                onPressed: _isGeneratingPDF ? null : _generatePDFReport,
+                icon: _isGeneratingPDF
+                    ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            theme.colorScheme.onPrimary,
+                          ),
                         ),
                       )
-                      .toList(),
-                  onChanged: (role) {
-                    if (role != null) {
-                      setState(() {
-                        _userRole = role;
-                        _visibleItems = _pageSize;
-                      });
-                    }
-                  },
+                    : const Icon(Icons.picture_as_pdf_rounded, size: 16),
+                label: Text(_isGeneratingPDF ? 'Génération...' : 'Rapport PDF'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: theme.colorScheme.onPrimary,
+                ),
+              ),
+
+              // 🆕 Affichage du rôle utilisateur (lecture seule)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: _userRole == Role.admin
+                      ? theme.colorScheme.primary.withOpacity(0.1)
+                      : theme.colorScheme.secondary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _userRole == Role.admin
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.secondary,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _userRole == Role.admin
+                          ? Icons.admin_panel_settings
+                          : Icons.verified_user,
+                      size: 16,
+                      color: _userRole == Role.admin
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.secondary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _userRole == Role.admin ? 'Administrateur' : 'Contrôleur',
+                      style: TextStyle(
+                        color: _userRole == Role.admin
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.secondary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

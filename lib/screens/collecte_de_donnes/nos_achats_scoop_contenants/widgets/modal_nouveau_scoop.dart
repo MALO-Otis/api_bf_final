@@ -31,6 +31,7 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
   final _nbHommesController = TextEditingController(text: '0');
   final _nbFemmesController = TextEditingController(text: '0');
   final _nbJeunesController = TextEditingController(text: '0');
+  final _villagePersonnaliseController = TextEditingController();
 
   // Sélections géographiques
   String? _selectedRegion;
@@ -40,6 +41,9 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
   String? _selectedArrondissement;
   String? _selectedSecteur;
   String? _selectedQuartier;
+
+  // Gestion du village personnalisé
+  bool _villagePersonnaliseActive = false;
 
   // Prédominances florales sélectionnées
   List<String> _selectedPredominances = [];
@@ -55,6 +59,7 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
     _nbHommesController.dispose();
     _nbFemmesController.dispose();
     _nbJeunesController.dispose();
+    _villagePersonnaliseController.dispose();
     super.dispose();
   }
 
@@ -223,7 +228,9 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
           children: [
             Expanded(
               child: DropdownSearch<String>(
-                items: regionsBurkina,
+                items: GeographieData.regionsBurkina
+                    .map<String>((region) => region['nom']! as String)
+                    .toList(),
                 selectedItem: _selectedRegion,
                 onChanged: (value) {
                   setState(() {
@@ -302,7 +309,90 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
         const SizedBox(height: 16),
         // Gestion spéciale pour Ouaga/Bobo ou villages classiques
         if (_selectedCommune != null) _buildSpecificLocationFields(),
+
+        // Aperçu de la localisation avec code
+        if (_selectedRegion != null &&
+            _selectedProvince != null &&
+            _selectedCommune != null) ...[
+          const SizedBox(height: 16),
+          _buildLocationPreview(),
+        ],
       ],
+    );
+  }
+
+  Widget _buildLocationPreview() {
+    // Déterminer le village final
+    final villageFinal = _villagePersonnaliseActive
+        ? _villagePersonnaliseController.text.trim().isNotEmpty
+            ? _villagePersonnaliseController.text.trim()
+            : null
+        : _selectedVillage;
+
+    // Créer la map pour le formatage
+    final Map<String, String> localisationMap = {
+      'region': _selectedRegion ?? '',
+      'province': _selectedProvince ?? '',
+      'commune': _selectedCommune ?? '',
+      'village': villageFinal ?? '',
+    };
+
+    final codeLocalisation =
+        GeographieData.formatLocationCodeFromMap(localisationMap);
+    final List<String> parts = [
+      _selectedRegion!,
+      _selectedProvince!,
+      _selectedCommune!
+    ];
+    if (villageFinal != null) parts.add(villageFinal);
+    if (_selectedArrondissement != null) parts.add(_selectedArrondissement!);
+    if (_selectedSecteur != null) parts.add(_selectedSecteur!);
+    if (_selectedQuartier != null) parts.add(_selectedQuartier!);
+    final localisation = parts.join(', ');
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.preview, color: Colors.blue.shade600, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Aperçu Localisation',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.blue.shade800,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Code: $codeLocalisation',
+            style: TextStyle(
+              color: Colors.blue.shade700,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Localisation: $localisation',
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -373,29 +463,125 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
         ],
       );
     } else {
-      // Village pour autres communes
-      return DropdownSearch<String>(
-        items: _getVillagesForCommune(_selectedCommune!),
-        selectedItem: _selectedVillage,
-        onChanged: (value) => setState(() => _selectedVillage = value),
-        dropdownDecoratorProps: const DropDownDecoratorProps(
-          dropdownSearchDecoration: InputDecoration(
-            labelText: 'Village',
-            border: OutlineInputBorder(),
+      // Village pour autres communes avec système amélioré
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Choix entre village de la liste ou village personnalisé
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.shade200),
+            ),
+            child: Column(
+              children: [
+                RadioListTile<bool>(
+                  title: const Text(
+                    'Village de la liste',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  subtitle: const Text('Sélectionner un village existant'),
+                  value: false,
+                  groupValue: _villagePersonnaliseActive,
+                  onChanged: (value) {
+                    setState(() {
+                      _villagePersonnaliseActive = value!;
+                      if (!_villagePersonnaliseActive) {
+                        _villagePersonnaliseController.clear();
+                      } else {
+                        _selectedVillage = null;
+                      }
+                    });
+                  },
+                  activeColor: Colors.blue.shade600,
+                ),
+                RadioListTile<bool>(
+                  title: const Text(
+                    'Village non répertorié',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  subtitle: const Text('Saisir un nouveau village'),
+                  value: true,
+                  groupValue: _villagePersonnaliseActive,
+                  onChanged: (value) {
+                    setState(() {
+                      _villagePersonnaliseActive = value!;
+                      if (!_villagePersonnaliseActive) {
+                        _villagePersonnaliseController.clear();
+                      } else {
+                        _selectedVillage = null;
+                      }
+                    });
+                  },
+                  activeColor: Colors.blue.shade600,
+                ),
+              ],
+            ),
           ),
-        ),
-        popupProps: PopupProps.menu(
-          showSearchBox: true,
-          emptyBuilder: (context, searchEntry) {
-            return ListTile(
-              title: Text('Ajouter "$searchEntry" comme village'),
-              onTap: () {
-                setState(() => _selectedVillage = searchEntry);
-                Navigator.of(context).pop();
+          const SizedBox(height: 16),
+
+          // Champ conditionnel selon le choix
+          if (!_villagePersonnaliseActive)
+            // Dropdown pour villages existants
+            DropdownSearch<String>(
+              items: _getVillagesForCurrentCommune(),
+              selectedItem: _selectedVillage,
+              onChanged: (value) => setState(() => _selectedVillage = value),
+              dropdownDecoratorProps: DropDownDecoratorProps(
+                dropdownSearchDecoration: InputDecoration(
+                  labelText: 'Village de la liste',
+                  hintText: _getVillagesForCurrentCommune().isEmpty
+                      ? 'Aucun village disponible'
+                      : 'Rechercher ou sélectionner...',
+                  prefixIcon:
+                      const Icon(Icons.location_city, color: Colors.blue),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              popupProps: const PopupProps.menu(
+                showSearchBox: true,
+                searchFieldProps: TextFieldProps(
+                  decoration: InputDecoration(
+                    hintText: 'Rechercher un village...',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                ),
+              ),
+              validator: (value) {
+                if (!_villagePersonnaliseActive && value == null) {
+                  return 'Sélectionnez un village';
+                }
+                return null;
               },
-            );
-          },
-        ),
+            )
+          else
+            // TextFormField pour village personnalisé
+            TextFormField(
+              controller: _villagePersonnaliseController,
+              decoration: InputDecoration(
+                labelText: 'Nom du village',
+                hintText: 'Saisir le nom du village...',
+                prefixIcon: const Icon(Icons.add_location, color: Colors.green),
+                border: const OutlineInputBorder(),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.green.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide:
+                      BorderSide(color: Colors.green.shade600, width: 2),
+                ),
+              ),
+              validator: (value) {
+                if (_villagePersonnaliseActive &&
+                    (value == null || value.trim().isEmpty)) {
+                  return 'Nom du village requis';
+                }
+                return null;
+              },
+            ),
+        ],
       );
     }
   }
@@ -588,6 +774,11 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
     setState(() => _isLoading = true);
 
     try {
+      // Déterminer le village final (liste ou personnalisé)
+      final villageFinal = _villagePersonnaliseActive
+          ? _villagePersonnaliseController.text.trim()
+          : _selectedVillage;
+
       final scoop = ScoopModel(
         id: '', // Sera généré par Firestore
         nom: _nomController.text.trim(),
@@ -596,7 +787,7 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
         region: _selectedRegion!,
         province: _selectedProvince!,
         commune: _selectedCommune!,
-        village: _selectedVillage,
+        village: villageFinal,
         arrondissement: _selectedArrondissement,
         secteur: _selectedSecteur,
         quartier: _selectedQuartier,
@@ -644,17 +835,80 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
     }
   }
 
-  // Méthodes de géographie (similaires à celles du système existant)
+  // Méthodes de géographie utilisant GeographieData
   List<String> _getProvincesForRegion(String region) {
-    return provincesParRegion[region] ?? [];
+    try {
+      final regionCode = GeographieData.getRegionCodeByName(region);
+      final provinces = GeographieData.getProvincesForRegion(regionCode);
+      final provinceNames = provinces
+          .map<String>((province) => province['nom']! as String)
+          .toList();
+      print(
+          '🔵 SCOOP Provinces: ${provinceNames.length} provinces trouvées pour $region');
+      return provinceNames;
+    } catch (e) {
+      print('🔴 SCOOP Provinces: Erreur -> $e pour région $region');
+      return [];
+    }
   }
 
   List<String> _getCommunesForProvince(String province) {
-    return communesParProvince[province] ?? [];
+    if (_selectedRegion == null) return [];
+    try {
+      final regionCode = GeographieData.getRegionCodeByName(_selectedRegion!);
+      final provinceCode =
+          GeographieData.getProvinceCodeByName(regionCode, province);
+      final communes =
+          GeographieData.getCommunesForProvince(regionCode, provinceCode);
+      final communeNames =
+          communes.map<String>((commune) => commune['nom']! as String).toList();
+      print(
+          '🔵 SCOOP Communes: ${communeNames.length} communes trouvées pour $province');
+      return communeNames;
+    } catch (e) {
+      print('🔴 SCOOP Communes: Erreur -> $e pour province $province');
+      return [];
+    }
   }
 
-  List<String> _getVillagesForCommune(String commune) {
-    return villagesParCommune[commune] ?? [];
+  // Nouvelle méthode utilisant GeographieData avec les codes corrects
+  List<String> _getVillagesForCurrentCommune() {
+    if (_selectedRegion == null ||
+        _selectedProvince == null ||
+        _selectedCommune == null) {
+      print('🔵 SCOOP Villages: Sélections incomplètes');
+      return [];
+    }
+
+    try {
+      final regionCode = GeographieData.getRegionCodeByName(_selectedRegion!);
+      final provinceCode =
+          GeographieData.getProvinceCodeByName(regionCode, _selectedProvince!);
+      final communeCode = GeographieData.getCommuneCodeByName(
+          regionCode, provinceCode, _selectedCommune!);
+
+      print(
+          '🔵 SCOOP Villages: Codes récupérés - Region: $regionCode, Province: $provinceCode, Commune: $communeCode');
+
+      final villages = GeographieData.getVillagesForCommune(
+          regionCode, provinceCode, communeCode);
+      final villageNames =
+          villages.map<String>((village) => village['nom']! as String).toList();
+
+      print(
+          '🔵 SCOOP Villages: ${villageNames.length} villages trouvés pour ${_selectedCommune}');
+      if (villageNames.isNotEmpty) {
+        print(
+            '🔵 SCOOP Villages: Exemples -> ${villageNames.take(3).join(", ")}');
+      }
+
+      return villageNames;
+    } catch (e) {
+      print('🔴 SCOOP Villages: Erreur récupération -> $e');
+      print(
+          '🔍 SCOOP Villages: Région: $_selectedRegion, Province: $_selectedProvince, Commune: $_selectedCommune');
+      return [];
+    }
   }
 
   List<String> _getArrondissementsForCommune(String commune) {

@@ -48,6 +48,8 @@ class Formatters {
         return (collecte as Scoop).scoopNom;
       case Section.individuel:
         return (collecte as Individuel).nomProducteur;
+      case Section.miellerie:
+        return (collecte as Miellerie).miellerieNom;
     }
   }
 
@@ -85,6 +87,16 @@ class Formatters {
       case Section.individuel:
         final individuel = collecte as Individuel;
         return (individuel.originesFlorales ?? []).take(3).toList();
+
+      case Section.miellerie:
+        final miellerie = collecte as Miellerie;
+        final groups = <String, int>{};
+        for (final contenant in miellerie.contenants) {
+          groups[contenant.typeMiel] = (groups[contenant.typeMiel] ?? 0) + 1;
+        }
+        final entries = groups.entries.toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+        return entries.take(3).map((e) => '${e.key} ×${e.value}').toList();
     }
   }
 
@@ -97,6 +109,8 @@ class Formatters {
         return 'SCOOP';
       case Section.individuel:
         return 'Individuel';
+      case Section.miellerie:
+        return 'Miellerie';
     }
   }
 
@@ -109,6 +123,8 @@ class Formatters {
         return 'badge-scoop';
       case Section.individuel:
         return 'badge-individuel';
+      case Section.miellerie:
+        return 'badge-miellerie';
     }
   }
 

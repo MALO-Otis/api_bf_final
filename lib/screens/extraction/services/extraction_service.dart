@@ -1,11 +1,16 @@
 import 'dart:math';
 import '../models/extraction_models.dart';
+import 'control_attribution_receiver_service.dart';
 
 /// Service pour la gestion des données d'extraction
 class ExtractionService {
   static final ExtractionService _instance = ExtractionService._internal();
   factory ExtractionService() => _instance;
   ExtractionService._internal();
+
+  // Services
+  final ControlAttributionReceiverService _controlReceiver =
+      ControlAttributionReceiverService();
 
   // Simulation d'une base de données en mémoire
   final List<ExtractionProduct> _products = [];
@@ -33,6 +38,117 @@ class ExtractionService {
     'Boukary Compaoré',
     'Salamata Zongo'
   ];
+
+  /// Récupère toutes les extractions (simulation)
+  Future<List<Map<String, dynamic>>> getExtractions() async {
+    // Simulation de produits extraits qui peuvent être attribués au filtrage
+    return [
+      {
+        'id': 'ext_001',
+        'codeContenant': 'EXT_BF_2024_001',
+        'typeCollecte': 'recolte',
+        'collecteId': 'rec_001',
+        'producteur': 'OUEDRAOGO Moussa',
+        'village': 'Koudougou',
+        'siteOrigine': 'Koudougou',
+        'typeContenant': 'Bidon 25L',
+        'poidsExtrait': 18.5,
+        'teneurEau': 18.2,
+        'predominanceFlorale': 'Karité',
+        'qualite': 'Extra',
+        'dateExtraction':
+            DateTime.now().subtract(const Duration(days: 5)).toIso8601String(),
+        'attributions': [
+          {
+            'id': 'attr_ext_001',
+            'type': 'filtration',
+            'extracteur_nom': 'KONE Salif',
+            'date_attribution': DateTime.now()
+                .subtract(const Duration(days: 4))
+                .toIso8601String(),
+          }
+        ],
+      },
+      {
+        'id': 'ext_002',
+        'codeContenant': 'EXT_BF_2024_002',
+        'typeCollecte': 'individuel',
+        'collecteId': 'ind_002',
+        'producteur': 'TRAORE Fatou',
+        'village': 'Bobo-Dioulasso',
+        'siteOrigine': 'Bobo-Dioulasso',
+        'typeContenant': 'Bidon 20L',
+        'poidsExtrait': 15.2,
+        'teneurEau': 17.8,
+        'predominanceFlorale': 'Acacia',
+        'qualite': 'Premium',
+        'dateExtraction':
+            DateTime.now().subtract(const Duration(days: 3)).toIso8601String(),
+        'attributions': [
+          {
+            'id': 'attr_ext_002',
+            'type': 'filtration',
+            'extracteur_nom': 'SAWADOGO Pierre',
+            'date_attribution': DateTime.now()
+                .subtract(const Duration(days: 2))
+                .toIso8601String(),
+          }
+        ],
+      },
+    ];
+  }
+
+  /// Récupère les produits attribués depuis le module contrôle pour le site actuel
+  Stream<List<ExtractionProduct>> getProductsFromControlModule() {
+    return _controlReceiver.getAttributionsForCurrentSite();
+  }
+
+  /// Récupère les statistiques des attributions pour le site actuel
+  Stream<Map<String, int>> getAttributionStatistics() {
+    return _controlReceiver.getAttributionCountsByStatus();
+  }
+
+  /// Met à jour le statut d'un produit attribué
+  Future<void> updateProductStatus({
+    required String productId,
+    required ExtractionStatus newStatus,
+    String? commentaire,
+    Map<String, dynamic>? resultats,
+  }) async {
+    return _controlReceiver.updateAttributionStatus(
+      attributionId: productId,
+      newStatus: newStatus,
+      commentaire: commentaire,
+      resultats: resultats,
+    );
+  }
+
+  /// Récupère un produit spécifique par ID
+  Future<ExtractionProduct?> getProductById(String productId) async {
+    return _controlReceiver.getAttributionById(productId);
+  }
+
+  /// Récupère à la fois les données mock et les données du contrôle
+  Stream<List<ExtractionProduct>> getAllProductsStream() async* {
+    // Générer des données mock si la liste est vide
+    if (_products.isEmpty) {
+      generateMockData(count: 20); // Moins de données mock
+    }
+
+    // Combiner les données mock avec les données du contrôle
+    await for (final controlProducts in getProductsFromControlModule()) {
+      final allProducts = <ExtractionProduct>[
+        ...controlProducts, // Données du contrôle en premier (plus importantes)
+        ..._products, // Puis données mock
+      ];
+
+      // Trier par date d'attribution (plus récent en premier)
+      allProducts
+          .sort((a, b) => b.dateAttribution.compareTo(a.dateAttribution));
+
+      yield allProducts;
+    }
+  }
 
   /// Génère des données d'extraction fictives
   List<ExtractionProduct> generateMockData({int count = 50}) {
@@ -180,10 +296,10 @@ class ExtractionService {
     };
   }
 
-  /// Récupère tous les produits
+  /// Récupère tous les produits (compatibilité)
   List<ExtractionProduct> getAllProducts() {
     if (_products.isEmpty) {
-      generateMockData();
+      generateMockData(count: 20);
     }
     return List.from(_products);
   }
@@ -281,8 +397,8 @@ class ExtractionService {
     }).toList();
   }
 
-  /// Met à jour le statut d'un produit
-  void updateProductStatus(String productId, ExtractionStatus newStatus) {
+  /// Met à jour le statut d'un produit (données locales)
+  void updateProductStatusLocal(String productId, ExtractionStatus newStatus) {
     final index = _products.indexWhere((p) => p.id == productId);
     if (index != -1) {
       final product = _products[index];
@@ -313,7 +429,7 @@ class ExtractionService {
 
   /// Démarre l'extraction d'un produit
   void startExtraction(String productId) {
-    updateProductStatus(productId, ExtractionStatus.enCours);
+    updateProductStatusLocal(productId, ExtractionStatus.enCours);
   }
 
   /// Termine l'extraction d'un produit
@@ -344,18 +460,16 @@ class ExtractionService {
 
   /// Récupère les options de filtres
   Map<String, List<String>> getFilterOptions() {
-    final products = getAllProducts();
-
     return {
       'origines': _sites,
       'extracteurs': _extracteurs,
-      'collecteurs': products.map((p) => p.collecteur).toSet().toList()..sort(),
+      'collecteurs': _products.map((p) => p.collecteur).toSet().toList()
+        ..sort(),
     };
   }
 
   /// Calcule les statistiques
   ExtractionStats getStats() {
-    final products = getAllProducts();
-    return ExtractionStats.fromProducts(products);
+    return ExtractionStats.fromProducts(_products);
   }
 }

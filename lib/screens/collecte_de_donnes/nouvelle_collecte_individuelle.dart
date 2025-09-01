@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
 import 'package:apisavana_gestion/authentication/user_session.dart';
 import 'package:intl/intl.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../../data/models/collecte_models.dart';
 import 'widget_individuel/section_periode_collecte.dart';
 import 'widget_individuel/section_producteur.dart';
@@ -45,6 +46,9 @@ class _NouvelleCollecteIndividuellePageState
 
   // Nouveau champ: Période de collecte
   String _periodeCollecte = '';
+
+  // Géolocalisation
+  Map<String, dynamic>? _geolocationData;
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -115,16 +119,8 @@ class _NouvelleCollecteIndividuellePageState
       if (mounted) _slideController.forward();
     });
 
-    // Initialisation d'un premier contenant par défaut
-    _contenants.add(ContenantModel(
-      typeRuche: '',
-      typeMiel: '',
-      typeContenant: '', // Nouveau champ requis
-      quantite: 0.0,
-      prixUnitaire: 0.0,
-      predominanceFlorale: '',
-      note: '', // Nouveau champ pour les avis
-    ));
+    // NOUVEAU SYSTÈME SCOOP : Commencer avec une liste vide
+    // Les contenants seront ajoutés via le formulaire intégré
   }
 
   @override
@@ -135,6 +131,296 @@ class _NouvelleCollecteIndividuellePageState
     _shakeController.dispose();
     _observationsController.dispose();
     super.dispose();
+  }
+
+  // Méthodes de géolocalisation
+  Future<void> _getCurrentLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        Get.snackbar(
+          'Service désactivé',
+          'Veuillez activer le service de localisation',
+          backgroundColor: Colors.orange.shade100,
+          colorText: Colors.orange.shade800,
+          icon: const Icon(Icons.location_off, color: Colors.orange),
+        );
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          Get.snackbar(
+            'Permission refusée',
+            'Permission de localisation refusée',
+            backgroundColor: Colors.red.shade100,
+            colorText: Colors.red.shade800,
+            icon: const Icon(Icons.location_off, color: Colors.red),
+          );
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        Get.snackbar(
+          'Permission définitivement refusée',
+          'Veuillez autoriser la localisation dans les paramètres',
+          backgroundColor: Colors.red.shade100,
+          colorText: Colors.red.shade800,
+          icon: const Icon(Icons.location_off, color: Colors.red),
+        );
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.best);
+
+      setState(() {
+        _geolocationData = {
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'accuracy': position.accuracy,
+          'altitude': position.altitude,
+          'heading': position.heading,
+          'speed': position.speed,
+          'speedAccuracy': position.speedAccuracy,
+          'timestamp': position.timestamp,
+          'floor': position.floor,
+          'isMocked': position.isMocked,
+        };
+      });
+
+      Get.snackbar(
+        'Position récupérée',
+        'Localisation GPS enregistrée avec succès',
+        backgroundColor: Colors.green.shade100,
+        colorText: Colors.green.shade800,
+        icon: const Icon(Icons.gps_fixed, color: Colors.green),
+      );
+    } catch (e) {
+      print('🔴 Erreur géolocalisation: $e');
+      Get.snackbar(
+        'Erreur',
+        'Impossible de récupérer la position: $e',
+        backgroundColor: Colors.red.shade100,
+        colorText: Colors.red.shade800,
+        icon: const Icon(Icons.error, color: Colors.red),
+      );
+    }
+  }
+
+  String _formatTimestamp(DateTime? timestamp) {
+    if (timestamp == null) return 'N/A';
+    return DateFormat('dd/MM HH:mm:ss').format(timestamp);
+  }
+
+  Widget _buildLocationCard(String title, String value, IconData icon,
+      Color iconColor, Color backgroundColor) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: iconColor.withOpacity(0.3)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: iconColor, size: 20),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: iconColor,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Section géolocalisation
+  Widget _buildGeolocationSection() {
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.teal.shade600, Colors.green.shade600],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.gps_fixed,
+                      color: Colors.white, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Géolocalisation GPS',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (_geolocationData == null) ...[
+              // Bouton pour récupérer la position
+              Center(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.teal.shade600, Colors.green.shade600],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.teal.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton.icon(
+                    onPressed: _getCurrentLocation,
+                    icon: const Icon(Icons.my_location, color: Colors.white),
+                    label: const Text(
+                      'Récupérer ma position GPS',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ] else ...[
+              // Affichage des données GPS
+              Row(
+                children: [
+                  Icon(Icons.check_circle,
+                      color: Colors.green.shade600, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Position GPS récupérée',
+                    style: TextStyle(
+                      color: Colors.green.shade700,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: _getCurrentLocation,
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Actualiser'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.teal.shade600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Grille des informations GPS
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 2.5,
+                children: [
+                  _buildLocationCard(
+                    'Latitude',
+                    _geolocationData!['latitude'].toStringAsFixed(6),
+                    Icons.north,
+                    Colors.blue.shade600,
+                    Colors.blue.shade50,
+                  ),
+                  _buildLocationCard(
+                    'Longitude',
+                    _geolocationData!['longitude'].toStringAsFixed(6),
+                    Icons.east,
+                    Colors.orange.shade600,
+                    Colors.orange.shade50,
+                  ),
+                  _buildLocationCard(
+                    'Précision',
+                    '${_geolocationData!['accuracy'].toStringAsFixed(1)} m',
+                    Icons.center_focus_strong,
+                    Colors.purple.shade600,
+                    Colors.purple.shade50,
+                  ),
+                  _buildLocationCard(
+                    'Horodatage',
+                    _formatTimestamp(_geolocationData!['timestamp']),
+                    Icons.access_time,
+                    Colors.green.shade600,
+                    Colors.green.shade50,
+                  ),
+                  if (_geolocationData!['altitude'] != null)
+                    _buildLocationCard(
+                      'Altitude',
+                      '${_geolocationData!['altitude'].toStringAsFixed(1)} m',
+                      Icons.height,
+                      Colors.teal.shade600,
+                      Colors.teal.shade50,
+                    ),
+                  if (_geolocationData!['speed'] != null &&
+                      _geolocationData!['speed'] > 0)
+                    _buildLocationCard(
+                      'Vitesse',
+                      '${_geolocationData!['speed'].toStringAsFixed(1)} m/s',
+                      Icons.speed,
+                      Colors.red.shade600,
+                      Colors.red.shade50,
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   // Méthodes de gestion des producteurs
@@ -254,8 +540,9 @@ class _NouvelleCollecteIndividuellePageState
   }
 
   // Méthodes de gestion des contenants avec validation stricte
-  void _ajouterContenant({bool showMessages = true}) {
-    print("🟡 _ajouterContenant - Tentative d'ajout contenant");
+  void _ajouterContenant(ContenantModel contenant, {bool showMessages = true}) {
+    print(
+        "🟡 _ajouterContenant - Ajout nouveau contenant: ${contenant.typeMiel}");
 
     // Vérification stricte que le producteur est sélectionné avant d'ajouter un contenant
     if (_producteurSelectionne == null) {
@@ -271,26 +558,26 @@ class _NouvelleCollecteIndividuellePageState
     }
 
     print("✅ Producteur sélectionné - Ajout du contenant autorisé");
+
+    // Si le contenant n'a pas d'ID, lui assigner un ID avec suffixe
+    final contenantAvecId = contenant.id.isEmpty
+        ? contenant.copyWith(
+            id: 'C${(_contenants.length + 1).toString().padLeft(3, '0')}_individuel')
+        : contenant;
+
     setState(() {
-      _contenants.add(ContenantModel(
-        typeRuche: '',
-        typeMiel: '',
-        typeContenant: '', // Nouveau champ requis
-        quantite: 0.0,
-        prixUnitaire: 0.0,
-        predominanceFlorale: '',
-        note: '', // Nouveau champ pour les avis
-      ));
+      _contenants.add(contenantAvecId);
     });
 
     // Déclencher la re-validation
     _updateValidationState();
 
     // Message de confirmation
-    if (showMessages) {
+    if (showMessages && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Contenant ${_contenants.length} ajouté'),
+          content: Text(
+              'Contenant ${_contenants.length} ajouté: ${contenant.typeMiel} ${contenant.typeContenant}'),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
@@ -333,12 +620,13 @@ class _NouvelleCollecteIndividuellePageState
   }
 
   List<String> get _originesFlorales {
+    // NOUVEAU SYSTÈME SCOOP : Utiliser les types de miel au lieu des prédominances florales
     final origines = _contenants
-        .map((c) => c.predominanceFlorale)
+        .map((c) => c.typeMiel)
         .where((p) => p.isNotEmpty)
         .toSet()
         .toList();
-    print("🟡 Origines florales détectées: $origines");
+    print("🟡 Types de miel détectés (nouveau système SCOOP): $origines");
     return origines;
   }
 
@@ -349,11 +637,10 @@ class _NouvelleCollecteIndividuellePageState
     // Producteur sélectionné (30%)
     if (_producteurSelectionne != null) progress += 0.3;
 
-    // Contenants valides (50%)
+    // Contenants valides (50%) - NOUVEAU SYSTÈME SCOOP
     if (_contenants.isNotEmpty) {
       final contenantsValides = _contenants
           .where((c) =>
-              c.typeRuche.isNotEmpty &&
               c.typeMiel.isNotEmpty &&
               c.typeContenant.isNotEmpty &&
               c.quantite > 0 &&
@@ -398,16 +685,11 @@ class _NouvelleCollecteIndividuellePageState
       return false;
     }
 
-    // 3. Vérification de chaque contenant
+    // 3. Vérification de chaque contenant (NOUVEAU SYSTÈME SCOOP)
     for (int i = 0; i < _contenants.length; i++) {
       final contenant = _contenants[i];
 
-      if (contenant.typeRuche.isEmpty) {
-        print(
-            "🔴 Validation échouée: Type de ruche manquant pour contenant ${i + 1}");
-        _champsManquants.add("• Type de ruche manquant (Contenant ${i + 1})");
-      }
-
+      // NOUVEAU : Validation adaptée au système SCOOP
       if (contenant.typeMiel.isEmpty) {
         print(
             "🔴 Validation échouée: Type de miel manquant pour contenant ${i + 1}");
@@ -479,17 +761,17 @@ class _NouvelleCollecteIndividuellePageState
     return true;
   }
 
-  // Calculer hash pour détecter changements dans les données
+  // Calculer hash pour détecter changements dans les données (NOUVEAU SYSTÈME SCOOP)
   int _calculateValidationHash() {
     int hash = 0;
     hash ^= _producteurSelectionne?.id.hashCode ?? 0;
     hash ^= _contenants.length.hashCode;
     for (var contenant in _contenants) {
-      hash ^= contenant.typeRuche.hashCode;
       hash ^= contenant.typeMiel.hashCode;
       hash ^= contenant.typeContenant.hashCode;
       hash ^= contenant.quantite.hashCode;
       hash ^= contenant.prixUnitaire.hashCode;
+      hash ^= contenant.note.hashCode; // Nouveau champ notes
     }
     return hash;
   }
@@ -502,15 +784,31 @@ class _NouvelleCollecteIndividuellePageState
 
   // Méthode pour déclencher la re-validation et mise à jour de l'UI
   void _updateValidationState() {
+    print("🔄 _updateValidationState - Mise à jour état validation");
+    print(
+        "   - Producteur avant setState: ${_producteurSelectionne?.nomPrenom ?? 'NULL'}");
+
     _invalidateValidationCache(); // Invalider le cache avant re-validation
     setState(() {
       // Le getter _estValide sera appelé automatiquement lors du rebuild
       // Cela met à jour _champsManquants et l'état du bouton
     });
+
+    print("   - Formulaire valide après setState: $_estValide");
+    print("   - Champs manquants: $_champsManquants");
   }
 
   // Dialogue de confirmation avant enregistrement
   Future<void> _afficherDialogueConfirmation() async {
+    // 🔍 DIAGNOSTIC: État du formulaire avant validation
+    print("🔍 DIAGNOSTIC AVANT VALIDATION:");
+    print(
+        "   - Producteur sélectionné: ${_producteurSelectionne?.nomPrenom ?? 'NULL'}");
+    print("   - Nombre de contenants: ${_contenants.length}");
+    print("   - Période collecte: $_periodeCollecte");
+    print("   - Observations: ${_observationsController.text}");
+    print("   - Formulaire valide: $_estValide");
+
     if (!_estValide) {
       print("🔴 Formulaire invalide");
       _shakeController.forward().then((_) => _shakeController.reset());
@@ -1050,7 +1348,10 @@ class _NouvelleCollecteIndividuellePageState
 
       _afficherErreur(messageErreur);
     } finally {
-      setState(() => _isLoading = false);
+      // 🔧 SÉCURITÉ: Vérifier que le widget est encore monté avant setState
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -1060,8 +1361,6 @@ class _NouvelleCollecteIndividuellePageState
         "📊 _genererStatistiquesAvancees - Début génération format structuré");
 
     try {
-      final now = Timestamp.now();
-
       // 1. Récupération de tous les producteurs de listes_prod
       print("🔍 STATS - Récupération producteurs depuis listes_prod...");
       final producteursQuery = await FirebaseFirestore.instance
@@ -1569,17 +1868,7 @@ class _NouvelleCollecteIndividuellePageState
       _periodeCollecte =
           "${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}";
 
-      _contenants = [
-        ContenantModel(
-          typeRuche: '',
-          typeMiel: '',
-          typeContenant: '', // Nouveau champ requis
-          quantite: 0.0,
-          prixUnitaire: 0.0,
-          predominanceFlorale: '',
-          note: '', // Nouveau champ pour les avis
-        )
-      ];
+      _contenants = [];
       _observationsController.clear();
       _errorMessage = null;
     });
@@ -1588,6 +1877,13 @@ class _NouvelleCollecteIndividuellePageState
   // Gestion des messages
   void _afficherErreur(String message) {
     print("🔴 Erreur affichée: $message");
+
+    // 🔧 SÉCURITÉ: Vérifier que le widget est encore monté
+    if (!mounted) {
+      print("⚠️ Widget non monté, impossible d'afficher l'erreur");
+      return;
+    }
+
     setState(() => _errorMessage = message);
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1607,6 +1903,13 @@ class _NouvelleCollecteIndividuellePageState
 
   void _afficherSucces(String message) {
     print("✅ Succès affiché: $message");
+
+    // 🔧 SÉCURITÉ: Vérifier que le widget est encore monté
+    if (!mounted) {
+      print("⚠️ Widget non monté, impossible d'afficher le succès");
+      return;
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -1650,6 +1953,14 @@ class _NouvelleCollecteIndividuellePageState
         setState(() {
           _producteurSelectionne = producteurSelectionne;
         });
+
+        // 🔍 DIAGNOSTIC: Producteur sélectionné
+        print("✅ PRODUCTEUR SÉLECTIONNÉ:");
+        print("   - ID: ${producteurSelectionne.id}");
+        print("   - Nom: ${producteurSelectionne.nomPrenom}");
+        print(
+            "   - Village: ${producteurSelectionne.localisation['village'] ?? 'Non spécifié'}");
+
         _updateValidationState();
       }
     } catch (e) {
@@ -1744,6 +2055,10 @@ class _NouvelleCollecteIndividuellePageState
                             _updateValidationState();
                           },
                         ),
+                        SizedBox(height: isSmallScreen ? 16 : 24),
+
+                        // Section géolocalisation GPS
+                        _buildGeolocationSection(),
                         SizedBox(height: isSmallScreen ? 16 : 24),
 
                         // Section contenants avec cartes modulaires

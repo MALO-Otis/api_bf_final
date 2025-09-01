@@ -2,7 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/collecte_models.dart';
+import '../models/attribution_models.dart';
 import '../utils/formatters.dart';
+import 'quality_control_indicator.dart';
 
 class CollecteCard extends StatelessWidget {
   final Section section;
@@ -11,6 +13,7 @@ class CollecteCard extends StatelessWidget {
   final VoidCallback? onOpen;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final Function(AttributionType)? onAttribution;
   final bool isCompact;
 
   const CollecteCard({
@@ -21,6 +24,7 @@ class CollecteCard extends StatelessWidget {
     this.onOpen,
     this.onEdit,
     this.onDelete,
+    this.onAttribution,
     this.isCompact = false,
   });
 
@@ -51,6 +55,10 @@ class CollecteCard extends StatelessWidget {
       case Section.individuel:
         badgeColor = Colors.orange.shade100;
         badgeTextColor = Colors.orange.shade800;
+        break;
+      case Section.miellerie:
+        badgeColor = Colors.purple.shade100;
+        badgeTextColor = Colors.purple.shade800;
         break;
     }
 
@@ -90,6 +98,12 @@ class CollecteCard extends StatelessWidget {
                         fontSize: isMobile ? 10 : null,
                       ),
                     ),
+                  ),
+
+                  // Indicateur de contrôle qualité
+                  QualityControlIndicator(
+                    collecte: item,
+                    showDetails: !isMobile,
                   ),
 
                   const Spacer(),
@@ -201,6 +215,34 @@ class CollecteCard extends StatelessWidget {
               textStyle: theme.textTheme.labelMedium,
             ),
           ),
+        if (onAttribution != null) ...[
+          const SizedBox(width: 8),
+          ElevatedButton.icon(
+            onPressed: () => onAttribution!(AttributionType.extraction),
+            icon: const Icon(Icons.science, size: 16),
+            label: const Text('Attribuer à Extraction'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue.shade600,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              textStyle:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton.icon(
+            onPressed: () => onAttribution!(AttributionType.filtration),
+            icon: const Icon(Icons.filter_alt, size: 16),
+            label: const Text('Attribuer à Filtration'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.purple.shade600,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              textStyle:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
         if (canEdit && onEdit != null) ...[
           const SizedBox(width: 8),
           OutlinedButton.icon(
@@ -220,18 +262,56 @@ class CollecteCard extends StatelessWidget {
   }
 
   Widget _buildMobileActions(BuildContext context, ThemeData theme) {
-    return Row(
+    return Column(
       children: [
-        if (onOpen != null)
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: onOpen,
-              icon: const Icon(Icons.visibility, size: 16),
-              label: const Text('Détails'),
-            ),
+        Row(
+          children: [
+            if (onOpen != null)
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onOpen,
+                  icon: const Icon(Icons.visibility, size: 16),
+                  label: const Text('Détails'),
+                ),
+              ),
+            const SizedBox(width: 8),
+            _buildMoreMenu(context),
+          ],
+        ),
+        if (onAttribution != null) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => onAttribution!(AttributionType.extraction),
+                  icon: const Icon(Icons.science, size: 14),
+                  label: const Text('Extraction'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade600,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    textStyle: const TextStyle(fontSize: 11),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => onAttribution!(AttributionType.filtration),
+                  icon: const Icon(Icons.filter_alt, size: 14),
+                  label: const Text('Filtration'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purple.shade600,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    textStyle: const TextStyle(fontSize: 11),
+                  ),
+                ),
+              ),
+            ],
           ),
-        const SizedBox(width: 8),
-        _buildMoreMenu(context),
+        ],
       ],
     );
   }
@@ -622,6 +702,12 @@ class CollecteCard extends StatelessWidget {
                 '${_getContainerCount(item)}',
                 Icons.inventory_2,
               ),
+            ),
+            const SizedBox(width: 8),
+            // Indicateur de contrôle en mode compact pour mobile
+            QualityControlIndicator(
+              collecte: item,
+              showDetails: false,
             ),
           ],
         );

@@ -1,14 +1,21 @@
 // Dialog de détails d'une collecte
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:get/get.dart';
 import '../models/collecte_models.dart';
 import '../models/quality_control_models.dart';
 import '../utils/formatters.dart';
 import '../services/quality_control_service.dart';
+import '../services/global_refresh_service.dart';
+import '../services/firestore_data_service.dart';
+import '../../../authentication/user_session.dart';
 import 'stat_card.dart';
 import 'quality_control_form.dart';
+import '../../../data/geographe/geographie.dart';
 
-class DetailsDialog extends StatelessWidget {
+class DetailsDialog extends StatefulWidget {
   final bool isOpen;
   final ValueChanged<bool> onOpenChange;
   final Section section;
@@ -23,8 +30,84 @@ class DetailsDialog extends StatelessWidget {
   });
 
   @override
+  State<DetailsDialog> createState() => _DetailsDialogState();
+}
+
+class _DetailsDialogState extends State<DetailsDialog> {
+  // Key pour forcer la reconstruction des FutureBuilders
+  late ValueNotifier<int> _refreshKey;
+
+  // Subscription pour les notifications globales
+  StreamSubscription<String>? _qualityControlUpdateSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshKey = ValueNotifier<int>(0);
+    _setupGlobalRefreshListener();
+  }
+
+  @override
+  void dispose() {
+    _refreshKey.dispose();
+    _qualityControlUpdateSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// Configure l'écoute des notifications globales
+  void _setupGlobalRefreshListener() {
+    final globalRefreshService = GlobalRefreshService();
+
+    _qualityControlUpdateSubscription = globalRefreshService
+        .qualityControlUpdatesStream
+        .listen((containerCode) {
+      if (mounted) {
+        print(
+            '📢 DetailsDialog: Notification contrôle mis à jour - $containerCode');
+        print('🔄 DetailsDialog: Rechargement des données de collecte...');
+        _refreshAllData();
+      }
+    });
+
+    // Écoute les mises à jour de collectes
+    globalRefreshService.collecteUpdatesStream.listen((collecteId) {
+      if (mounted) {
+        print(
+            '📢 DetailsDialog: Notification collecte mise à jour - $collecteId');
+        print('🔄 DetailsDialog: Rechargement des données de collecte...');
+        _refreshAllData();
+      }
+    });
+  }
+
+  // Méthode pour forcer la mise à jour des statistiques seulement
+  void _refreshControlStats() {
+    if (mounted) {
+      _refreshKey.value++;
+    }
+  }
+
+  // Méthode pour recharger complètement les données de la collecte
+  void _refreshAllData() {
+    if (mounted) {
+      print('🔄 DetailsDialog: Rechargement complet des données de collecte');
+
+      // Force une mise à jour complète via le système de refresh key
+      _refreshKey.value++;
+
+      // Notifie le parent pour qu'il recharge aussi ses données
+      if (mounted) {
+        print('✅ DetailsDialog: Forçage du rebuild du dialog');
+        setState(() {
+          // Force un rebuild complet du widget
+        });
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (!isOpen || item == null) return const SizedBox.shrink();
+    if (!widget.isOpen || widget.item == null) return const SizedBox.shrink();
 
     final screenSize = MediaQuery.of(context).size;
     final isMobile = screenSize.width < 600;
@@ -90,7 +173,7 @@ class DetailsDialog extends StatelessWidget {
 
   Widget _buildHeader(BuildContext context) {
     final theme = Theme.of(context);
-    final sectionLabel = Formatters.getSectionLabel(section);
+    final sectionLabel = Formatters.getSectionLabel(widget.section);
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -116,7 +199,7 @@ class DetailsDialog extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  Formatters.getTitleForCollecte(section, item!),
+                  Formatters.getTitleForCollecte(widget.section, widget.item!),
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -125,7 +208,7 @@ class DetailsDialog extends StatelessWidget {
             ),
           ),
           IconButton(
-            onPressed: () => onOpenChange(false),
+            onPressed: () => widget.onOpenChange(false),
             icon: const Icon(Icons.close),
             tooltip: 'Fermer',
           ),
@@ -175,14 +258,15 @@ class DetailsDialog extends StatelessWidget {
         children: [
           const Spacer(),
           OutlinedButton.icon(
-            onPressed: () => _copyToClipboard(context, item!.id, 'ID collecte'),
+            onPressed: () =>
+                _copyToClipboard(context, widget.item!.id, 'ID collecte'),
             icon: const Icon(Icons.copy, size: 16),
             label: const Text('Copier ID'),
           ),
           const SizedBox(width: 12),
           OutlinedButton.icon(
-            onPressed: () =>
-                _copyToClipboard(context, item!.path, 'Chemin Firestore'),
+            onPressed: () => _copyToClipboard(
+                context, widget.item!.path, 'Chemin Firestore'),
             icon: const Icon(Icons.link, size: 16),
             label: const Text('Copier chemin'),
           ),
@@ -210,14 +294,16 @@ class DetailsDialog extends StatelessWidget {
           mainAxisSpacing: 12,
           childAspectRatio: isMobile ? 2.5 : 3.0,
           children: [
-            _buildInfoField(context, 'ID', item!.id, copyable: true),
-            _buildInfoField(context, 'Site', item!.site),
+            _buildInfoField(context, 'ID', widget.item!.id, copyable: true),
+            _buildInfoField(context, 'Site', widget.item!.site),
             _buildInfoField(
-                context, 'Date', Formatters.formatDateTime(item!.date)),
-            _buildInfoField(context, 'Technicien', item!.technicien ?? '—'),
+                context, 'Date', Formatters.formatDateTime(widget.item!.date)),
             _buildInfoField(
-                context, 'Statut', Formatters.formatStatut(item!.statut)),
-            _buildInfoField(context, 'Chemin', item!.path, copyable: true),
+                context, 'Technicien', widget.item!.technicien ?? '—'),
+            _buildInfoField(context, 'Statut',
+                Formatters.formatStatut(widget.item!.statut)),
+            _buildInfoField(context, 'Chemin', widget.item!.path,
+                copyable: true),
           ],
         );
       },
@@ -276,45 +362,74 @@ class DetailsDialog extends StatelessWidget {
   }
 
   Widget _buildStats(BuildContext context) {
-    return StatsRow(
-      stats: [
-        StatMini(
-          label: 'Poids total',
-          value: Formatters.formatKg(item!.totalWeight),
-          icon: Icons.scale,
-          color: Colors.green.shade600,
-        ),
-        StatMini(
-          label: 'Montant total',
-          value: Formatters.formatFCFA(item!.totalAmount),
-          icon: Icons.attach_money,
-          color: Colors.orange.shade600,
-        ),
-        StatMini(
-          label: '#contenants',
-          value: Formatters.formatNumber(item!.containersCount),
-          icon: Icons.inventory_2,
-          color: Colors.blue.shade600,
-        ),
-      ],
+    return ValueListenableBuilder<int>(
+      valueListenable: _refreshKey,
+      builder: (context, refreshValue, child) {
+        return FutureBuilder<Map<String, int>>(
+          key: ValueKey(refreshValue), // Force la reconstruction
+          future: _getControlStats(),
+          builder: (context, snapshot) {
+            final controlStats = snapshot.data ??
+                {'total': 0, 'controlled': 0, 'uncontrolled': 0};
+
+            return StatsRow(
+              stats: [
+                StatMini(
+                  label: 'Poids total',
+                  value: Formatters.formatKg(widget.item!.totalWeight),
+                  icon: Icons.scale,
+                  color: Colors.green.shade600,
+                ),
+                StatMini(
+                  label: 'Montant total',
+                  value: Formatters.formatFCFA(widget.item!.totalAmount),
+                  icon: Icons.attach_money,
+                  color: Colors.orange.shade600,
+                ),
+                StatMini(
+                  label: 'Contrôlés',
+                  value: snapshot.connectionState == ConnectionState.waiting
+                      ? '...'
+                      : '${controlStats['controlled']}/${controlStats['total']}',
+                  icon: Icons.verified,
+                  color: Colors.green.shade600,
+                ),
+                StatMini(
+                  label: 'Non contrôlés',
+                  value: snapshot.connectionState == ConnectionState.waiting
+                      ? '...'
+                      : '${controlStats['uncontrolled']}',
+                  icon: Icons.pending,
+                  color: Colors.orange.shade600,
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
   Widget _buildSectionSpecificInfo(BuildContext context) {
-    switch (section) {
+    switch (widget.section) {
       case Section.recoltes:
-        if (item is Recolte) {
-          return _buildRecoltesInfo(context, item as Recolte);
+        if (widget.item is Recolte) {
+          return _buildRecoltesInfo(context, widget.item as Recolte);
         }
         break;
       case Section.scoop:
-        if (item is Scoop) {
-          return _buildScoopInfo(context, item as Scoop);
+        if (widget.item is Scoop) {
+          return _buildScoopInfo(context, widget.item as Scoop);
         }
         break;
       case Section.individuel:
-        if (item is Individuel) {
-          return _buildIndividuelInfo(context, item as Individuel);
+        if (widget.item is Individuel) {
+          return _buildIndividuelInfo(context, widget.item as Individuel);
+        }
+        break;
+      case Section.miellerie:
+        if (widget.item is Miellerie) {
+          return _buildMiellerieInfo(context, widget.item as Miellerie);
         }
         break;
     }
@@ -325,42 +440,24 @@ class DetailsDialog extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Informations géographiques',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+        // Section informations géographiques modernisée
+        _buildGeographicInfoSection(
+          context,
+          region: recolte.region,
+          province: recolte.province,
+          commune: recolte.commune,
+          village: recolte.village,
         ),
-        const SizedBox(height: 12),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final isMobile = constraints.maxWidth < 600;
 
-            return GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: isMobile ? 2 : 4,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: isMobile ? 2.5 : 3.0,
-              children: [
-                _buildInfoField(context, 'Région', recolte.region ?? '—'),
-                _buildInfoField(context, 'Province', recolte.province ?? '—'),
-                _buildInfoField(context, 'Commune', recolte.commune ?? '—'),
-                _buildInfoField(context, 'Village', recolte.village ?? '—'),
-              ],
-            );
-          },
-        ),
         if (recolte.predominancesFlorales?.isNotEmpty == true) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           Text(
             'Prédominances florales',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           _buildChips(context, recolte.predominancesFlorales!),
         ],
       ],
@@ -371,6 +468,7 @@ class DetailsDialog extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Informations SCOOP
         Text(
           'Informations SCOOP',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -385,7 +483,7 @@ class DetailsDialog extends StatelessWidget {
             return GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: isMobile ? 2 : 4,
+              crossAxisCount: isMobile ? 2 : 3,
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
               childAspectRatio: isMobile ? 2.5 : 3.0,
@@ -394,11 +492,20 @@ class DetailsDialog extends StatelessWidget {
                 _buildInfoField(
                     context, 'Période', scoop.periodeCollecte ?? '—'),
                 _buildInfoField(context, 'Qualité', scoop.qualite ?? '—'),
-                _buildInfoField(
-                    context, 'Localisation', scoop.localisation ?? '—'),
               ],
             );
           },
+        ),
+
+        const SizedBox(height: 20),
+
+        // Section informations géographiques comme pour les récoltes
+        _buildGeographicInfoSection(
+          context,
+          region: scoop.region,
+          province: scoop.province,
+          commune: scoop.commune,
+          village: scoop.village,
         ),
       ],
     );
@@ -408,6 +515,7 @@ class DetailsDialog extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Informations producteur
         Text(
           'Informations producteur',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -435,17 +543,69 @@ class DetailsDialog extends StatelessWidget {
             );
           },
         ),
+
+        const SizedBox(height: 20),
+
+        // Section informations géographiques comme pour les récoltes et SCOOP
+        _buildGeographicInfoSection(
+          context,
+          region: individuel.region,
+          province: individuel.province,
+          commune: individuel.commune,
+          village: individuel.village,
+        ),
+
         if (individuel.originesFlorales?.isNotEmpty == true) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           Text(
             'Origines florales',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           _buildChips(context, individuel.originesFlorales!),
         ],
+      ],
+    );
+  }
+
+  Widget _buildMiellerieInfo(BuildContext context, Miellerie miellerie) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Informations miellerie
+        Text(
+          'Informations miellerie',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+        const SizedBox(height: 12),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isMobile = constraints.maxWidth < 600;
+
+            return GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: isMobile ? 1 : 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: isMobile ? 3.0 : 3.5,
+              children: [
+                _buildInfoField(context, 'Collecteur', miellerie.collecteurNom),
+                _buildInfoField(context, 'Miellerie', miellerie.miellerieNom),
+                _buildInfoField(context, 'Localité', miellerie.localite),
+                _buildInfoField(
+                    context, 'Coopérative', miellerie.cooperativeNom),
+                _buildInfoField(context, 'Répondant', miellerie.repondant),
+                _buildInfoField(
+                    context, 'Observations', miellerie.observations ?? '—'),
+              ],
+            );
+          },
+        ),
       ],
     );
   }
@@ -477,11 +637,68 @@ class DetailsDialog extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Contenants',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+        ValueListenableBuilder<int>(
+          valueListenable: _refreshKey,
+          builder: (context, refreshValue, child) {
+            return FutureBuilder<Map<String, int>>(
+              key: ValueKey(
+                  'control_stats_$refreshValue'), // Force la reconstruction
+              future: _getControlStats(),
+              builder: (context, snapshot) {
+                final controlStats =
+                    snapshot.data ?? {'controlled': 0, 'uncontrolled': 0};
+
+                return Row(
+                  children: [
+                    Text(
+                      'Contenants',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        snapshot.connectionState == ConnectionState.waiting
+                            ? '... contrôlés'
+                            : '${controlStats['controlled']} contrôlés',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.green.shade700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        snapshot.connectionState == ConnectionState.waiting
+                            ? '... non contrôlés'
+                            : '${controlStats['uncontrolled']} non contrôlés',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange.shade700,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
         ),
         const SizedBox(height: 12),
 
@@ -496,71 +713,6 @@ class DetailsDialog extends StatelessWidget {
           },
         ),
       ],
-    );
-  }
-
-  Widget _buildDesktopContenantsTable(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        children: [
-          // En-tête
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(8)),
-            ),
-            child: Row(
-              children: _getTableHeaders()
-                  .map((header) => Expanded(
-                        child: Text(
-                          header,
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ))
-                  .toList(),
-            ),
-          ),
-
-          // Lignes de données
-          ..._getTableRows().asMap().entries.map((entry) {
-            final index = entry.key;
-            final row = entry.value;
-
-            return Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: index.isEven
-                    ? theme.colorScheme.surface
-                    : theme.colorScheme.surfaceVariant.withOpacity(0.2),
-                borderRadius: index == _getTableRows().length - 1
-                    ? const BorderRadius.vertical(bottom: Radius.circular(8))
-                    : null,
-              ),
-              child: Row(
-                children: row
-                    .map((cell) => Expanded(
-                          child: Text(
-                            cell,
-                            style: theme.textTheme.bodyMedium,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ))
-                    .toList(),
-              ),
-            );
-          }),
-        ],
-      ),
     );
   }
 
@@ -607,7 +759,28 @@ class DetailsDialog extends StatelessWidget {
         ...rows.asMap().entries.map((entry) {
           final index = entry.key;
           final row = entry.value;
-          final containerCode = 'C${(index + 1).toString().padLeft(3, '0')}';
+
+          // ✅ CORRECTION: Utiliser l'ID réel du contenant
+          String containerCode =
+              'C${(index + 1).toString().padLeft(3, '0')}'; // fallback
+
+          // Récupérer l'ID réel selon le type de collecte
+          if (widget.item is Recolte) {
+            final recolte = widget.item as Recolte;
+            if (index < recolte.contenants.length) {
+              containerCode = recolte.contenants[index].id;
+            }
+          } else if (widget.item is Scoop) {
+            final scoop = widget.item as Scoop;
+            if (index < scoop.contenants.length) {
+              containerCode = scoop.contenants[index].id;
+            }
+          } else if (widget.item is Individuel) {
+            final individuel = widget.item as Individuel;
+            if (index < individuel.contenants.length) {
+              containerCode = individuel.contenants[index].id;
+            }
+          }
 
           return Card(
             margin: const EdgeInsets.only(bottom: 12),
@@ -635,22 +808,59 @@ class DetailsDialog extends StatelessWidget {
                         ),
                       ),
                       const Spacer(),
-                      FilledButton.icon(
-                        onPressed: () {
-                          final qualityService = QualityControlService();
-                          final existingControl = qualityService
-                              .getQualityControl(containerCode, item!.date);
-                          _showQualityControlForm(context, containerCode,
-                              existingData: existingControl);
+                      ValueListenableBuilder<int>(
+                        valueListenable: _refreshKey,
+                        builder: (context, refreshValue, child) {
+                          return FutureBuilder<bool>(
+                            key: ValueKey(
+                                'container_control_${containerCode}_$refreshValue'),
+                            future: _isContainerControlled(containerCode),
+                            builder: (context, snapshot) {
+                              final isControlled = snapshot.data ?? false;
+                              final isLoading = snapshot.connectionState ==
+                                  ConnectionState.waiting;
+
+                              if (isControlled) {
+                                // Si contrôlé, afficher bouton "Modifier le contrôle" (ADMIN SEULEMENT)
+                                return _buildModifyControlButton(
+                                    context, containerCode);
+                              } else {
+                                // Si non contrôlé, afficher bouton "Contrôler"
+                                return FilledButton.icon(
+                                  onPressed: isLoading
+                                      ? null
+                                      : () async {
+                                          final qualityService =
+                                              QualityControlService();
+                                          final existingControl =
+                                              await qualityService
+                                                  .getQualityControl(
+                                                      containerCode,
+                                                      widget.item!.date);
+                                          _showQualityControlForm(
+                                              context, containerCode,
+                                              existingData: existingControl);
+                                        },
+                                  icon: isLoading
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.fact_check, size: 16),
+                                  label: Text(isLoading ? '...' : 'Contrôler'),
+                                  style: FilledButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 6),
+                                    minimumSize: const Size(0, 32),
+                                    textStyle: const TextStyle(fontSize: 12),
+                                  ),
+                                );
+                              }
+                            },
+                          );
                         },
-                        icon: const Icon(Icons.fact_check, size: 16),
-                        label: const Text('Contrôler'),
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
-                          minimumSize: const Size(0, 32),
-                          textStyle: const TextStyle(fontSize: 12),
-                        ),
                       ),
                     ],
                   ),
@@ -705,73 +915,102 @@ class DetailsDialog extends StatelessWidget {
   }
 
   List<String> _getTableHeaders() {
-    switch (section) {
+    switch (widget.section) {
       case Section.recoltes:
         return [
           'Type ruche',
           'Type contenant',
           'Poids (kg)',
           'Prix unitaire',
-          'Montant'
+          'Montant',
+          'Statut Contrôle'
         ];
       case Section.scoop:
       case Section.individuel:
+      case Section.miellerie:
         return [
           'Type contenant',
           'Type miel',
           'Quantité (kg)',
           'Prix unitaire',
-          'Montant'
+          'Montant',
+          'Statut Contrôle'
         ];
     }
   }
 
   List<List<String>> _getTableRows() {
-    if (item == null) return [];
+    if (widget.item == null) return [];
 
-    switch (section) {
+    switch (widget.section) {
       case Section.recoltes:
-        if (item is Recolte) {
-          final recolte = item as Recolte;
-          return recolte.contenants
-              .map((c) => [
-                    c.hiveType,
-                    c.containerType,
-                    Formatters.formatKg(c.weight),
-                    Formatters.formatFCFA(c.unitPrice),
-                    Formatters.formatFCFA(c.total),
-                  ])
-              .toList();
+        if (widget.item is Recolte) {
+          final recolte = widget.item as Recolte;
+          return recolte.contenants.asMap().entries.map((entry) {
+            final c = entry.value;
+            // final containerId = 'C${(index + 1).toString().padLeft(3, '0')}';
+            return [
+              c.hiveType,
+              c.containerType,
+              Formatters.formatKg(c.weight),
+              Formatters.formatFCFA(c.unitPrice),
+              Formatters.formatFCFA(c.total),
+              'Vérification...', // Status will be handled by FutureBuilder in display
+            ];
+          }).toList();
         }
         break;
 
       case Section.scoop:
-        if (item is Scoop) {
-          final scoop = item as Scoop;
-          return scoop.contenants
-              .map((c) => [
-                    c.typeContenant,
-                    c.typeMiel,
-                    Formatters.formatKg(c.quantite),
-                    Formatters.formatFCFA(c.prixUnitaire),
-                    Formatters.formatFCFA(c.montantTotal),
-                  ])
-              .toList();
+        if (widget.item is Scoop) {
+          final scoop = widget.item as Scoop;
+          return scoop.contenants.asMap().entries.map((entry) {
+            final c = entry.value;
+            // final containerId = 'C${(index + 1).toString().padLeft(3, '0')}';
+            return [
+              c.typeContenant,
+              c.typeMiel,
+              Formatters.formatKg(c.quantite),
+              Formatters.formatFCFA(c.prixUnitaire),
+              Formatters.formatFCFA(c.montantTotal),
+              'Vérification...', // Status will be handled by FutureBuilder in display
+            ];
+          }).toList();
         }
         break;
 
       case Section.individuel:
-        if (item is Individuel) {
-          final individuel = item as Individuel;
-          return individuel.contenants
-              .map((c) => [
-                    c.typeContenant,
-                    c.typeMiel,
-                    Formatters.formatKg(c.quantite),
-                    Formatters.formatFCFA(c.prixUnitaire),
-                    Formatters.formatFCFA(c.montantTotal),
-                  ])
-              .toList();
+        if (widget.item is Individuel) {
+          final individuel = widget.item as Individuel;
+          return individuel.contenants.asMap().entries.map((entry) {
+            final c = entry.value;
+            // final containerId = 'C${(index + 1).toString().padLeft(3, '0')}';
+            return [
+              c.typeContenant,
+              c.typeMiel,
+              Formatters.formatKg(c.quantite),
+              Formatters.formatFCFA(c.prixUnitaire),
+              Formatters.formatFCFA(c.montantTotal),
+              'Vérification...', // Status will be handled by FutureBuilder in display
+            ];
+          }).toList();
+        }
+        break;
+
+      case Section.miellerie:
+        if (widget.item is Miellerie) {
+          final miellerie = widget.item as Miellerie;
+          return miellerie.contenants.asMap().entries.map((entry) {
+            final c = entry.value;
+            return [
+              c.typeContenant,
+              c.typeMiel,
+              Formatters.formatKg(c.quantite),
+              Formatters.formatFCFA(c.prixUnitaire),
+              Formatters.formatFCFA(c.montantTotal),
+              'Vérification...', // Status will be handled by FutureBuilder in display
+            ];
+          }).toList();
         }
         break;
     }
@@ -779,13 +1018,15 @@ class DetailsDialog extends StatelessWidget {
   }
 
   IconData _getSectionIcon() {
-    switch (section) {
+    switch (widget.section) {
       case Section.recoltes:
         return Icons.agriculture;
       case Section.scoop:
         return Icons.group;
       case Section.individuel:
         return Icons.person;
+      case Section.miellerie:
+        return Icons.factory;
     }
   }
 
@@ -807,7 +1048,7 @@ class DetailsDialog extends StatelessWidget {
   // Nouvelles fonctions pour mobile
   Widget _buildMobileHeader(BuildContext context, bool isVerySmall) {
     final theme = Theme.of(context);
-    final sectionLabel = Formatters.getSectionLabel(section);
+    final sectionLabel = Formatters.getSectionLabel(widget.section);
 
     return Container(
       padding: EdgeInsets.all(isVerySmall ? 12 : 16),
@@ -850,7 +1091,7 @@ class DetailsDialog extends StatelessWidget {
               ),
               const Spacer(),
               IconButton(
-                onPressed: () => onOpenChange(false),
+                onPressed: () => widget.onOpenChange(false),
                 icon: const Icon(Icons.close),
                 iconSize: 20,
                 style: IconButton.styleFrom(
@@ -862,7 +1103,7 @@ class DetailsDialog extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            Formatters.getTitleForCollecte(section, item!),
+            Formatters.getTitleForCollecte(widget.section, widget.item!),
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
               fontSize: isVerySmall ? 16 : null,
@@ -870,7 +1111,7 @@ class DetailsDialog extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            Formatters.getSubtitleForCollecte(item!),
+            Formatters.getSubtitleForCollecte(widget.item!),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
               fontSize: isVerySmall ? 12 : null,
@@ -903,7 +1144,7 @@ class DetailsDialog extends StatelessWidget {
           const SizedBox(height: 16),
 
           // Contenants en format mobile
-          if (item != null) _buildMobileContenantsView(context),
+          if (widget.item != null) _buildMobileContenantsView(context),
         ],
       ),
     );
@@ -930,7 +1171,7 @@ class DetailsDialog extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: () => _copyToClipboard(
                     context,
-                    item!.id,
+                    widget.item!.id,
                     'ID',
                   ),
                   icon: const Icon(Icons.copy, size: 16),
@@ -945,7 +1186,7 @@ class DetailsDialog extends StatelessWidget {
           if (!isVerySmall) ...[
             const SizedBox(height: 8),
             Text(
-              'ID: ${item!.id}',
+              'ID: ${widget.item!.id}',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
                 fontFamily: 'monospace',
@@ -974,7 +1215,7 @@ class DetailsDialog extends StatelessWidget {
                 child: _buildMobileStat(
                   context,
                   'Poids total',
-                  Formatters.formatKg(item!.totalWeight),
+                  Formatters.formatKg(widget.item!.totalWeight),
                   Icons.scale,
                   isVerySmall,
                 ),
@@ -984,7 +1225,7 @@ class DetailsDialog extends StatelessWidget {
                 child: _buildMobileStat(
                   context,
                   'Montant total',
-                  Formatters.formatFCFA(item!.totalAmount),
+                  Formatters.formatFCFA(widget.item!.totalAmount),
                   Icons.attach_money,
                   isVerySmall,
                 ),
@@ -995,19 +1236,31 @@ class DetailsDialog extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _buildMobileStat(
-                  context,
-                  'Contenants',
-                  '${_getContainerCount(item!)}',
-                  Icons.inventory_2,
-                  isVerySmall,
+                child: FutureBuilder<Map<String, int>>(
+                  future: _getControlStats(),
+                  builder: (context, snapshot) {
+                    final controlStats =
+                        snapshot.data ?? {'controlled': 0, 'total': 0};
+                    final value = snapshot.connectionState ==
+                            ConnectionState.waiting
+                        ? '...'
+                        : '${controlStats['controlled']}/${controlStats['total']}';
+
+                    return _buildMobileStat(
+                      context,
+                      'Contrôlés',
+                      value,
+                      Icons.verified,
+                      isVerySmall,
+                    );
+                  },
                 ),
               ),
               Expanded(
                 child: _buildMobileStat(
                   context,
                   'Date',
-                  Formatters.formatDate(item!.date),
+                  Formatters.formatDate(widget.item!.date),
                   Icons.calendar_today,
                   isVerySmall,
                 ),
@@ -1083,13 +1336,17 @@ class DetailsDialog extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildMobileInfoRow('Site', item!.site, isVerySmall, context),
-              _buildMobileInfoRow('Technicien',
-                  item!.technicien ?? 'Non défini', isVerySmall, context),
-              if (item!.statut != null)
+              _buildMobileInfoRow(
+                  'Site', widget.item!.site, isVerySmall, context),
+              _buildMobileInfoRow(
+                  'Technicien',
+                  widget.item!.technicien ?? 'Non défini',
+                  isVerySmall,
+                  context),
+              if (widget.item!.statut != null)
                 _buildMobileInfoRow(
                     'Statut',
-                    Formatters.formatStatut(item!.statut),
+                    Formatters.formatStatut(widget.item!.statut),
                     isVerySmall,
                     context),
             ],
@@ -1144,97 +1401,235 @@ class DetailsDialog extends StatelessWidget {
     return 0;
   }
 
-  // Fonction pour afficher le statut de contrôle d'un contenant
+  // Fonction pour afficher le statut de contrôle d'un contenant (OPTIMISÉ)
   Widget _buildControlStatus(BuildContext context, String containerCode) {
     final theme = Theme.of(context);
     final qualityService = QualityControlService();
 
-    // Vérifier si le contenant a été contrôlé
-    final existingControl =
-        qualityService.getQualityControl(containerCode, item!.date);
+    return ValueListenableBuilder<int>(
+      valueListenable: _refreshKey,
+      builder: (context, refreshValue, child) {
+        // 🆕 RÉCUPÉRER LES DONNÉES FRAÎCHES DEPUIS FIRESTORE
+        return FutureBuilder<BaseCollecte?>(
+          key: ValueKey('container_status_${containerCode}_$refreshValue'),
+          future: _getFreshCollecteData(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: const SizedBox(
+                  height: 16,
+                  width: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              );
+            }
 
-    if (existingControl != null) {
-      // Contenant déjà contrôlé
-      final statusColor = QualityControlUtils.getConformityStatusColor(
-          existingControl.conformityStatus);
-      final statusIcon = QualityControlUtils.getConformityStatusIcon(
-          existingControl.conformityStatus);
+            final freshItem = snapshot.data ?? widget.item;
+            final controlInfo =
+                qualityService.getContainerControlInfoFromCollecteData(
+                    freshItem, containerCode);
 
+            if (controlInfo?.isControlled == true) {
+              // Contenant déjà contrôlé - utiliser les données locales
+              final statusColor = controlInfo!.conformityStatus == 'conforme'
+                  ? Colors.green
+                  : Colors.red;
+              final statusIcon = controlInfo.conformityStatus == 'conforme'
+                  ? Icons.check_circle
+                  : Icons.error;
+
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: statusColor.withOpacity(0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      statusIcon,
+                      size: 14,
+                      color: statusColor,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Contrôlé le ${controlInfo.controlDate != null ? Formatters.formatDate(controlInfo.controlDate!) : 'N/A'}',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: statusColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            controlInfo.conformityStatus == 'conforme'
+                                ? 'Conforme'
+                                : 'Non conforme',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: statusColor,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () async {
+                        // Si besoin de modifier, récupérer les données complètes depuis Firestore
+                        final fullControl =
+                            await qualityService.getQualityControl(
+                                containerCode, widget.item!.date);
+                        _showQualityControlForm(context, containerCode,
+                            existingData: fullControl);
+                      },
+                      icon: const Icon(Icons.edit, size: 14),
+                      tooltip: 'Modifier le contrôle',
+                      constraints:
+                          const BoxConstraints(minWidth: 24, minHeight: 24),
+                      padding: EdgeInsets.zero,
+                    ),
+                  ],
+                ),
+              );
+            } else {
+              // Contenant pas encore contrôlé
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceVariant,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.pending_outlined,
+                      size: 14,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Pas encore contrôlé',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+          },
+        );
+      },
+    );
+  }
+
+  /// Construit le bouton de modification selon les permissions utilisateur
+  Widget _buildModifyControlButton(BuildContext context, String containerCode) {
+    // 🔐 VÉRIFIER LES PERMISSIONS UTILISATEUR
+    final userSession = Get.find<UserSession>();
+    final userRole = userSession.role?.toLowerCase() ?? '';
+    final isAdmin = userRole.contains('admin');
+
+    if (!isAdmin) {
+      // 🚫 CONTRÔLEUR: Afficher un message informatif
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: statusColor.withOpacity(0.1),
+          color: Colors.grey.shade100,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: statusColor.withOpacity(0.3)),
+          border: Border.all(color: Colors.grey.shade300),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              statusIcon,
-              size: 14,
-              color: statusColor,
-            ),
+            Icon(Icons.info_outline, size: 16, color: Colors.grey.shade600),
             const SizedBox(width: 6),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Contrôlé le ${Formatters.formatDate(existingControl.createdAt)}',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: statusColor,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    QualityControlUtils.getConformityStatusLabel(
-                        existingControl.conformityStatus),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: statusColor,
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              onPressed: () => _showQualityControlForm(context, containerCode,
-                  existingData: existingControl),
-              icon: const Icon(Icons.edit, size: 14),
-              tooltip: 'Modifier le contrôle',
-              constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-              padding: EdgeInsets.zero,
-            ),
-          ],
-        ),
-      );
-    } else {
-      // Contenant pas encore contrôlé
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceVariant,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.pending_outlined,
-              size: 14,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 4),
             Text(
-              'Pas encore contrôlé',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+              'Contrôlé',
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
         ),
       );
+    }
+
+    // ✅ ADMIN: Peut modifier le contrôle
+    return FilledButton.icon(
+      onPressed: () async {
+        final qualityService = QualityControlService();
+        final existingControl = await qualityService.getQualityControl(
+            containerCode, widget.item!.date);
+        _showQualityControlForm(context, containerCode,
+            existingData: existingControl);
+      },
+      icon: const Icon(Icons.edit, size: 16),
+      label: const Text('Modifier'),
+      style: FilledButton.styleFrom(
+        backgroundColor: Colors.orange,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        minimumSize: const Size(0, 32),
+        textStyle: const TextStyle(fontSize: 12),
+      ),
+    );
+  }
+
+  /// Récupère les données fraîches de la collecte depuis Firestore
+  Future<BaseCollecte?> _getFreshCollecteData() async {
+    if (widget.item == null) return null;
+
+    try {
+      final qualityService = QualityControlService();
+
+      // 🆕 FORCER LA RÉCUPÉRATION DEPUIS FIRESTORE
+      qualityService.invalidateCollecteCache(widget.item!.id);
+
+      // Récupérer toutes les données fraîches depuis Firestore
+      final allCollectes =
+          await FirestoreDataService.getCollectesFromFirestore();
+
+      // Trouver la collecte correspondante selon le type
+      switch (widget.section) {
+        case Section.recoltes:
+          final recoltes = allCollectes[Section.recoltes] ?? [];
+          return recoltes.cast<Recolte>().firstWhere(
+                (r) => r.id == widget.item!.id,
+                orElse: () => widget.item as Recolte,
+              );
+        case Section.scoop:
+          final scoops = allCollectes[Section.scoop] ?? [];
+          return scoops.cast<Scoop>().firstWhere(
+                (s) => s.id == widget.item!.id,
+                orElse: () => widget.item as Scoop,
+              );
+        case Section.individuel:
+          final individuels = allCollectes[Section.individuel] ?? [];
+          return individuels.cast<Individuel>().firstWhere(
+                (i) => i.id == widget.item!.id,
+                orElse: () => widget.item as Individuel,
+              );
+        case Section.miellerie:
+          final mielleries = allCollectes[Section.miellerie] ?? [];
+          return mielleries.cast<Miellerie>().firstWhere(
+                (m) => m.id == widget.item!.id,
+                orElse: () => widget.item as Miellerie,
+              );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Erreur lors de la récupération des données fraîches: $e');
+      }
+      return widget.item; // Fallback vers les données originales
     }
   }
 
@@ -1246,12 +1641,15 @@ class DetailsDialog extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => QualityControlForm(
-        collecteItem: item!,
+        collecteItem: widget.item!,
         containerCode: containerCode,
         existingData: existingData,
-        onSave: () {
+        onSave: () async {
           Navigator.of(context).pop(); // Fermer le formulaire
-          // Optionnel: actualiser les données ou afficher un message
+
+          // Le rafraîchissement sera automatique grâce aux notifications globales
+          // Plus besoin d'appeler manuellement refreshAllData() et _refreshControlStats()
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Row(
@@ -1353,8 +1751,28 @@ class DetailsDialog extends StatelessWidget {
               ...rows.asMap().entries.map((entry) {
                 final index = entry.key;
                 final row = entry.value;
-                final containerCode =
-                    'C${(index + 1).toString().padLeft(3, '0')}';
+
+                // ✅ CORRECTION: Utiliser l'ID réel du contenant
+                String containerCode =
+                    'C${(index + 1).toString().padLeft(3, '0')}'; // fallback
+
+                // Récupérer l'ID réel selon le type de collecte
+                if (widget.item is Recolte) {
+                  final recolte = widget.item as Recolte;
+                  if (index < recolte.contenants.length) {
+                    containerCode = recolte.contenants[index].id;
+                  }
+                } else if (widget.item is Scoop) {
+                  final scoop = widget.item as Scoop;
+                  if (index < scoop.contenants.length) {
+                    containerCode = scoop.contenants[index].id;
+                  }
+                } else if (widget.item is Individuel) {
+                  final individuel = widget.item as Individuel;
+                  if (index < individuel.contenants.length) {
+                    containerCode = individuel.contenants[index].id;
+                  }
+                }
 
                 return Container(
                   padding: const EdgeInsets.all(12),
@@ -1390,10 +1808,11 @@ class DetailsDialog extends StatelessWidget {
                       SizedBox(
                         width: 100,
                         child: FilledButton.icon(
-                          onPressed: () {
+                          onPressed: () async {
                             final qualityService = QualityControlService();
-                            final existingControl = qualityService
-                                .getQualityControl(containerCode, item!.date);
+                            final existingControl =
+                                await qualityService.getQualityControl(
+                                    containerCode, widget.item!.date);
                             _showQualityControlForm(context, containerCode,
                                 existingData: existingControl);
                           },
@@ -1416,5 +1835,297 @@ class DetailsDialog extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  /// Section moderne des informations géographiques avec codes de localisation
+  Widget _buildGeographicInfoSection(
+    BuildContext context, {
+    String? region,
+    String? province,
+    String? commune,
+    String? village,
+  }) {
+    final theme = Theme.of(context);
+
+    // Création de la map de localisation pour GeographieData
+    final localisation = {
+      'region': region ?? '',
+      'province': province ?? '',
+      'commune': commune ?? '',
+      'village': village ?? '',
+    };
+
+    // Génération du code moderne avec GeographieData
+    final localisationAvecCode =
+        GeographieData.formatLocationCodeFromMap(localisation);
+    final localisationComplete = [region, province, commune, village]
+        .where((element) => element != null && element.isNotEmpty)
+        .join(' › ');
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            theme.colorScheme.primary.withOpacity(0.05),
+            theme.colorScheme.primary.withOpacity(0.02),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.colorScheme.primary.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // En-tête
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Icon(
+                  Icons.location_on,
+                  color: theme.colorScheme.primary,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Informations géographiques',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const Spacer(),
+              if (localisationAvecCode.isNotEmpty)
+                InkWell(
+                  onTap: () => _copyToClipboard(
+                      context, localisationAvecCode, 'Code de localisation'),
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.copy,
+                      color: theme.colorScheme.primary.withOpacity(0.7),
+                      size: 16,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Grille des informations géographiques
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isMobile = constraints.maxWidth < 600;
+
+              return GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: isMobile ? 2 : 4,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: isMobile ? 2.5 : 3.0,
+                children: [
+                  _buildInfoField(context, 'Région', region ?? '—'),
+                  _buildInfoField(context, 'Province', province ?? '—'),
+                  _buildInfoField(context, 'Commune', commune ?? '—'),
+                  _buildInfoField(context, 'Village', village ?? '—'),
+                ],
+              );
+            },
+          ),
+
+          if (localisationAvecCode.isNotEmpty) ...[
+            const SizedBox(height: 16),
+
+            // Code de localisation moderne
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.tag,
+                        color: theme.colorScheme.primary,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Code: ',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.grey.shade600,
+                          fontSize: 11,
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          localisationAvecCode.split(' / ').first,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (localisationComplete.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.place,
+                          color: theme.colorScheme.primary,
+                          size: 14,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Hiérarchie: ',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.grey.shade600,
+                            fontSize: 11,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            localisationComplete,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.grey.shade700,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Fonctions d'extraction des informations de localisation depuis le champ localisation (legacy)
+  String? _extractRegionFromLocalisation(String? localisation) {
+    if (localisation == null || localisation.isEmpty) return null;
+    // Format attendu: "Région > Province > Commune > Village" ou similaire
+    final parts = localisation.split('>').map((e) => e.trim()).toList();
+    return parts.isNotEmpty ? parts[0] : null;
+  }
+
+  String? _extractProvinceFromLocalisation(String? localisation) {
+    if (localisation == null || localisation.isEmpty) return null;
+    final parts = localisation.split('>').map((e) => e.trim()).toList();
+    return parts.length > 1 ? parts[1] : null;
+  }
+
+  String? _extractCommuneFromLocalisation(String? localisation) {
+    if (localisation == null || localisation.isEmpty) return null;
+    final parts = localisation.split('>').map((e) => e.trim()).toList();
+    return parts.length > 2 ? parts[2] : null;
+  }
+
+  String? _extractVillageFromLocalisation(String? localisation) {
+    if (localisation == null || localisation.isEmpty) return null;
+    final parts = localisation.split('>').map((e) => e.trim()).toList();
+    return parts.length > 3 ? parts[3] : null;
+  }
+
+  /// Vérifie si un contenant spécifique est contrôlé
+  Future<bool> _isContainerControlled(String containerCode) async {
+    final qualityService = QualityControlService();
+
+    try {
+      // Essayer d'abord de vérifier directement depuis les données de collecte
+      final isControlled = qualityService.isContainerControlledFromCollecteData(
+          widget.item, containerCode);
+
+      if (isControlled) return true;
+
+      // Fallback: vérifier dans la base de données
+      final existingControl = await qualityService.getQualityControl(
+          containerCode, widget.item!.date);
+
+      return existingControl != null;
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Erreur vérification contrôle contenant $containerCode: $e');
+      }
+      return false;
+    }
+  }
+
+  /// Retourne les statistiques de contrôle des contenants (OPTIMISÉ avec fallback)
+  Future<Map<String, int>> _getControlStats() async {
+    final qualityService = QualityControlService();
+
+    try {
+      // Essayer la nouvelle méthode optimisée qui lit directement depuis les données de collecte
+      final optimizedStats =
+          qualityService.getControlStatsFromCollecteData(widget.item);
+
+      // Si on a des contenants mais aucun contrôlé avec la méthode optimisée,
+      // cela peut signifier que les données sont anciennes sans le champ controlInfo
+      if (optimizedStats['total']! > 0 && optimizedStats['controlled'] == 0) {
+        // Fallback vers l'ancienne méthode pour les données existantes
+        final containerCodes = _getContainerCodes();
+        return await qualityService.getControlStatsForContainers(
+            containerCodes, widget.item!.date);
+      }
+
+      return optimizedStats;
+    } catch (e) {
+      if (kDebugMode) {
+        print(
+            '⚠️ Erreur méthode optimisée, fallback vers ancienne méthode: $e');
+      }
+      // Fallback vers l'ancienne méthode en cas d'erreur
+      final containerCodes = _getContainerCodes();
+      return await qualityService.getControlStatsForContainers(
+          containerCodes, widget.item!.date);
+    }
+  }
+
+  /// Obtient la liste des codes de contenants pour cette collecte
+  List<String> _getContainerCodes() {
+    if (widget.item == null) return [];
+
+    // ✅ CORRECTION: Retourner les vraies ID des contenants
+    if (widget.item is Recolte) {
+      final recolte = widget.item as Recolte;
+      return recolte.contenants.map((c) => c.id).toList();
+    } else if (widget.item is Scoop) {
+      final scoop = widget.item as Scoop;
+      return scoop.contenants.map((c) => c.id).toList();
+    } else if (widget.item is Individuel) {
+      final individuel = widget.item as Individuel;
+      return individuel.contenants.map((c) => c.id).toList();
+    }
+
+    // Fallback : ancienne méthode
+    final containerCount = _getContainerCount(widget.item!);
+    return List.generate(containerCount,
+        (index) => 'C${(index + 1).toString().padLeft(3, '0')}');
   }
 }

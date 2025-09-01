@@ -84,8 +84,47 @@ class ExtractionCard extends StatelessWidget {
 
   /// Header avec statut et priorité
   Widget _buildHeader(ThemeData theme, bool isMobile) {
+    // Vérifier si ce produit vient du module contrôle
+    final isFromControl = product.qualite['created_from_control'] == true;
+
     return Row(
       children: [
+        // Indicateur module contrôle (si applicable)
+        if (isFromControl) ...[
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 6 : 8,
+              vertical: isMobile ? 3 : 4,
+            ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.blue.shade600, Colors.blue.shade700],
+              ),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.assignment_turned_in,
+                  size: isMobile ? 12 : 14,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'CONTRÔLE',
+                  style: TextStyle(
+                    fontSize: isMobile ? 10 : 11,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+
         // Statut badge
         _buildStatusBadge(theme, isMobile),
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../data/models/collecte_models.dart';
+import '../../../../data/geographe/geographie.dart';
 
 class ModalSelectionProducteurReactive extends StatefulWidget {
   final String nomSite;
@@ -361,10 +362,10 @@ class _ModalSelectionProducteurReactiveState
                                   SizedBox(width: 4),
                                   Expanded(
                                     child: Text(
-                                      producteur.localisation['village'] ??
-                                          'Village non spécifié',
+                                      GeographieData.formatLocationCodeFromMap(
+                                          producteur.localisation),
                                       style: TextStyle(
-                                        fontSize: isSmallScreen ? 12 : 13,
+                                        fontSize: isSmallScreen ? 10 : 11,
                                         color: Colors.grey[600],
                                       ),
                                     ),

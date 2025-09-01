@@ -1,5 +1,6 @@
 // Modèles de données pour le contrôle qualité du miel
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum HoneyNature { brut, prefilitre }
 
@@ -120,6 +121,52 @@ class QualityControlData {
       'createdAt': createdAt.toIso8601String(),
       'controllerName': controllerName,
     };
+  }
+
+  /// Construit un QualityControlData depuis les données Firestore
+  factory QualityControlData.fromFirestore(Map<String, dynamic> data) {
+    return QualityControlData(
+      containerCode: data['containerCode'] ?? '',
+      receptionDate: data['receptionDate'] is Timestamp
+          ? (data['receptionDate'] as Timestamp).toDate()
+          : DateTime.parse(
+              data['receptionDate'] ?? DateTime.now().toIso8601String()),
+      producer: data['producer'] ?? '',
+      apiaryVillage: data['apiaryVillage'] ?? '',
+      hiveType: data['hiveType'] ?? '',
+      collectionStartDate: data['collectionStartDate'] != null
+          ? (data['collectionStartDate'] is Timestamp
+              ? (data['collectionStartDate'] as Timestamp).toDate()
+              : DateTime.parse(data['collectionStartDate']))
+          : null,
+      collectionEndDate: data['collectionEndDate'] != null
+          ? (data['collectionEndDate'] is Timestamp
+              ? (data['collectionEndDate'] as Timestamp).toDate()
+              : DateTime.parse(data['collectionEndDate']))
+          : null,
+      honeyNature: HoneyNature.values.firstWhere(
+        (e) => e.name == data['honeyNature'],
+        orElse: () => HoneyNature.brut,
+      ),
+      containerType: data['containerType'] ?? '',
+      containerNumber: data['containerNumber'] ?? '',
+      totalWeight: (data['totalWeight'] ?? 0.0).toDouble(),
+      honeyWeight: (data['honeyWeight'] ?? 0.0).toDouble(),
+      quality: data['quality'] ?? '',
+      waterContent: data['waterContent']?.toDouble(),
+      floralPredominance: data['floralPredominance'] ?? '',
+      conformityStatus: ConformityStatus.values.firstWhere(
+        (e) => e.name == data['conformityStatus'],
+        orElse: () => ConformityStatus.conforme,
+      ),
+      nonConformityCause: data['nonConformityCause'],
+      observations: data['observations'],
+      createdAt: data['createdAt'] is Timestamp
+          ? (data['createdAt'] as Timestamp).toDate()
+          : DateTime.parse(
+              data['createdAt'] ?? DateTime.now().toIso8601String()),
+      controllerName: data['controllerName'] ?? '',
+    );
   }
 
   factory QualityControlData.fromJson(Map<String, dynamic> json) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../data/models/collecte_models.dart';
+import '../../../../data/geographe/geographie.dart';
 
 class SectionProducteur extends StatelessWidget {
   final ProducteurModel? producteurSelectionne;
@@ -132,12 +133,10 @@ class SectionProducteur extends StatelessWidget {
   Widget _buildProducteurSelected(bool isSmallScreen) {
     final producteur = producteurSelectionne!;
     final localisation = producteur.localisation;
-    final localisationText = [
-      localisation['region'],
-      localisation['province'],
-      localisation['commune'],
-      localisation['village'],
-    ].where((s) => s != null && s.isNotEmpty).join(' > ');
+
+    // Formatage avec codes de localisation
+    final localisationAvecCode =
+        GeographieData.formatLocationCodeFromMap(localisation);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -170,9 +169,10 @@ class SectionProducteur extends StatelessWidget {
                       'N° ${producteur.numero}',
                       isSmallScreen,
                     ),
+                    // Localisation avec code
                     _buildProducteurInfo(
                       Icons.location_on,
-                      localisationText,
+                      localisationAvecCode,
                       isSmallScreen,
                     ),
                     _buildProducteurInfo(

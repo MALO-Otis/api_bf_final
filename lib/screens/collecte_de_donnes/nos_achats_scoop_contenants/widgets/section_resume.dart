@@ -74,6 +74,10 @@ class SectionResume extends StatelessWidget {
 
           const SizedBox(height: 16),
 
+          _buildTotauxCard(),
+
+          const SizedBox(height: 16),
+
           _buildObservationsCard(),
 
           const SizedBox(height: 24),
@@ -158,11 +162,25 @@ class SectionResume extends StatelessWidget {
                 style: TextStyle(color: Colors.grey.shade700),
               ),
               const SizedBox(height: 2),
-              Text(
-                'Zone: ${scoop!.localisation}',
-                style: TextStyle(color: Colors.grey.shade700),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Code localisation: ${scoop!.codeLocalisation}',
+                    style: TextStyle(
+                      color: Colors.blue.shade700,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Zone: ${scoop!.localisation}',
+                    style: TextStyle(color: Colors.grey.shade700),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               Wrap(
@@ -383,8 +401,8 @@ class SectionResume extends StatelessWidget {
                 ),
                 Expanded(
                   child: _buildTotalItem(
-                    'Pots',
-                    '${contenants.where((c) => c.typeContenant == ContenantType.pot).length}',
+                    'Fûts',
+                    '${contenants.where((c) => c.typeContenant == ContenantType.seau).length}',
                     Icons.local_drink,
                     Colors.green,
                   ),

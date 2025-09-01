@@ -159,6 +159,7 @@ class ProducteurModel {
 }
 
 class ContenantModel {
+  final String id; // 🆕 ID unique pour chaque contenant
   final String typeRuche;
   final String typeMiel;
   final String typeContenant; // Nouveau champ requis
@@ -168,6 +169,7 @@ class ContenantModel {
   final String note; // Nouveau champ pour l'avis sur le contenant
 
   ContenantModel({
+    required this.id, // 🆕 ID requis
     required this.typeRuche,
     required this.typeMiel,
     required this.typeContenant,
@@ -182,6 +184,7 @@ class ContenantModel {
 
   factory ContenantModel.fromFirestore(Map<String, dynamic> data) {
     return ContenantModel(
+      id: data['id']?.toString() ?? '', // 🆕 ID depuis Firestore
       typeRuche: data['type_ruche']?.toString() ?? '',
       typeMiel: data['type_miel']?.toString() ?? '',
       typeContenant: data['type_contenant']?.toString() ?? '',
@@ -194,6 +197,7 @@ class ContenantModel {
 
   Map<String, dynamic> toFirestore() {
     return {
+      'id': id, // 🆕 ID vers Firestore
       'type_ruche': typeRuche,
       'type_miel': typeMiel,
       'type_contenant': typeContenant,
@@ -206,6 +210,7 @@ class ContenantModel {
   }
 
   ContenantModel copyWith({
+    String? id, // 🆕 ID paramètre
     String? typeRuche,
     String? typeMiel,
     String? typeContenant,
@@ -215,6 +220,7 @@ class ContenantModel {
     String? note, // Nouveau paramètre
   }) {
     return ContenantModel(
+      id: id ?? this.id, // 🆕 ID dans copyWith
       typeRuche: typeRuche ?? this.typeRuche,
       typeMiel: typeMiel ?? this.typeMiel,
       typeContenant: typeContenant ?? this.typeContenant,
@@ -227,7 +233,7 @@ class ContenantModel {
 
   @override
   String toString() {
-    return 'ContenantModel(typeRuche: $typeRuche, typeMiel: $typeMiel, typeContenant: $typeContenant, quantite: $quantite, prixUnitaire: $prixUnitaire, montantTotal: $montantTotal, predominanceFlorale: $predominanceFlorale, note: $note)';
+    return 'ContenantModel(id: $id, typeRuche: $typeRuche, typeMiel: $typeMiel, typeContenant: $typeContenant, quantite: $quantite, prixUnitaire: $prixUnitaire, montantTotal: $montantTotal, predominanceFlorale: $predominanceFlorale, note: $note)';
   }
 }
 

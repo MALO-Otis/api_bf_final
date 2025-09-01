@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../geographe/geographie.dart';
 
 /// Modèle pour un SCOOP (coopérative)
 class ScoopModel {
@@ -105,13 +106,28 @@ class ScoopModel {
     return parts.join(', ');
   }
 
+  String get codeLocalisation {
+    // Créer une Map pour utiliser GeographieData.formatLocationCodeFromMap
+    final Map<String, String> localisationMap = {
+      'region': region,
+      'province': province,
+      'commune': commune,
+      'village': village ?? '',
+    };
+    return GeographieData.formatLocationCodeFromMap(localisationMap);
+  }
+
+  String get localisationComplete {
+    return '${codeLocalisation} | ${localisation}';
+  }
+
   int get nbVieux => nbMembres - nbJeunes;
 }
 
 /// Types de contenants autorisés
 enum ContenantType {
-  bidon('Bidon'),
-  pot('Pot');
+  seau('Fût'),
+  bidon('Bidon');
 
   const ContenantType(this.label);
   final String label;
@@ -127,6 +143,24 @@ enum MielType {
   final String label;
 }
 
+/// Types de cire (pour quand le type de miel est 'cire')
+enum TypeCire {
+  brute('Brute'),
+  purifiee('Purifiée');
+
+  const TypeCire(this.label);
+  final String label;
+}
+
+/// Couleurs de cire (pour quand le type de cire est 'purifiée')
+enum CouleurCire {
+  jaune('Jaune'),
+  marron('Marron');
+
+  const CouleurCire(this.label);
+  final String label;
+}
+
 /// Modèle pour un contenant de miel
 class ContenantScoopModel {
   final String id;
@@ -135,6 +169,8 @@ class ContenantScoopModel {
   final double poids;
   final double prix;
   final String? notes;
+  final TypeCire? typeCire; // Quand typeMiel == cire
+  final CouleurCire? couleurCire; // Quand typeCire == purifiée
 
   ContenantScoopModel({
     required this.id,
@@ -143,6 +179,8 @@ class ContenantScoopModel {
     required this.poids,
     required this.prix,
     this.notes,
+    this.typeCire,
+    this.couleurCire,
   });
 
   factory ContenantScoopModel.fromMap(Map<String, dynamic> data) {
@@ -159,6 +197,18 @@ class ContenantScoopModel {
       poids: (data['poids'] ?? 0).toDouble(),
       prix: (data['prix'] ?? 0).toDouble(),
       notes: data['notes'],
+      typeCire: data['typeCire'] != null
+          ? TypeCire.values.firstWhere(
+              (type) => type.label == data['typeCire'],
+              orElse: () => TypeCire.brute,
+            )
+          : null,
+      couleurCire: data['couleurCire'] != null
+          ? CouleurCire.values.firstWhere(
+              (couleur) => couleur.label == data['couleurCire'],
+              orElse: () => CouleurCire.jaune,
+            )
+          : null,
     );
   }
 
@@ -170,6 +220,8 @@ class ContenantScoopModel {
       'poids': poids,
       'prix': prix,
       'notes': notes,
+      'typeCire': typeCire?.label,
+      'couleurCire': couleurCire?.label,
     };
   }
 
@@ -180,6 +232,8 @@ class ContenantScoopModel {
     double? poids,
     double? prix,
     String? notes,
+    TypeCire? typeCire,
+    CouleurCire? couleurCire,
   }) {
     return ContenantScoopModel(
       id: id ?? this.id,
@@ -188,6 +242,8 @@ class ContenantScoopModel {
       poids: poids ?? this.poids,
       prix: prix ?? this.prix,
       notes: notes ?? this.notes,
+      typeCire: typeCire ?? this.typeCire,
+      couleurCire: couleurCire ?? this.couleurCire,
     );
   }
 }
@@ -230,7 +286,9 @@ class CollecteScoopModel {
     final data = doc.data() as Map<String, dynamic>;
     return CollecteScoopModel(
       id: doc.id,
-      dateAchat: (data['date_achat'] as Timestamp).toDate(),
+      dateAchat: data['date_achat'] != null
+          ? (data['date_achat'] as Timestamp).toDate()
+          : DateTime.now(), // 🔧 Fallback si null
       periodeCollecte: data['periode_collecte'] ?? '',
       scoopId: data['scoop_id'] ?? '',
       scoopNom: data['scoop_nom'] ?? '',
@@ -243,7 +301,9 @@ class CollecteScoopModel {
       collecteurId: data['collecteur_id'] ?? '',
       collecteurNom: data['collecteur_nom'] ?? '',
       site: data['site'] ?? '',
-      createdAt: (data['created_at'] as Timestamp).toDate(),
+      createdAt: data['created_at'] != null
+          ? (data['created_at'] as Timestamp).toDate()
+          : DateTime.now(), // 🔧 Fallback si null
       statut: data['statut'] ?? 'collecte_terminee',
     );
   }
@@ -269,8 +329,8 @@ class CollecteScoopModel {
 
   int get nombreBidons =>
       contenants.where((c) => c.typeContenant == ContenantType.bidon).length;
-  int get nombrePots =>
-      contenants.where((c) => c.typeContenant == ContenantType.pot).length;
+  int get nombreSeaux =>
+      contenants.where((c) => c.typeContenant == ContenantType.seau).length;
 
   Set<String> get mielTypes => contenants.map((c) => c.typeMiel.label).toSet();
 }
@@ -283,7 +343,7 @@ class PeriodesCollecte {
   ];
 }
 
-/// Prédominances florales disponibles
+/// Prédominances florales disponibles - Nettoyées
 class PredominancesFlorale {
   static const List<String> types = [
     'Karité',
@@ -294,7 +354,11 @@ class PredominancesFlorale {
     'Tamarinier',
     'Baobab',
     'Citronnier',
-    'Fleurs sauvages',
-    'Multifloral',
+    'Moringa',
+    'Cajou',
+    'Détarium',
+    'Kapokier',
+    'Zaaba',
+    'Filao',
   ];
 }

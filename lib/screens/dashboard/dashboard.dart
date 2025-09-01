@@ -5,15 +5,17 @@ import 'package:get/get.dart';
 import 'package:apisavana_gestion/authentication/user_session.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:apisavana_gestion/authentication/login.dart';
+import 'package:apisavana_gestion/authentication/sign_up.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collectes.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nouvelle_collecte_individuelle.dart';
 
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_achats_scoop_contenants/nouvel_achat_scoop_contenants.dart';
-import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_achats_scoop/nouvel_achat_scoop.dart';
+
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_mielleurie/nouvelle_collecte_miellerie.dart';
 import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
-import 'package:apisavana_gestion/screens/extraction/extraction_page.dart';
+import 'package:apisavana_gestion/screens/extraction/extraction.dart';
+import 'package:apisavana_gestion/screens/filtrage/filtrage.dart';
 
 // Color palette
 const Color kHighlightColor = Color(0xFFF49101);
@@ -52,10 +54,7 @@ class DashboardController extends GetxController {
         currentPage.value = const NouvelleCollecteIndividuellePage();
         return;
       }
-      if (moduleName == 'COLLECTE' && subModule == 'Achats SCOOPS') {
-        currentPage.value = const NouvelAchatScoopPage();
-        return;
-      }
+
       if (moduleName == 'COLLECTE' &&
           subModule == 'Achats SCOOPS - Contenants') {
         currentPage.value = const NouvelAchatScoopContenantsPage();
@@ -83,7 +82,7 @@ class DashboardController extends GetxController {
       // NOUVEAU : Module d'extraction
       if (moduleName == 'EXTRACTION' && subModule == 'Extraction de données') {
         print('✅ Navigation vers Extraction de données');
-        currentPage.value = const ExtractionPage();
+        currentPage.value = const MainExtractionPage();
         return;
       }
       if (moduleName == 'EXTRACTION' &&
@@ -91,8 +90,18 @@ class DashboardController extends GetxController {
               subModule == 'Nouvelle extraction' ||
               subModule == 'Historique extractions' ||
               subModule == 'Rapports qualité')) {
-        print('✅ Navigation vers ${subModule} -> ExtractionPage');
-        currentPage.value = const ExtractionPage();
+        print('✅ Navigation vers ${subModule} -> MainExtractionPage');
+        currentPage.value = const MainExtractionPage();
+        return;
+      }
+
+      // NOUVEAU : Module de filtrage moderne
+      if (moduleName == 'FILTRAGE' &&
+          (subModule == 'Nouveau filtrage' ||
+              subModule == 'En cours de filtrage' ||
+              subModule == 'Filtrage terminé')) {
+        print('✅ Navigation vers ${subModule} -> FiltragePageModerne');
+        currentPage.value = const FiltragePageModerne();
         return;
       }
 
@@ -108,7 +117,12 @@ class DashboardController extends GetxController {
         case 'EXTRACTION':
           print('✅ Navigation par défaut vers EXTRACTION');
           currentPage.value =
-              const ExtractionPage(); // Nouvelle page d'extraction
+              const MainExtractionPage(); // Nouvelle page d'extraction
+          break;
+        case 'FILTRAGE':
+          print('✅ Navigation par défaut vers FILTRAGE');
+          currentPage.value =
+              const FiltragePageModerne(); // 🆕 NOUVELLE PAGE DE FILTRAGE MODERNE
           break;
         default:
           print('❌ Module non géré: $moduleName');
@@ -1846,7 +1860,6 @@ class NavigationSlider extends StatelessWidget {
           {"name": "Nouvelle collecte", "icon": Icons.add_circle_outline},
           {"name": "Historique collectes", "icon": Icons.history},
           {"name": "Récoltes", "badge": 3, "icon": Icons.agriculture},
-          {"name": "Achats SCOOPS", "icon": Icons.group},
           {"name": "Achats SCOOPS - Contenants", "icon": Icons.inventory_2},
           {"name": "Achats Individuels", "badge": 2, "icon": Icons.person},
           {"name": "Collecte Mielleries", "icon": Icons.factory}
@@ -1886,15 +1899,6 @@ class NavigationSlider extends StatelessWidget {
       {
         "icon": Icons.bar_chart,
         "name": "RAPPORTS",
-      },
-      {
-        "icon": Icons.layers,
-        "name": "EXTRACTION",
-        "subModules": [
-          {"name": "Nouvelle extraction"},
-          {"name": "Lots en cours", "badge": 4},
-          {"name": "Extractions terminées"}
-        ]
       },
       {
         "name": "FILTRAGE",
@@ -2015,38 +2019,84 @@ class NavigationSlider extends StatelessWidget {
                     // Bouton retour au dashboard avec design moderne
                     Padding(
                       padding: const EdgeInsets.all(16),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(15),
-                          onTap: () {
-                            if (isMobile || isTablet) onToggle();
-                            if (onModuleSelected != null) {
-                              onModuleSelected!('DASHBOARD', subModule: null);
-                            }
-                          },
-                          child: Container(
-                            padding: EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
+                      child: Column(
+                        children: [
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
                               borderRadius: BorderRadius.circular(15),
-                              border: Border.all(color: Colors.blue.shade200),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.home, color: Colors.blue.shade600),
-                                SizedBox(width: 12),
-                                Text(
-                                  'Retour au dashboard',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.blue.shade700,
-                                  ),
+                              onTap: () {
+                                if (isMobile || isTablet) onToggle();
+                                if (onModuleSelected != null) {
+                                  onModuleSelected!('DASHBOARD',
+                                      subModule: null);
+                                }
+                              },
+                              child: Container(
+                                padding: EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(15),
+                                  border:
+                                      Border.all(color: Colors.blue.shade200),
                                 ),
-                              ],
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.home,
+                                        color: Colors.blue.shade600),
+                                    SizedBox(width: 12),
+                                    Text(
+                                      'Retour au dashboard',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.blue.shade700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                          // Bouton "Créer un nouveau compte" pour les admins uniquement
+                          if (user.role?.toLowerCase() == 'admin') ...[
+                            SizedBox(height: 12),
+                            Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(15),
+                                onTap: () {
+                                  if (isMobile || isTablet) onToggle();
+                                  Get.to(() => SignupPage());
+                                },
+                                child: Container(
+                                  padding: EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.shade50,
+                                    borderRadius: BorderRadius.circular(15),
+                                    border: Border.all(
+                                        color: Colors.green.shade200),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.person_add,
+                                          color: Colors.green.shade600),
+                                      SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          'Créer un nouveau compte',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.green.shade700,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
 

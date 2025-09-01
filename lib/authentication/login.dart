@@ -66,6 +66,18 @@ class _LoginPageState extends State<LoginPage> {
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
+
+      // ÉTAPE CRITIQUE: Vérification de l'email avant de continuer
+      await userCred.user!.reload(); // Actualise les informations utilisateur
+      if (!userCred.user!.emailVerified) {
+        setState(() => isLoading = false);
+        print(
+            '🚫 Tentative de connexion avec email non vérifié: ${userCred.user!.email}');
+        _showEmailNotVerifiedDialog(userCred.user!);
+        await FirebaseAuth.instance.signOut(); // Déconnecte l'utilisateur
+        return;
+      }
+
       final userDoc = await FirebaseFirestore.instance
           .collection('utilisateurs')
           .doc(userCred.user!.uid)
@@ -76,6 +88,13 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
       final userData = userDoc.data()!;
+
+      // Mise à jour du statut de vérification dans Firestore
+      await FirebaseFirestore.instance
+          .collection('utilisateurs')
+          .doc(userCred.user!.uid)
+          .update({'emailVerified': true});
+
       // Normalisation automatique du champ site et du rôle à la connexion
       String normalizedSite = '';
       if ((userData['site'] ?? '').toString().isNotEmpty) {
@@ -105,6 +124,7 @@ class _LoginPageState extends State<LoginPage> {
         photoUrl: userData['photoUrl'],
       );
       print('SESSION - site: \'$normalizedSite\', role: \'$normalizedRole\'');
+      print('✅ Connexion réussie avec email vérifié: ${userCred.user!.email}');
       // Navigation GetX vers le dashboard sans routes nommées
       Get.offAll(() => const DashboardPage());
     } on FirebaseAuthException catch (e) {
@@ -114,6 +134,156 @@ class _LoginPageState extends State<LoginPage> {
         isLoading = false;
       });
     }
+  }
+
+  void _showEmailNotVerifiedDialog(User user) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.warning_amber, color: Colors.orange),
+              SizedBox(width: 8),
+              Text(
+                'Email non vérifié',
+                style: TextStyle(
+                  color: Color(0xFF2D0C0D),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Votre email n\'est pas encore vérifié.',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.orange[700],
+                  fontSize: 16,
+                ),
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Vous devez vérifier votre email avant de pouvoir accéder à votre compte.',
+                style: TextStyle(fontSize: 14),
+              ),
+              SizedBox(height: 8),
+              Container(
+                padding: EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  user.email ?? '',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.orange[700],
+                  ),
+                ),
+              ),
+              SizedBox(height: 12),
+              Container(
+                padding: EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.info_outline,
+                            color: Colors.blue.shade600, size: 18),
+                        SizedBox(width: 6),
+                        Text(
+                          'Instructions :',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.blue.shade700,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      '1. Vérifiez votre boîte de réception\n2. Cherchez dans vos spams/courriers indésirables\n3. Cliquez sur le lien de vérification\n4. Revenez vous connecter',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text(
+                'Fermer',
+                style: TextStyle(color: Color(0xFF2D0C0D)),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                try {
+                  print('🔄 [LOGIN] Tentative de renvoi d\'email...');
+                  print('📧 [LOGIN] Email utilisateur: ${user.email}');
+                  print('🔐 [LOGIN] UID utilisateur: ${user.uid}');
+
+                  await user.sendEmailVerification();
+
+                  Navigator.of(context).pop();
+                  Get.snackbar(
+                    'Email renvoyé',
+                    'Un nouvel email de vérification a été envoyé à ${user.email}',
+                    snackPosition: SnackPosition.TOP,
+                    backgroundColor: Colors.green[100],
+                    colorText: Colors.green[900],
+                    duration: Duration(seconds: 4),
+                  );
+
+                  print('✅ [LOGIN] Email de vérification renvoyé avec succès');
+                } catch (e) {
+                  print('❌ [LOGIN] Erreur lors du renvoi d\'email: $e');
+                  Navigator.of(context).pop();
+                  Get.snackbar(
+                    'Erreur',
+                    'Impossible de renvoyer l\'email: ${e.toString()}',
+                    snackPosition: SnackPosition.TOP,
+                    backgroundColor: Colors.red[100],
+                    colorText: Colors.red[900],
+                    duration: Duration(seconds: 5),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(0xFFF49101),
+              ),
+              child: Text(
+                'Renvoyer l\'email',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> handleLogin() async {

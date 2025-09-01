@@ -2,8 +2,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:dropdown_search/dropdown_search.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:get/get.dart';
 import 'package:apisavana_gestion/data/geographe/geographie.dart';
 import 'package:apisavana_gestion/data/personnel/personnel_apisavana.dart';
+import 'package:apisavana_gestion/authentication/user_session.dart';
+import 'package:apisavana_gestion/utils/smart_appbar.dart';
+import 'package:apisavana_gestion/data/services/stats_recoltes_service.dart';
+import '../../controle_de_donnes/services/global_refresh_service.dart';
+import '../../controle_de_donnes/services/quality_control_service.dart';
+import 'dart:async';
 
 // Modèle pour un contenant de récolte
 class HarvestContainer {
@@ -44,7 +52,11 @@ class SiteInfo {
 }
 
 class NouvelleCollecteRecoltePage extends StatefulWidget {
-  const NouvelleCollecteRecoltePage({Key? key}) : super(key: key);
+  final bool showBackToHistory;
+  final VoidCallback? onBackToHistory;
+  const NouvelleCollecteRecoltePage(
+      {Key? key, this.showBackToHistory = false, this.onBackToHistory})
+      : super(key: key);
 
   @override
   State<NouvelleCollecteRecoltePage> createState() =>
@@ -52,16 +64,11 @@ class NouvelleCollecteRecoltePage extends StatefulWidget {
 }
 
 class _NouvelleCollecteRecoltePageState
-    extends State<NouvelleCollecteRecoltePage> {
-  // Exemple d'infos site/technicien (à remplacer par la session réelle)
-  final SiteInfo siteInfo = SiteInfo(
-    siteName: 'Koudougou',
-    technicianName: 'Otis Malo',
-    region: 'Centre-Ouest',
-    province: 'Boulkiemdé',
-    commune: 'Koudougou',
-    village: 'Koudougou',
-  );
+    extends State<NouvelleCollecteRecoltePage> with SmartAppBarMixin {
+  // Session utilisateur et infos dynamiques
+  UserSession? userSession;
+  Map<String, dynamic>? currentUserData;
+  bool isLoadingUserData = true;
 
   // Liste dynamique des contenants
   List<HarvestContainer> containers = [];
@@ -80,6 +87,9 @@ class _NouvelleCollecteRecoltePageState
 
   // Historique local (affiché après enregistrement)
   List<Map<String, dynamic>> history = [];
+
+  // Stream subscription pour les mises à jour en temps réel
+  StreamSubscription<String>? _collecteUpdateSubscription;
 
   // Historique Firestore (multi-utilisateur)
   List<Map<String, dynamic>> firestoreHistory = [];
@@ -104,6 +114,9 @@ class _NouvelleCollecteRecoltePageState
   String? selectedProvince;
   String? selectedCommune;
   String? selectedVillage;
+  bool villagePersonnaliseActive = false;
+  final TextEditingController villagePersonnaliseController =
+      TextEditingController();
   String? selectedSite;
   String? selectedTechnician;
   List<String> selectedFlorales = [];
@@ -111,240 +124,331 @@ class _NouvelleCollecteRecoltePageState
   // Variables pour les techniciens filtrés par site
   List<TechnicienInfo> availableTechniciensForSite = [];
 
+  // Getters pour le nouveau système GeographieData
+  List<Map<String, dynamic>> get _provinces {
+    if (selectedRegion?.isEmpty ?? true) return [];
+    final regionCode = GeographieData.getRegionCodeByName(selectedRegion!);
+    return GeographieData.getProvincesForRegion(regionCode);
+  }
+
+  List<Map<String, dynamic>> get _communes {
+    if (selectedRegion == null ||
+        selectedRegion!.isEmpty ||
+        selectedProvince == null ||
+        selectedProvince!.isEmpty) return [];
+    final regionCode = GeographieData.getRegionCodeByName(selectedRegion!);
+    final provinceCode =
+        GeographieData.getProvinceCodeByName(regionCode, selectedProvince!);
+    return GeographieData.getCommunesForProvince(regionCode, provinceCode);
+  }
+
+  List<Map<String, dynamic>> get _villages {
+    if (selectedRegion == null ||
+        selectedRegion!.isEmpty ||
+        selectedProvince == null ||
+        selectedProvince!.isEmpty ||
+        selectedCommune == null ||
+        selectedCommune!.isEmpty) return [];
+    final regionCode = GeographieData.getRegionCodeByName(selectedRegion!);
+    final provinceCode =
+        GeographieData.getProvinceCodeByName(regionCode, selectedProvince!);
+    final communeCode = GeographieData.getCommuneCodeByName(
+        regionCode, provinceCode, selectedCommune!);
+    return GeographieData.getVillagesForCommune(
+        regionCode, provinceCode, communeCode);
+  }
+
   // Contrôleurs pour mise à jour automatique
   final TextEditingController technicianController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    fetchFirestoreHistory();
-    // Initialiser le technicien depuis les infos du site
-    selectedSite = siteInfo.siteName;
-    selectedTechnician = siteInfo.technicianName;
-    technicianController.text = selectedTechnician ?? '';
+    _initializeUserData();
+    _setupGlobalRefreshListener();
+  }
 
-    // Charger les techniciens pour le site actuel
-    _loadTechniciansForSite(selectedSite);
+  // Initialisation des données utilisateur depuis Firestore
+  Future<void> _initializeUserData() async {
+    print('🔥 DEBUG: _initializeUserData() démarrée');
+    setState(() => isLoadingUserData = true);
 
-    // Initialiser la géographie depuis siteInfo
-    selectedRegion = siteInfo.region;
-    selectedProvince = siteInfo.province;
-    selectedCommune = siteInfo.commune;
-    selectedVillage = siteInfo.village;
+    try {
+      // Récupérer l'utilisateur connecté
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('Utilisateur non connecté');
+      }
+
+      // Récupérer les données de l'utilisateur depuis Firestore
+      final userDoc = await FirebaseFirestore.instance
+          .collection('utilisateurs')
+          .doc(user.uid)
+          .get();
+
+      if (!userDoc.exists) {
+        throw Exception('Données utilisateur non trouvées');
+      }
+
+      currentUserData = userDoc.data()!;
+      print(
+          '✅ DEBUG: Données utilisateur chargées: ${currentUserData!['nom']} ${currentUserData!['prenom']}');
+
+      // Récupérer la session utilisateur depuis GetX
+      userSession = Get.find<UserSession>();
+
+      // Initialiser les valeurs par défaut depuis les données utilisateur
+      selectedSite = currentUserData!['site'] ?? userSession?.site;
+      selectedTechnician =
+          '${currentUserData!['prenom'] ?? ''} ${currentUserData!['nom'] ?? ''}'
+              .trim();
+
+      // Charger les techniciens disponibles pour le site
+      if (selectedSite != null) {
+        _loadTechniciansForSite(selectedSite);
+      }
+
+      // Charger l'historique Firestore
+      await fetchFirestoreHistory();
+    } catch (e) {
+      print('❌ DEBUG: Erreur dans _initializeUserData: $e');
+      setState(() {
+        statusMessage =
+            'Erreur lors du chargement des données utilisateur : $e';
+      });
+    } finally {
+      print(
+          '🔥 DEBUG: _initializeUserData terminée, isLoadingUserData = false');
+      setState(() => isLoadingUserData = false);
+    }
+  }
+
+  /// Configure l'écoute des notifications globales pour mise à jour en temps réel
+  void _setupGlobalRefreshListener() {
+    final globalRefreshService = GlobalRefreshService();
+
+    _collecteUpdateSubscription =
+        globalRefreshService.collecteUpdatesStream.listen((updateId) {
+      if (mounted) {
+        print('📢 ===== NOTIFICATION REÇUE =====');
+        print('📢 UpdateId: $updateId');
+        print('📢 Type: ${updateId.runtimeType}');
+        print('📢 Mounted: $mounted');
+
+        // Recharger l'historique pour voir les mises à jour
+        if (updateId == 'GLOBAL_UPDATE' || updateId.isNotEmpty) {
+          print('🔄 DÉCLENCHEMENT: Rechargement de l\'historique...');
+          fetchFirestoreHistory();
+        } else {
+          print('🔄 IGNORÉ: UpdateId vide ou null');
+        }
+        print('📢 ===========================');
+      }
+    });
+
+    print('✅ COLLECTE: Écoute des notifications globales configurée');
   }
 
   void _loadTechniciansForSite(String? site) {
-    if (site != null) {
-      availableTechniciensForSite = PersonnelUtils.getTechniciensBySite(site);
-      // Si le technicien actuel n'est pas dans la liste des techniciens du site, on le reset
-      if (selectedTechnician != null) {
-        final techExists = availableTechniciensForSite
-            .any((t) => t.nomComplet == selectedTechnician);
-        if (!techExists) {
-          selectedTechnician = null;
-        }
+    // CORRECTION: Charger TOUS les techniciens, pas seulement ceux du site
+    availableTechniciensForSite = techniciensApisavana;
+
+    // Pas besoin de reset le technicien sélectionné car tous les techniciens sont disponibles
+    // Garder le technicien actuel s'il existe dans la liste complète
+    if (selectedTechnician != null) {
+      final techExists = availableTechniciensForSite
+          .any((t) => t.nomComplet == selectedTechnician);
+      if (!techExists) {
+        selectedTechnician = null;
       }
-    } else {
-      availableTechniciensForSite = [];
-      selectedTechnician = null;
     }
   }
 
   @override
   void dispose() {
+    _collecteUpdateSubscription?.cancel();
     technicianController.dispose();
+    villagePersonnaliseController.dispose();
+    // Réinitialisation complète à la sortie de la page (seulement si le widget est encore monté)
+    if (mounted) {
+      _resetFormState();
+    }
     super.dispose();
   }
 
+  // Méthode pour gérer la navigation de retour avec réinitialisation
+  void _handleBackNavigation() {
+    if (mounted) {
+      _resetFormState();
+    }
+    // Retour explicite au dashboard comme les autres pages du sidebar
+    Get.offAllNamed('/dashboard');
+  }
+
   Future<void> fetchFirestoreHistory() async {
-    print(
-        "🟡 fetchFirestoreHistory - Début chargement depuis Sites/{nomSite}/nos_recoltes/");
+    print('🔄 ===== DÉBUT fetchFirestoreHistory =====');
+    print('🔄 CurrentUserData: ${currentUserData != null}');
+    print('🔄 SelectedSite: $selectedSite');
+
     setState(() => isLoadingHistory = true);
-
     try {
-      // Si aucun site spécifique sélectionné, charger depuis le site actuel
-      final String siteAChercher = filterSite?.isNotEmpty == true
-          ? filterSite!
-          : selectedSite ?? siteInfo.siteName;
+      // Si nous avons des données utilisateur, récupérer depuis la nouvelle architecture
+      if (currentUserData != null && selectedSite != null) {
+        print('🔄 Mode: Nouvelle architecture');
+        print('🔄 Site: $selectedSite');
+        Query query = FirebaseFirestore.instance
+            .collection('Sites') // Collection principale Sites
+            .doc(selectedSite!) // Document du site
+            .collection(
+                'nos_collectes_recoltes') // Sous-collection des récoltes
+            .orderBy('createdAt', descending: true)
+            .limit(50);
 
-      print("🟡 Chargement historique pour site: $siteAChercher");
-      print(
-          "🔒 SÉCURITÉ: Lecture depuis Sites/$siteAChercher/nos_recoltes/ uniquement");
+        if (filterTechnician != null && filterTechnician!.isNotEmpty) {
+          query = query.where('technicien_nom', isEqualTo: filterTechnician);
+        }
 
-      // Construction de la requête Firestore sécurisée
-      Query query = FirebaseFirestore.instance
-          .collection('Sites')
-          .doc(siteAChercher)
-          .collection('nos_recoltes')
-          .orderBy('createdAt', descending: true)
-          .limit(50);
+        final snapshot = await query.get();
+        print('🔄 Nombre de documents trouvés: ${snapshot.docs.length}');
 
-      // Filtrage par technicien si spécifié
-      if (filterTechnician != null && filterTechnician!.isNotEmpty) {
-        query = query.where('technicien_nom', isEqualTo: filterTechnician);
-        print("🔍 Filtre technicien appliqué: $filterTechnician");
-      }
-
-      print("🟡 Exécution requête Firestore...");
-      final snapshot = await query.get();
-      print("✅ Requête exécutée: ${snapshot.docs.length} documents trouvés");
-
-      // Traitement sécurisé des documents
-      final List<Map<String, dynamic>> historique = [];
-      final Set<String> sitesUniques = {};
-      final Set<String> techniciensUniques = {};
-      for (final doc in snapshot.docs) {
-        try {
-          // Ignorer le document de statistiques
-          if (doc.id == '_statistiques_structurees') {
-            print("📊 Document statistiques ignoré dans l'historique");
-            continue;
-          }
+        firestoreHistory = snapshot.docs.map((doc) {
           final data = doc.data() as Map<String, dynamic>;
+          final contenants = data['contenants'] ?? [];
 
-          // Validation des données minimales
-          if (data.isEmpty) {
-            print("⚠️ Document vide ignoré: ${doc.id}");
-            continue;
+          print('🔄 Document: ${doc.id}');
+          print('🔄   - Contenants: ${contenants.length}');
+          print('🔄   - Type contenants: ${contenants.runtimeType}');
+
+          // Afficher les contenants pour debug
+          if (contenants is List && contenants.isNotEmpty) {
+            for (int i = 0; i < contenants.length; i++) {
+              final contenant = contenants[i];
+              print(
+                  '🔄   - Contenant $i: ${contenant is Map ? (contenant as Map).keys.toList() : contenant.runtimeType}');
+              if (contenant is Map<String, dynamic>) {
+                print('🔄     * ID: ${contenant['id']}');
+                print(
+                    '🔄     * ControlInfo présent: ${contenant.containsKey('controlInfo')}');
+                if (contenant.containsKey('controlInfo')) {
+                  print('🔄     * ControlInfo: ${contenant['controlInfo']}');
+                }
+              }
+            }
           }
 
-          // Extraction sécurisée des données
-          final Map<String, dynamic> recolte = {
+          return {
             'id': doc.id,
-            'date': data['createdAt'] != null
-                ? (data['createdAt'] as Timestamp).toDate()
-                : null,
-            'site': data['site'] ?? siteAChercher,
-            'totalWeight': (data['totalWeight'] ?? 0.0).toDouble(),
-            'totalAmount': (data['totalAmount'] ?? 0.0).toDouble(),
-            'status': data['status'] ?? 'inconnu',
-            'technicien_nom': data['technicien_nom'] ?? 'Inconnu',
-            'technicien_telephone': data['technicien_telephone'] ?? '',
+            'date': (data['createdAt'] as Timestamp?)?.toDate(),
+            'site': data['site'] ?? '',
+            'totalWeight': data['totalWeight'] ?? 0,
+            'totalAmount': data['totalAmount'] ?? 0,
+            'status': data['status'] ?? '',
+            'technicien_nom': data['technicien_nom'] ?? '',
+            'contenants': contenants,
+            // Ajout des données de localisation
+            'region': data['region'] ?? '--',
+            'province': data['province'] ?? '--',
+            'commune': data['commune'] ?? '--',
+            'village': data['village'] ?? '--',
+          };
+        }).toList();
+
+        print(
+            '🔄 FirestoreHistory créé avec ${firestoreHistory.length} éléments');
+
+        // Récupérer les techniciens distincts pour les filtres
+        final allTechs = <String>{};
+        for (final h in firestoreHistory) {
+          if ((h['technicien_nom'] ?? '').isNotEmpty)
+            allTechs.add(h['technicien_nom']);
+        }
+        availableTechnicians = allTechs.toList()..sort();
+        availableSites = [selectedSite!]; // Seul le site de l'utilisateur
+      } else {
+        // Fallback : charger depuis l'ancienne collection globale
+        Query query = FirebaseFirestore.instance
+            .collection('collectes_recolte')
+            .orderBy('createdAt', descending: true)
+            .limit(50);
+        if (filterSite != null && filterSite!.isNotEmpty) {
+          query = query.where('site', isEqualTo: filterSite);
+        }
+        if (filterTechnician != null && filterTechnician!.isNotEmpty) {
+          query = query.where('technicien_nom', isEqualTo: filterTechnician);
+        }
+        final snapshot = await query.get();
+        firestoreHistory = snapshot.docs.map((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return {
+            'id': doc.id,
+            'date': (data['createdAt'] as Timestamp?)?.toDate(),
+            'site': data['site'] ?? '',
+            'totalWeight': data['totalWeight'] ?? 0,
+            'totalAmount': data['totalAmount'] ?? 0,
+            'status': data['status'] ?? '',
+            'technicien_nom': data['technicien_nom'] ?? '',
             'contenants': data['contenants'] ?? [],
-            'predominances_florales': data['predominances_florales'] ?? [],
+            // Ajout des données de localisation
             'region': data['region'] ?? '',
             'province': data['province'] ?? '',
             'commune': data['commune'] ?? '',
             'village': data['village'] ?? '',
           };
+        }).toList();
 
-          historique.add(recolte);
-
-          // Collecte des valeurs uniques pour les filtres
-          final site = recolte['site']?.toString();
-          final technicien = recolte['technicien_nom']?.toString();
-
-          if (site?.isNotEmpty == true) sitesUniques.add(site!);
-          if (technicien?.isNotEmpty == true)
-            techniciensUniques.add(technicien!);
-        } catch (e) {
-          print("🔴 Erreur traitement document ${doc.id}: $e");
-          // Continuer avec les autres documents
+        // Récupération des sites et techniciens distincts pour les filtres
+        final allSites = <String>{};
+        final allTechs = <String>{};
+        for (final h in firestoreHistory) {
+          if ((h['site'] ?? '').isNotEmpty) allSites.add(h['site']);
+          if ((h['technicien_nom'] ?? '').isNotEmpty)
+            allTechs.add(h['technicien_nom']);
         }
+        availableSites = allSites.toList()..sort();
+        availableTechnicians = allTechs.toList()..sort();
       }
-
-      // Si on cherchait dans plusieurs sites, charger aussi les autres sites
-      if (filterSite == null || filterSite!.isEmpty) {
-        print("🟡 Chargement complémentaire depuis d'autres sites...");
-        await _chargerAutresSites(historique, sitesUniques, techniciensUniques);
-      }
-
-      // Mise à jour de l'état
-      setState(() {
-        firestoreHistory = historique;
-        availableSites = sitesUniques.toList()..sort();
-        availableTechnicians = techniciensUniques.toList()..sort();
-      });
-
-      print("✅ Historique chargé: ${historique.length} récoltes");
-      print("✅ Sites disponibles: ${availableSites.length}");
-      print("✅ Techniciens disponibles: ${availableTechnicians.length}");
-    } catch (e, stackTrace) {
-      print("🔴 Erreur chargement historique: $e");
-      print("🔴 Stack trace: $stackTrace");
-
-      setState(() {
-        firestoreHistory = [];
-        availableSites = [];
-        availableTechnicians = [];
-      });
+    } catch (e) {
+      // Gestion d'erreur silencieuse pour éviter les blocages
+      print('Erreur lors du chargement de l\'historique : $e');
     }
-
     setState(() => isLoadingHistory = false);
   }
 
-  // Méthode pour charger les récoltes depuis d'autres sites (optionnel)
-  Future<void> _chargerAutresSites(
-    List<Map<String, dynamic>> historique,
-    Set<String> sitesUniques,
-    Set<String> techniciensUniques,
-  ) async {
-    try {
-      // Pour l'instant, on se limite au site actuel pour la performance
-      // Cette méthode peut être étendue plus tard si nécessaire
-      print(
-          "🟡 Chargement limité au site actuel pour optimiser les performances");
-
-      // Optionnel : Charger quelques autres sites populaires
-      final autresSites = ['Koudougou', 'Ouagadougou', 'Bobo-Dioulasso'];
-
-      for (final autreSite in autresSites) {
-        if (autreSite == (selectedSite ?? siteInfo.siteName))
-          continue; // Skip le site actuel
-
-        try {
-          final autreQuery = await FirebaseFirestore.instance
-              .collection('Sites')
-              .doc(autreSite)
-              .collection('nos_recoltes')
-              .orderBy('createdAt', descending: true)
-              .limit(10) // Limite pour les performances
-              .get();
-
-          for (final doc in autreQuery.docs) {
-            if (doc.id == '_statistiques_structurees') continue;
-
-            final data = doc.data() as Map<String, dynamic>;
-            if (data.isEmpty) continue;
-
-            final recolte = {
-              'id': doc.id,
-              'date': data['createdAt'] != null
-                  ? (data['createdAt'] as Timestamp).toDate()
-                  : null,
-              'site': autreSite,
-              'totalWeight': (data['totalWeight'] ?? 0.0).toDouble(),
-              'totalAmount': (data['totalAmount'] ?? 0.0).toDouble(),
-              'status': data['status'] ?? 'inconnu',
-              'technicien_nom': data['technicien_nom'] ?? 'Inconnu',
-              'contenants': data['contenants'] ?? [],
-            };
-
-            historique.add(recolte);
-            sitesUniques.add(autreSite);
-
-            final technicien = recolte['technicien_nom']?.toString();
-            if (technicien?.isNotEmpty == true)
-              techniciensUniques.add(technicien!);
-          }
-
-          print(
-              "✅ Site $autreSite: ${autreQuery.docs.length} récoltes ajoutées");
-        } catch (e) {
-          print("⚠️ Erreur chargement site $autreSite: $e");
-          // Continuer avec les autres sites
-        }
-      }
-    } catch (e) {
-      print("🔴 Erreur chargement autres sites: $e");
-      // Ne pas faire échouer le chargement principal
-    }
-  }
-
-  // Ajout ou édition d'un contenant
+  // Ajout ou édition d'un contenant avec validation stricte
   void addOrEditContainer() {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
+
+      // Validation stricte supplémentaire
+      if (hiveType == null || hiveType!.isEmpty) {
+        setState(() {
+          statusMessage = 'Le type de ruche est obligatoire.';
+        });
+        return;
+      }
+
+      if (containerType == null || containerType!.isEmpty) {
+        setState(() {
+          statusMessage = 'Le type de contenant est obligatoire.';
+        });
+        return;
+      }
+
+      if (weight == null || weight! <= 0) {
+        setState(() {
+          statusMessage = 'Le poids doit être supérieur à 0.';
+        });
+        return;
+      }
+
+      // Prix unitaire facultatif - peut être null ou 0
+      if (unitPrice != null && unitPrice! < 0) {
+        setState(() {
+          statusMessage = 'Le prix unitaire ne peut pas être négatif.';
+        });
+        return;
+      }
+
       setState(() {
         if (editingId != null) {
           // Edition
@@ -355,7 +459,7 @@ class _NouvelleCollecteRecoltePageState
               hiveType: hiveType!,
               containerType: containerType!,
               weight: weight!,
-              unitPrice: unitPrice!,
+              unitPrice: unitPrice ?? 0.0, // Valeur par défaut si null
             );
           }
           editingId = null;
@@ -366,7 +470,7 @@ class _NouvelleCollecteRecoltePageState
             hiveType: hiveType!,
             containerType: containerType!,
             weight: weight!,
-            unitPrice: unitPrice!,
+            unitPrice: unitPrice ?? 0.0, // Valeur par défaut si null
           ));
         }
         // Reset champs
@@ -374,6 +478,7 @@ class _NouvelleCollecteRecoltePageState
         containerType = null;
         weight = null;
         unitPrice = null;
+        statusMessage = null; // Effacer le message d'erreur
       });
     }
   }
@@ -396,34 +501,65 @@ class _NouvelleCollecteRecoltePageState
     });
   }
 
-  // Validation et soumission sécurisée (Structure Firestore Sites/{nomSite}/nos_recoltes/)
+  // Validation stricte et soumission avec enregistrement Firestore
   void submitHarvest() async {
-    print("🟡 submitHarvest - Début validation et enregistrement sécurisé");
+    print('🔥 DEBUG: submitHarvest() appelée');
+    // Validation stricte de tous les champs obligatoires
+    List<String> erreurs = [];
 
-    // Validations préliminaires
     if (containers.isEmpty) {
-      setState(() {
-        statusMessage = 'Ajoutez au moins un contenant.';
-      });
-      print("🔴 Validation échouée: Aucun contenant");
-      return;
+      erreurs.add('Ajoutez au moins un contenant');
     }
 
     if (selectedSite == null || selectedSite!.isEmpty) {
-      setState(() {
-        statusMessage = 'Veuillez sélectionner un site.';
-      });
-      print("🔴 Validation échouée: Aucun site sélectionné");
-      return;
+      erreurs.add('Sélectionnez un site');
     }
 
     if (selectedTechnician == null || selectedTechnician!.isEmpty) {
+      erreurs.add('Sélectionnez un technicien');
+    }
+
+    if (selectedRegion == null || selectedRegion!.isEmpty) {
+      erreurs.add('Sélectionnez une région');
+    }
+
+    if (selectedProvince == null || selectedProvince!.isEmpty) {
+      erreurs.add('Sélectionnez une province');
+    }
+
+    if (selectedCommune == null || selectedCommune!.isEmpty) {
+      erreurs.add('Sélectionnez une commune');
+    }
+
+    // Validation du village : soit sélection dans la liste, soit saisie personnalisée
+    if (!villagePersonnaliseActive) {
+      if (selectedVillage == null || selectedVillage!.isEmpty) {
+        erreurs.add('Sélectionnez un village/localité');
+      }
+    } else {
+      if (villagePersonnaliseController.text.trim().isEmpty) {
+        erreurs.add('Saisissez le nom du village non répertorié');
+      }
+    }
+
+    if (selectedFlorales.isEmpty) {
+      erreurs.add('Sélectionnez au moins une prédominance florale');
+    }
+
+    if (currentUserData == null) {
+      erreurs.add('Données utilisateur non chargées');
+    }
+
+    // Afficher les erreurs s'il y en a
+    if (erreurs.isNotEmpty) {
+      print('❌ DEBUG: Erreurs de validation: $erreurs');
       setState(() {
-        statusMessage = 'Veuillez sélectionner un technicien.';
+        statusMessage = 'Erreurs à corriger :\n• ${erreurs.join('\n• ')}';
       });
-      print("🔴 Validation échouée: Aucun technicien sélectionné");
       return;
     }
+
+    print('✅ DEBUG: Validation réussie, début de la soumission');
 
     setState(() {
       isSubmitting = true;
@@ -431,124 +567,85 @@ class _NouvelleCollecteRecoltePageState
     });
 
     try {
-      // Génération d'un ID unique et sécurisé pour la récolte
-      final DateTime now = DateTime.now();
-      final String idRecolte =
-          'recolte_${now.millisecondsSinceEpoch}_${selectedSite!.replaceAll(' ', '_').toLowerCase()}';
-
-      print("🟡 ID récolte généré: $idRecolte");
-      print("🟡 Site: $selectedSite");
-      print("🟡 Technicien: $selectedTechnician");
-
-      // SÉCURITÉ CRITIQUE : Vérification de l'unicité de l'ID
-      print("🔍 Vérification unicité ID récolte: $idRecolte");
-      final recolteExistante = await FirebaseFirestore.instance
-          .collection('Sites')
-          .doc(selectedSite!)
-          .collection('nos_recoltes')
-          .doc(idRecolte)
-          .get();
-
-      if (recolteExistante.exists) {
-        throw Exception(
-            "SÉCURITÉ: ID de récolte déjà existant (collision): $idRecolte");
+      print('🔥 DEBUG: Début du bloc try');
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        print('❌ DEBUG: Utilisateur non connecté');
+        throw Exception('Utilisateur non connecté');
       }
-      print("✅ ID récolte unique et sécurisé");
+      print('✅ DEBUG: Utilisateur connecté: ${user.uid}');
 
-      // Vérification de la cohérence des calculs
-      final poidsCalcule = containers.fold(0.0, (sum, c) => sum + c.weight);
-      final montantCalcule = containers.fold(0.0, (sum, c) => sum + c.total);
-
-      if ((poidsCalcule - totalWeight).abs() > 0.001) {
-        throw Exception(
-            "INTÉGRITÉ: Incohérence poids calculé ($poidsCalcule) vs attendu ($totalWeight)");
-      }
-
-      if ((montantCalcule - totalAmount).abs() > 0.001) {
-        throw Exception(
-            "INTÉGRITÉ: Incohérence montant calculé ($montantCalcule) vs attendu ($totalAmount)");
-      }
-      print("✅ Calculs cohérents et validés");
-
-      // Préparation des données sécurisées pour Firestore
-      final recolteData = {
-        'id': idRecolte,
+      // Données de la collecte
+      final collecteData = {
         'site': selectedSite!,
-        'region': selectedRegion ?? siteInfo.region,
-        'province': selectedProvince ?? siteInfo.province,
-        'commune': selectedCommune ?? siteInfo.commune,
-        'village': selectedVillage ?? siteInfo.village,
+        'region': selectedRegion!,
+        'province': selectedProvince!,
+        'commune': selectedCommune!,
+        'village': villagePersonnaliseActive
+            ? villagePersonnaliseController.text.trim()
+            : selectedVillage!,
         'technicien_nom': selectedTechnician!,
-        'technicien_telephone': _getTechnicienTelephone(selectedTechnician!),
+        'technicien_uid': user.uid,
+        'utilisateur_nom':
+            '${currentUserData!['prenom'] ?? ''} ${currentUserData!['nom'] ?? ''}'
+                .trim(),
+        'utilisateur_email': currentUserData!['email'] ?? '',
         'predominances_florales': selectedFlorales,
-        'contenants': containers
-            .map((c) => {
-                  'id': c.id,
-                  'hiveType': c.hiveType,
-                  'containerType': c.containerType,
-                  'weight': c.weight,
-                  'unitPrice': c.unitPrice,
-                  'total': c.total,
-                })
-            .toList(),
+        'contenants': containers.asMap().entries.map((entry) {
+          final index = entry.key;
+          final c = entry.value;
+          final containerId =
+              'C${(index + 1).toString().padLeft(3, '0')}_recolte';
+          return {
+            'id': containerId, // 🆕 ID unique pour chaque contenant
+            'hiveType': c.hiveType,
+            'containerType': c.containerType,
+            'weight': c.weight,
+            'unitPrice': c.unitPrice,
+            'total': c.total,
+          };
+        }).toList(),
         'totalWeight': totalWeight,
         'totalAmount': totalAmount,
-        'nombreContenants': containers.length,
-        'status': 'en_attente', // Statut par défaut
+        'status': 'en_attente',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
-        // Métadonnées pour traçabilité
-        'metadata': {
-          'createdBy': 'app_mobile',
-          'version': '1.0',
-          'source': 'nouvelle_collecte_recolte',
-        }
       };
 
-      print("🟡 Données récolte préparées: ${recolteData.keys.toList()}");
+      // Enregistrement avec service de statistiques avancées
+      print('🔥 DEBUG: Avant appel StatsRecoltesService.saveCollecteRecolte');
+      print('🔥 DEBUG: Site sélectionné: $selectedSite');
+      print('🔥 DEBUG: Nombre de contenants: ${containers.length}');
 
-      // ÉTAPE 1 : Enregistrement de la récolte principale dans Sites/{nomSite}/nos_recoltes/
-      print(
-          "🟡 Étape 1: Enregistrement récolte dans Sites/$selectedSite/nos_recoltes/$idRecolte");
+      final collecteId = await StatsRecoltesService.saveCollecteRecolte(
+        site: selectedSite!,
+        collecteData: collecteData,
+      );
 
-      final recolteRef = FirebaseFirestore.instance
-          .collection('Sites')
-          .doc(selectedSite!)
-          .collection('nos_recoltes')
-          .doc(idRecolte);
+      print('✅ DEBUG: Sauvegarde réussie, ID: $collecteId');
 
-      // Double vérification juste avant l'enregistrement (sécurité anti-concurrence)
-      final finalCheck = await recolteRef.get();
-      if (finalCheck.exists) {
-        throw Exception(
-            "CONCURRENCE: Une autre récolte avec le même ID existe déjà");
-      }
-
-      // SÉCURITÉ CRITIQUE : Écriture dans la bonne collection uniquement
-      print(
-          "🔒 GARANTIE: Écriture uniquement dans Sites/$selectedSite/nos_recoltes/");
-      print("🔒 VÉRIFICATION: Aucune écriture dans d'autres collections");
-
-      await recolteRef.set(recolteData);
-      print("✅ Récolte principale enregistrée avec sécurité anti-concurrence");
-
-      // ÉTAPE 2 : Génération et sauvegarde des statistiques structurées (optionnel)
-      await _genererStatistiquesRecolte(selectedSite!, recolteData);
-
-      // ÉTAPE 3 : Mise à jour de l'historique local et interface
+      // Ajout à l'historique local
       setState(() {
         isSubmitting = false;
-        statusMessage = 'Récolte enregistrée avec succès !';
+        statusMessage = 'Collecte enregistrée avec succès !';
+        // Récupération du village (répertorié ou personnalisé)
+        final village = villagePersonnaliseActive
+            ? villagePersonnaliseController.text.trim()
+            : selectedVillage;
 
-        // Ajout à l'historique local
         history.insert(0, {
-          'id': idRecolte,
+          'id': collecteId,
           'date': DateTime.now(),
           'site': selectedSite!,
           'technicien_nom': selectedTechnician!,
           'totalWeight': totalWeight,
           'totalAmount': totalAmount,
           'status': 'en_attente',
+          // Ajout des données de localisation
+          'region': selectedRegion ?? '',
+          'province': selectedProvince ?? '',
+          'commune': selectedCommune ?? '',
+          'village': village ?? '',
           'contenants': containers
               .map((c) => {
                     'hiveType': c.hiveType,
@@ -559,26 +656,16 @@ class _NouvelleCollecteRecoltePageState
                   })
               .toList(),
         });
-
-        // Reset du formulaire après enregistrement
-        containers.clear();
-        selectedFlorales.clear();
-
-        // Reset des champs du formulaire d'ajout
-        hiveType = null;
-        containerType = null;
-        weight = null;
-        unitPrice = null;
       });
 
-      print("✅ SUCCÈS COMPLET: Récolte enregistrée et interface mise à jour");
+      // Réinitialisation complète de l'état après enregistrement
+      _resetFormState();
 
-      // Actualiser l'historique Firestore pour afficher la nouvelle récolte
+      // Recharger l'historique
       await fetchFirestoreHistory();
-    } catch (e, stackTrace) {
-      print("🔴 Erreur lors de l'enregistrement récolte: $e");
-      print("🔴 Stack trace: $stackTrace");
-
+    } catch (e) {
+      print('❌ DEBUG: Erreur dans submitHarvest: $e');
+      print('❌ DEBUG: Type d\'erreur: ${e.runtimeType}');
       setState(() {
         isSubmitting = false;
         statusMessage = 'Erreur lors de l\'enregistrement : $e';
@@ -586,170 +673,34 @@ class _NouvelleCollecteRecoltePageState
     }
   }
 
-  // Méthode pour générer et sauvegarder les statistiques de récolte
-  Future<void> _genererStatistiquesRecolte(
-      String nomSite, Map<String, dynamic> recolteData) async {
-    try {
-      print(
-          "📊 STATS - Début génération statistiques récolte pour site: $nomSite");
+  // Méthode pour réinitialiser complètement l'état du formulaire
+  void _resetFormState() {
+    if (!mounted) return; // Éviter setState si le widget n'est plus monté
 
-      // Vérifier si la collection nos_recoltes existe
-      final nosRecoltesRef = FirebaseFirestore.instance
-          .collection('Sites')
-          .doc(nomSite)
-          .collection('nos_recoltes');
+    setState(() {
+      // Réinitialiser les contenants
+      containers.clear();
 
-      final nosRecoltesQuery = await nosRecoltesRef.limit(1).get();
+      // Réinitialiser les champs du formulaire
+      hiveType = null;
+      containerType = null;
+      weight = null;
+      unitPrice = null;
+      editingId = null;
 
-      if (nosRecoltesQuery.docs.isNotEmpty) {
-        print(
-            "📊 STATS - Collection nos_recoltes trouvée, génération statistiques...");
+      // Réinitialiser les prédominances florales
+      selectedFlorales.clear();
 
-        // Récupérer toutes les récoltes pour les statistiques
-        final toutesRecoltes = await nosRecoltesRef.get();
+      // Garder la sélection de site et technicien pour faciliter la prochaine saisie
+      // mais réinitialiser la géographie
+      selectedRegion = null;
+      selectedProvince = null;
+      selectedCommune = null;
+      selectedVillage = null;
 
-        // Génération des statistiques structurées
-        final Map<String, dynamic> statsStructurees =
-            _calculerStatistiquesRecolte(toutesRecoltes.docs, recolteData);
-
-        // Sauvegarde des statistiques dans nos_recoltes/_statistiques_structurees
-        final statsRef = FirebaseFirestore.instance
-            .collection('Sites')
-            .doc(nomSite)
-            .collection('nos_recoltes')
-            .doc('_statistiques_structurees');
-
-        print(
-            "📊 STATS - Sauvegarde dans nos_recoltes/_statistiques_structurees");
-        await statsRef.set(statsStructurees);
-
-        // Vérification post-écriture
-        final verificationDoc = await statsRef.get();
-        if (verificationDoc.exists) {
-          print(
-              "✅ STATS - Statistiques enregistrées ET VÉRIFIÉES avec succès dans nos_recoltes");
-          print(
-              "✅ STATS - Contenu vérifié: ${verificationDoc.data()?.keys.toList()}");
-        } else {
-          print(
-              "❌ STATS - ERREUR: Document statistiques non trouvé après écriture!");
-        }
-      } else {
-        print(
-            "❌ STATS - Collection nos_recoltes introuvable, statistiques non enregistrées");
-      }
-    } catch (e, stackTrace) {
-      print("🔴 STATS - Erreur génération statistiques récolte: $e");
-      print("🔴 STATS - Stack trace: $stackTrace");
-      // Ne pas faire échouer l'enregistrement principal pour cette erreur
-    }
-  }
-
-  // Méthode pour calculer les statistiques de récolte
-  Map<String, dynamic> _calculerStatistiquesRecolte(
-      List<QueryDocumentSnapshot> docs, Map<String, dynamic> nouvelleRecolte) {
-    print("📊 Calcul statistiques pour ${docs.length} récoltes");
-
-    // Statistiques globales
-    double poidsTotal = 0.0;
-    double montantTotal = 0.0;
-    int nombreRecoltes = docs.length;
-
-    Map<String, int> repartitionTechnicians = {};
-    Map<String, double> repartitionPoids = {};
-    Map<String, int> typesContenants = {};
-    Map<String, int> typesRuches = {};
-
-    // Traitement de chaque récolte
-    for (final doc in docs) {
-      try {
-        final data = doc.data() as Map<String, dynamic>;
-
-        final double poids = (data['totalWeight'] ?? 0.0).toDouble();
-        final double montant = (data['totalAmount'] ?? 0.0).toDouble();
-        final String technicien = data['technicien_nom'] ?? 'Inconnu';
-
-        poidsTotal += poids;
-        montantTotal += montant;
-
-        // Répartition par technicien
-        repartitionTechnicians[technicien] =
-            (repartitionTechnicians[technicien] ?? 0) + 1;
-        repartitionPoids[technicien] =
-            (repartitionPoids[technicien] ?? 0.0) + poids;
-
-        // Analyse des contenants
-        if (data['contenants'] != null) {
-          final List<dynamic> contenants = data['contenants'];
-          for (final contenant in contenants) {
-            if (contenant is Map<String, dynamic>) {
-              final String typeContenant =
-                  contenant['containerType'] ?? 'Inconnu';
-              final String typeRuche = contenant['hiveType'] ?? 'Inconnu';
-
-              typesContenants[typeContenant] =
-                  (typesContenants[typeContenant] ?? 0) + 1;
-              typesRuches[typeRuche] = (typesRuches[typeRuche] ?? 0) + 1;
-            }
-          }
-        }
-      } catch (e) {
-        print("🔴 Erreur traitement document ${doc.id}: $e");
-      }
-    }
-
-    // Construction du document de statistiques
-    return {
-      'type': 'statistiques_recoltes',
-      'derniere_mise_a_jour': FieldValue.serverTimestamp(),
-      'periode_debut': docs.isNotEmpty
-          ? ((docs.last.data() as Map<String, dynamic>?)
-                      ?.containsKey('createdAt') ==
-                  true
-              ? (docs.last.data() as Map<String, dynamic>)['createdAt']
-              : FieldValue.serverTimestamp())
-          : FieldValue.serverTimestamp(),
-      'periode_fin': FieldValue.serverTimestamp(),
-      'resume_global': {
-        'nombre_recoltes': nombreRecoltes,
-        'poids_total_kg': poidsTotal,
-        'montant_total_fcfa': montantTotal,
-        'poids_moyen_kg':
-            nombreRecoltes > 0 ? poidsTotal / nombreRecoltes : 0.0,
-        'montant_moyen_fcfa':
-            nombreRecoltes > 0 ? montantTotal / nombreRecoltes : 0.0,
-      },
-      'repartition_techniciens': repartitionTechnicians.entries
-          .map((e) => {
-                'technicien': e.key,
-                'nombre_recoltes': e.value,
-                'poids_total_kg': repartitionPoids[e.key] ?? 0.0,
-              })
-          .toList(),
-      'types_contenants': typesContenants.entries
-          .map((e) => {
-                'type': e.key,
-                'quantite': e.value,
-              })
-          .toList(),
-      'types_ruches': typesRuches.entries
-          .map((e) => {
-                'type': e.key,
-                'quantite': e.value,
-              })
-          .toList(),
-      'derniere_recolte': nouvelleRecolte,
-    };
-  }
-
-  // Méthode utilitaire pour récupérer le téléphone du technicien
-  String? _getTechnicienTelephone(String nomComplet) {
-    final tech = availableTechniciensForSite.firstWhere(
-      (t) => t.nomComplet == nomComplet,
-      orElse: () =>
-          TechnicienInfo(nom: '', prenom: '', site: '', telephone: ''),
-    );
-    return tech.telephone.isNotEmpty ? tech.telephone : null;
+      // Réinitialiser les messages
+      statusMessage = null;
+    });
   }
 
   // Utilitaire pour compter les contenants par type
@@ -776,8 +727,41 @@ class _NouvelleCollecteRecoltePageState
 
   @override
   Widget build(BuildContext context) {
+    // Afficher un indicateur de chargement pendant l'initialisation
+    if (isLoadingUserData) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Nouvelle collecte récolte'),
+        ),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(kHighlightColor),
+              ),
+              SizedBox(height: 16),
+              Text('Chargement des données utilisateur...'),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Nouvelle collecte - Récolte')),
+      appBar: buildSmartAppBar(
+        title: 'Nouvelle collecte récolte',
+        onBackPressed: _handleBackNavigation,
+        actions: widget.showBackToHistory
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.history),
+                  tooltip: 'Retour à l\'historique',
+                  onPressed: widget.onBackToHistory,
+                ),
+              ]
+            : null,
+      ),
       drawer: Drawer(
         backgroundColor: Colors.white,
         child: SafeArea(
@@ -795,11 +779,11 @@ class _NouvelleCollecteRecoltePageState
                   leading: Icon(Icons.dashboard, color: kHighlightColor),
                   title: Text('Retour au Dashboard'),
                   onTap: () {
+                    _resetFormState(); // Réinitialiser avant de quitter
                     Navigator.of(context).pop();
                     Navigator.of(context).pushReplacementNamed('/dashboard');
                   },
                 ),
-                // ... tu peux ajouter d'autres entrées ici si besoin ...
               ],
             ),
           ),
@@ -863,7 +847,9 @@ class _NouvelleCollecteRecoltePageState
                             ?.copyWith(color: kHighlightColor)),
                     const SizedBox(height: 8),
                     DropdownSearch<String>(
-                      items: regionsBurkina,
+                      items: GeographieData.regionsBurkina
+                          .map((r) => r['nom'].toString())
+                          .toList(),
                       selectedItem: selectedRegion,
                       onChanged: (v) {
                         setState(() {
@@ -871,6 +857,8 @@ class _NouvelleCollecteRecoltePageState
                           selectedProvince = null;
                           selectedCommune = null;
                           selectedVillage = null;
+                          villagePersonnaliseActive = false;
+                          villagePersonnaliseController.clear();
                         });
                       },
                       dropdownDecoratorProps: DropDownDecoratorProps(
@@ -881,15 +869,16 @@ class _NouvelleCollecteRecoltePageState
                     ),
                     const SizedBox(height: 8),
                     DropdownSearch<String>(
-                      items: selectedRegion != null
-                          ? provincesParRegion[selectedRegion!] ?? []
-                          : [],
+                      items:
+                          _provinces.map((p) => p['nom'].toString()).toList(),
                       selectedItem: selectedProvince,
                       onChanged: (v) {
                         setState(() {
                           selectedProvince = v;
                           selectedCommune = null;
                           selectedVillage = null;
+                          villagePersonnaliseActive = false;
+                          villagePersonnaliseController.clear();
                         });
                       },
                       dropdownDecoratorProps: DropDownDecoratorProps(
@@ -900,14 +889,14 @@ class _NouvelleCollecteRecoltePageState
                     ),
                     const SizedBox(height: 8),
                     DropdownSearch<String>(
-                      items: selectedProvince != null
-                          ? communesParProvince[selectedProvince!] ?? []
-                          : [],
+                      items: _communes.map((c) => c['nom'].toString()).toList(),
                       selectedItem: selectedCommune,
                       onChanged: (v) {
                         setState(() {
                           selectedCommune = v;
                           selectedVillage = null;
+                          villagePersonnaliseActive = false;
+                          villagePersonnaliseController.clear();
                         });
                       },
                       dropdownDecoratorProps: DropDownDecoratorProps(
@@ -916,19 +905,104 @@ class _NouvelleCollecteRecoltePageState
                       ),
                       popupProps: PopupProps.menu(showSearchBox: true),
                     ),
-                    const SizedBox(height: 8),
-                    DropdownSearch<String>(
-                      items: selectedCommune != null
-                          ? (villagesParCommune[selectedCommune!] ?? [])
-                          : [],
-                      selectedItem: selectedVillage,
-                      onChanged: (v) => setState(() => selectedVillage = v),
-                      dropdownDecoratorProps: DropDownDecoratorProps(
-                        dropdownSearchDecoration:
-                            InputDecoration(labelText: 'Village/Localité'),
+                    // Section Village avec option personnalisée
+                    if (selectedCommune != null) ...[
+                      const SizedBox(height: 12),
+                      // Options radio pour village
+                      Row(
+                        children: [
+                          Expanded(
+                            child: RadioListTile<bool>(
+                              title: Text('Village de la liste',
+                                  style: TextStyle(fontSize: 14)),
+                              value: false,
+                              groupValue: villagePersonnaliseActive,
+                              onChanged: (value) {
+                                setState(() {
+                                  villagePersonnaliseActive = value!;
+                                  if (!villagePersonnaliseActive) {
+                                    villagePersonnaliseController.clear();
+                                  } else {
+                                    selectedVillage = null;
+                                  }
+                                });
+                              },
+                            ),
+                          ),
+                          Expanded(
+                            child: RadioListTile<bool>(
+                              title: Text('Village non répertorié',
+                                  style: TextStyle(fontSize: 14)),
+                              value: true,
+                              groupValue: villagePersonnaliseActive,
+                              onChanged: (value) {
+                                setState(() {
+                                  villagePersonnaliseActive = value!;
+                                  if (!villagePersonnaliseActive) {
+                                    villagePersonnaliseController.clear();
+                                  } else {
+                                    selectedVillage = null;
+                                  }
+                                });
+                              },
+                            ),
+                          ),
+                        ],
                       ),
-                      popupProps: PopupProps.menu(showSearchBox: true),
-                    ),
+                      const SizedBox(height: 8),
+                      // Dropdown ou champ texte selon le choix
+                      if (!villagePersonnaliseActive) ...[
+                        DropdownSearch<String>(
+                          items: _villages
+                              .map((v) => v['nom'].toString())
+                              .toList(),
+                          selectedItem: selectedVillage,
+                          onChanged: (v) => setState(() => selectedVillage = v),
+                          dropdownDecoratorProps: DropDownDecoratorProps(
+                            dropdownSearchDecoration:
+                                InputDecoration(labelText: 'Village'),
+                          ),
+                          popupProps: PopupProps.menu(showSearchBox: true),
+                        ),
+                        if (_villages.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              '${_villages.length} village(s) disponible(s)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ),
+                      ] else ...[
+                        TextFormField(
+                          controller: villagePersonnaliseController,
+                          decoration: InputDecoration(
+                            labelText: 'Nom du village non répertorié',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.location_city),
+                          ),
+                          validator: (value) {
+                            if (villagePersonnaliseActive &&
+                                (value?.isEmpty ?? true)) {
+                              return 'Veuillez saisir le nom du village';
+                            }
+                            return null;
+                          },
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'Ce village sera ajouté comme village personnalisé',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.orange.shade600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ],
                 ),
               ),
@@ -1132,7 +1206,7 @@ class _NouvelleCollecteRecoltePageState
                           child: TextFormField(
                             key: ValueKey(
                                 selectedSite), // Force rebuild when site changes
-                            initialValue: selectedSite ?? siteInfo.siteName,
+                            initialValue: selectedSite ?? '',
                             decoration: const InputDecoration(
                               labelText: 'Site',
                               border: OutlineInputBorder(),
@@ -1147,8 +1221,7 @@ class _NouvelleCollecteRecoltePageState
                           child: TextFormField(
                             key: ValueKey(
                                 selectedTechnician), // Force rebuild when technician changes
-                            initialValue:
-                                selectedTechnician ?? siteInfo.technicianName,
+                            initialValue: selectedTechnician ?? '',
                             decoration: const InputDecoration(
                               labelText: 'Technicien',
                               border: OutlineInputBorder(),
@@ -1170,9 +1243,54 @@ class _NouvelleCollecteRecoltePageState
                               fontWeight: FontWeight.w600,
                               color: kHighlightColor)),
                       const SizedBox(height: 4),
-                      Text(
-                        '${selectedRegion ?? siteInfo.region}, ${selectedProvince ?? siteInfo.province}, ${selectedCommune ?? siteInfo.commune}, ${selectedVillage ?? siteInfo.village}',
-                        style: const TextStyle(fontSize: 14),
+                      // Affichage avec code de localisation
+                      Builder(
+                        builder: (context) {
+                          final village = villagePersonnaliseActive
+                              ? villagePersonnaliseController.text.trim()
+                              : selectedVillage;
+
+                          final localisationAvecCode =
+                              GeographieData.formatLocationCode(
+                            regionName: selectedRegion,
+                            provinceName: selectedProvince,
+                            communeName: selectedCommune,
+                            villageName: village,
+                          );
+
+                          final localisationComplete = [
+                            selectedRegion,
+                            selectedProvince,
+                            selectedCommune,
+                            village
+                          ]
+                              .where((element) =>
+                                  element != null && element.isNotEmpty)
+                              .join(' > ');
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (localisationAvecCode.isNotEmpty)
+                                Text(
+                                  localisationAvecCode,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                              if (localisationComplete.isNotEmpty)
+                                Text(
+                                  localisationComplete,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
                       ),
                       const SizedBox(height: 8),
                     ],
@@ -1215,7 +1333,7 @@ class _NouvelleCollecteRecoltePageState
                       child: DropdownButtonFormField<String>(
                     value: hiveType,
                     decoration:
-                        const InputDecoration(labelText: 'Type de ruche'),
+                        const InputDecoration(labelText: 'Type de ruche *'),
                     items: [
                       DropdownMenuItem(
                           value: 'Traditionnelle',
@@ -1227,24 +1345,30 @@ class _NouvelleCollecteRecoltePageState
                               Text('Moderne', overflow: TextOverflow.ellipsis)),
                     ],
                     onChanged: (v) => setState(() => hiveType = v),
-                    validator: (v) => v == null ? 'Champ requis' : null,
+                    validator: (v) =>
+                        v == null || v.isEmpty ? 'Champ obligatoire *' : null,
                   )),
                   const SizedBox(width: 16),
                   Expanded(
                       child: DropdownButtonFormField<String>(
                     value: containerType,
                     decoration:
-                        const InputDecoration(labelText: 'Type de contenant'),
+                        const InputDecoration(labelText: 'Type de contenant *'),
                     items: [
                       DropdownMenuItem(
-                          value: 'Pôt',
-                          child: Text('Pôt', overflow: TextOverflow.ellipsis)),
+                          value: 'Seau',
+                          child: Text('Seau', overflow: TextOverflow.ellipsis)),
                       DropdownMenuItem(
                           value: 'Fût',
                           child: Text('Fût', overflow: TextOverflow.ellipsis)),
+                      DropdownMenuItem(
+                          value: 'Bidon',
+                          child:
+                              Text('Bidon', overflow: TextOverflow.ellipsis)),
                     ],
                     onChanged: (v) => setState(() => containerType = v),
-                    validator: (v) => v == null ? 'Champ requis' : null,
+                    validator: (v) =>
+                        v == null || v.isEmpty ? 'Champ obligatoire *' : null,
                   )),
                 ],
               ),
@@ -1254,15 +1378,18 @@ class _NouvelleCollecteRecoltePageState
                   Expanded(
                       child: TextFormField(
                     initialValue: weight?.toString(),
-                    decoration: const InputDecoration(labelText: 'Poids (kg)'),
+                    decoration:
+                        const InputDecoration(labelText: 'Poids (kg) *'),
                     keyboardType: TextInputType.number,
                     inputFormatters: [
                       FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))
                     ],
                     onSaved: (v) => weight = double.tryParse(v ?? ''),
                     validator: (v) {
-                      final val = double.tryParse(v ?? '');
-                      if (val == null || val <= 0) return 'Poids invalide';
+                      if (v == null || v.isEmpty) return 'Champ obligatoire *';
+                      final val = double.tryParse(v);
+                      if (val == null || val <= 0)
+                        return 'Poids invalide (doit être > 0)';
                       return null;
                     },
                     maxLines: 1,
@@ -1280,8 +1407,12 @@ class _NouvelleCollecteRecoltePageState
                     ],
                     onSaved: (v) => unitPrice = double.tryParse(v ?? ''),
                     validator: (v) {
-                      final val = double.tryParse(v ?? '');
-                      if (val == null || val < 0) return 'Prix invalide';
+                      // Prix unitaire facultatif
+                      if (v != null && v.isNotEmpty) {
+                        final val = double.tryParse(v);
+                        if (val == null || val < 0)
+                          return 'Prix invalide (doit être ≥ 0)';
+                      }
                       return null;
                     },
                     maxLines: 1,
@@ -1575,7 +1706,13 @@ class _NouvelleCollecteRecoltePageState
                       color: Colors.white,
                     ),
                   ),
-                  onPressed: isSubmitting ? null : submitHarvest,
+                  onPressed: isSubmitting
+                      ? null
+                      : () {
+                          print('🔥 DEBUG: Bouton Finaliser cliqué');
+                          print('🔥 DEBUG: isSubmitting = $isSubmitting');
+                          submitHarvest();
+                        },
                 ),
               ),
             ),
@@ -1598,14 +1735,43 @@ class _NouvelleCollecteRecoltePageState
                           ?.where((c) => c['containerType'] == 'Fût')
                           .length ??
                       0;
+                  // Génération du code de localisation pour l'historique local
+                  final localisation = {
+                    'region': h['region']?.toString() ?? '',
+                    'province': h['province']?.toString() ?? '',
+                    'commune': h['commune']?.toString() ?? '',
+                    'village': h['village']?.toString() ?? '',
+                  };
+
+                  final localisationAvecCode =
+                      GeographieData.formatLocationCodeFromMap(localisation);
+
                   return ListTile(
                     leading: const Icon(Icons.history),
                     title: Text('Site: \'${h['site']}\'',
                         maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: Text(
-                        'Poids: ${h['totalWeight']} kg | Montant: ${h['totalAmount']} FCFA\nPôt: $pots  Fût: $futs',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                            'Poids: ${h['totalWeight']} kg | Montant: ${h['totalAmount']} FCFA\nPôt: $pots  Fût: $futs',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis),
+                        if (localisationAvecCode.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Localisation: $localisationAvecCode',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue.shade600,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
                     trailing: Text(h['status'] ?? '',
                         style: const TextStyle(fontWeight: FontWeight.bold),
                         maxLines: 1,
@@ -1847,6 +2013,18 @@ class _NouvelleCollecteRecoltePageState
                                       .length ??
                                   0;
 
+                              // Génération du code de localisation pour l'historique Firestore
+                              final localisation = {
+                                'region': h['region']?.toString() ?? '',
+                                'province': h['province']?.toString() ?? '',
+                                'commune': h['commune']?.toString() ?? '',
+                                'village': h['village']?.toString() ?? '',
+                              };
+
+                              final localisationAvecCode =
+                                  GeographieData.formatLocationCodeFromMap(
+                                      localisation);
+
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 12),
                                 elevation: 2,
@@ -1934,6 +2112,20 @@ class _NouvelleCollecteRecoltePageState
                                           fontSize: 12,
                                         ),
                                       ),
+                                      const SizedBox(height: 4),
+                                      // 🆕 Indicateur de contrôle qualité
+                                      _buildQualityControlIndicator(h),
+                                      if (localisationAvecCode.isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Localisation: $localisationAvecCode',
+                                          style: TextStyle(
+                                            color: Colors.blue.shade600,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                   trailing: Column(
@@ -2038,5 +2230,99 @@ class _NouvelleCollecteRecoltePageState
       default:
         return 'Inconnu';
     }
+  }
+
+  /// Construit l'indicateur de contrôle qualité pour une collecte
+  Widget _buildQualityControlIndicator(Map<String, dynamic> collecteData) {
+    print('🎨 ===== CONSTRUCTION INDICATEUR CONTRÔLE =====');
+    print('🎨 CollecteData ID: ${collecteData['id'] ?? 'ID_MANQUANT'}');
+    print('🎨 CollecteData type: ${collecteData.runtimeType}');
+    print('🎨 CollecteData clés: ${collecteData.keys.toList()}');
+
+    final contenants = collecteData['contenants'] as List<dynamic>? ?? [];
+    print('🎨 Nombre de contenants dans collecteData: ${contenants.length}');
+
+    if (contenants.isEmpty) {
+      print('🎨 Aucun contenant → pas d\'indicateur');
+      return const SizedBox.shrink();
+    }
+
+    // Afficher les contenants bruts
+    for (int i = 0; i < contenants.length; i++) {
+      final contenant = contenants[i];
+      print(
+          '🎨 Contenant $i: ${contenant is Map ? (contenant as Map).keys.toList() : contenant.runtimeType}');
+      if (contenant is Map<String, dynamic>) {
+        print('🎨   - ID: ${contenant['id']}');
+        print('🎨   - ControlInfo: ${contenant['controlInfo']}');
+      }
+    }
+
+    // Calculer les statistiques de contrôle directement depuis les données de collecte
+    final qualityControlService = QualityControlService();
+    print('🎨 Appel getControlStatsFromCollecteData...');
+    final stats =
+        qualityControlService.getControlStatsFromCollecteData(collecteData);
+    print('🎨 Stats reçues: $stats');
+
+    final total = stats['total'] ?? 0;
+    final controlled = stats['controlled'] ?? 0;
+    print('🎨 Total: $total, Contrôlés: $controlled');
+
+    final isAllControlled = controlled == total && total > 0;
+    final isPartiallyControlled = controlled > 0 && controlled < total;
+
+    Color indicatorColor;
+    IconData indicatorIcon;
+    String statusText;
+
+    if (isAllControlled) {
+      indicatorColor = Colors.green;
+      indicatorIcon = Icons.verified;
+      statusText = 'Tous contrôlés';
+      print('🎨 → Couleur: VERT, Texte: "$statusText"');
+    } else if (isPartiallyControlled) {
+      indicatorColor = Colors.orange;
+      indicatorIcon = Icons.warning;
+      statusText = '$controlled/$total contrôlés';
+      print('🎨 → Couleur: ORANGE, Texte: "$statusText"');
+    } else {
+      indicatorColor = Colors.red;
+      indicatorIcon = Icons.error_outline;
+      statusText = 'Non contrôlés';
+      print('🎨 → Couleur: ROUGE, Texte: "$statusText"');
+    }
+
+    print('🎨 ===== FIN CONSTRUCTION INDICATEUR =====');
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: indicatorColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: indicatorColor.withOpacity(0.3),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            indicatorIcon,
+            size: 14,
+            color: indicatorColor,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'Contrôle: $statusText',
+            style: TextStyle(
+              color: indicatorColor,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

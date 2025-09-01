@@ -20,8 +20,11 @@ class SectionPredominanceFlorale extends StatelessWidget {
     'Citronnier',
     'Tamarinier',
     'Kapokier',
-    'Fleurs sauvages',
-    'Autre',
+    'Moringa',
+    'Cajou',
+    'Détarium',
+    'Zaaba',
+    'Filao',
   ];
 
   @override

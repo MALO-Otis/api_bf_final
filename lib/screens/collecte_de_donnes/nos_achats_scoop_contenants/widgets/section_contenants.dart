@@ -432,7 +432,7 @@ class SectionContenants extends StatelessWidget {
 
     if (contenant != null) {
       final nouveauContenant = contenant.copyWith(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        id: 'C${(contenants.length + 1).toString().padLeft(3, '0')}_scoop',
       );
       final nouveauxContenants = [...contenants, nouveauContenant];
       onContenantsChanged(nouveauxContenants);

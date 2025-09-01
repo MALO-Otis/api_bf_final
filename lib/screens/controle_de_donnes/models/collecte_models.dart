@@ -1,7 +1,8 @@
 // Models pour le module de contrôle de données
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Types de sections disponibles
-enum Section { recoltes, scoop, individuel }
+enum Section { recoltes, scoop, individuel, miellerie }
 
 /// Rôles utilisateur
 enum Role { admin, controller }
@@ -46,6 +47,65 @@ abstract class BaseCollecte {
   }
 }
 
+/// Information de contrôle qualité pour un contenant
+class ContainerControlInfo {
+  final bool isControlled;
+  final String? conformityStatus; // 'conforme', 'nonConforme'
+  final DateTime? controlDate;
+  final String? controllerName;
+  final String? controlId; // ID du document dans controles_qualite
+
+  const ContainerControlInfo({
+    this.isControlled = false,
+    this.conformityStatus,
+    this.controlDate,
+    this.controllerName,
+    this.controlId,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'isControlled': isControlled,
+      'conformityStatus': conformityStatus,
+      'controlDate': controlDate?.toIso8601String(),
+      'controllerName': controllerName,
+      'controlId': controlId,
+    };
+  }
+
+  factory ContainerControlInfo.fromMap(Map<String, dynamic> map) {
+    return ContainerControlInfo(
+      isControlled: map['isControlled'] ?? false,
+      conformityStatus: map['conformityStatus'],
+      controlDate: map['controlDate'] != null
+          ? (map['controlDate'] is Timestamp
+              ? (map['controlDate'] as Timestamp).toDate()
+              : (map['controlDate'] is String
+                  ? DateTime.parse(map['controlDate'])
+                  : map['controlDate'] as DateTime?))
+          : null,
+      controllerName: map['controllerName'],
+      controlId: map['controlId'],
+    );
+  }
+
+  ContainerControlInfo copyWith({
+    bool? isControlled,
+    String? conformityStatus,
+    DateTime? controlDate,
+    String? controllerName,
+    String? controlId,
+  }) {
+    return ContainerControlInfo(
+      isControlled: isControlled ?? this.isControlled,
+      conformityStatus: conformityStatus ?? this.conformityStatus,
+      controlDate: controlDate ?? this.controlDate,
+      controllerName: controllerName ?? this.controllerName,
+      controlId: controlId ?? this.controlId,
+    );
+  }
+}
+
 /// Modèle pour les contenants de récolte
 class RecolteContenant {
   final String id;
@@ -54,6 +114,7 @@ class RecolteContenant {
   final double weight;
   final double unitPrice;
   final double total;
+  final ContainerControlInfo controlInfo;
 
   RecolteContenant({
     required this.id,
@@ -62,6 +123,7 @@ class RecolteContenant {
     required this.weight,
     required this.unitPrice,
     required this.total,
+    this.controlInfo = const ContainerControlInfo(),
   });
 
   Map<String, dynamic> toMap() {
@@ -72,6 +134,7 @@ class RecolteContenant {
       'weight': weight,
       'unitPrice': unitPrice,
       'total': total,
+      'controlInfo': controlInfo.toMap(),
     };
   }
 
@@ -83,6 +146,9 @@ class RecolteContenant {
       weight: (map['weight'] ?? 0).toDouble(),
       unitPrice: (map['unitPrice'] ?? 0).toDouble(),
       total: (map['total'] ?? 0).toDouble(),
+      controlInfo: map['controlInfo'] != null
+          ? ContainerControlInfo.fromMap(map['controlInfo'])
+          : const ContainerControlInfo(),
     );
   }
 }
@@ -153,41 +219,51 @@ class Recolte extends BaseCollecte {
 
 /// Modèle pour les contenants SCOOP
 class ScoopContenant {
+  final String id;
   final String typeContenant;
   final String typeMiel;
   final double quantite;
   final double prixUnitaire;
   final double montantTotal;
   final String? predominanceFlorale;
+  final ContainerControlInfo controlInfo;
 
   ScoopContenant({
+    required this.id,
     required this.typeContenant,
     required this.typeMiel,
     required this.quantite,
     required this.prixUnitaire,
     required this.montantTotal,
     this.predominanceFlorale,
+    this.controlInfo = const ContainerControlInfo(),
   });
 
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'typeContenant': typeContenant,
       'typeMiel': typeMiel,
       'quantite': quantite,
       'prixUnitaire': prixUnitaire,
       'montantTotal': montantTotal,
       'predominanceFlorale': predominanceFlorale,
+      'controlInfo': controlInfo.toMap(),
     };
   }
 
   factory ScoopContenant.fromMap(Map<String, dynamic> map) {
     return ScoopContenant(
+      id: map['id'] ?? '',
       typeContenant: map['typeContenant'] ?? '',
       typeMiel: map['typeMiel'] ?? '',
       quantite: (map['quantite'] ?? 0).toDouble(),
       prixUnitaire: (map['prixUnitaire'] ?? 0).toDouble(),
       montantTotal: (map['montantTotal'] ?? 0).toDouble(),
       predominanceFlorale: map['predominanceFlorale'],
+      controlInfo: map['controlInfo'] != null
+          ? ContainerControlInfo.fromMap(map['controlInfo'])
+          : const ContainerControlInfo(),
     );
   }
 }
@@ -198,6 +274,10 @@ class Scoop extends BaseCollecte {
   final String? periodeCollecte;
   final String? qualite;
   final String? localisation;
+  final String? region;
+  final String? province;
+  final String? commune;
+  final String? village;
   final List<ScoopContenant> contenants;
 
   Scoop({
@@ -213,6 +293,10 @@ class Scoop extends BaseCollecte {
     this.periodeCollecte,
     this.qualite,
     this.localisation,
+    this.region,
+    this.province,
+    this.commune,
+    this.village,
     required this.contenants,
   }) : super(containersCount: contenants.length);
 
@@ -225,6 +309,10 @@ class Scoop extends BaseCollecte {
       'periodeCollecte': periodeCollecte,
       'qualite': qualite,
       'localisation': localisation,
+      'region': region,
+      'province': province,
+      'commune': commune,
+      'village': village,
       'contenants': contenants.map((c) => c.toMap()).toList(),
     });
     return map;
@@ -244,6 +332,10 @@ class Scoop extends BaseCollecte {
       periodeCollecte: map['periodeCollecte'],
       qualite: map['qualite'],
       localisation: map['localisation'],
+      region: map['region'],
+      province: map['province'],
+      commune: map['commune'],
+      village: map['village'],
       contenants: (map['contenants'] as List<dynamic>? ?? [])
           .map((c) => ScoopContenant.fromMap(c as Map<String, dynamic>))
           .toList(),
@@ -253,37 +345,47 @@ class Scoop extends BaseCollecte {
 
 /// Modèle pour les contenants individuels
 class IndividuelContenant {
+  final String id;
   final String typeContenant;
   final String typeMiel;
   final double quantite;
   final double prixUnitaire;
   final double montantTotal;
+  final ContainerControlInfo controlInfo;
 
   IndividuelContenant({
+    required this.id,
     required this.typeContenant,
     required this.typeMiel,
     required this.quantite,
     required this.prixUnitaire,
     required this.montantTotal,
+    this.controlInfo = const ContainerControlInfo(),
   });
 
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'typeContenant': typeContenant,
       'typeMiel': typeMiel,
       'quantite': quantite,
       'prixUnitaire': prixUnitaire,
       'montantTotal': montantTotal,
+      'controlInfo': controlInfo.toMap(),
     };
   }
 
   factory IndividuelContenant.fromMap(Map<String, dynamic> map) {
     return IndividuelContenant(
+      id: map['id'] ?? '',
       typeContenant: map['typeContenant'] ?? '',
       typeMiel: map['typeMiel'] ?? '',
       quantite: (map['quantite'] ?? 0).toDouble(),
       prixUnitaire: (map['prixUnitaire'] ?? 0).toDouble(),
       montantTotal: (map['montantTotal'] ?? 0).toDouble(),
+      controlInfo: map['controlInfo'] != null
+          ? ContainerControlInfo.fromMap(map['controlInfo'])
+          : const ContainerControlInfo(),
     );
   }
 }
@@ -293,6 +395,11 @@ class Individuel extends BaseCollecte {
   final String nomProducteur;
   final List<String>? originesFlorales;
   final String? observations;
+  final String? localisation;
+  final String? region;
+  final String? province;
+  final String? commune;
+  final String? village;
   final List<IndividuelContenant> contenants;
 
   Individuel({
@@ -307,6 +414,11 @@ class Individuel extends BaseCollecte {
     required this.nomProducteur,
     this.originesFlorales,
     this.observations,
+    this.localisation,
+    this.region,
+    this.province,
+    this.commune,
+    this.village,
     required this.contenants,
   }) : super(containersCount: contenants.length);
 
@@ -318,6 +430,11 @@ class Individuel extends BaseCollecte {
       'nomProducteur': nomProducteur,
       'originesFlorales': originesFlorales,
       'observations': observations,
+      'localisation': localisation,
+      'region': region,
+      'province': province,
+      'commune': commune,
+      'village': village,
       'contenants': contenants.map((c) => c.toMap()).toList(),
     });
     return map;
@@ -336,6 +453,11 @@ class Individuel extends BaseCollecte {
       nomProducteur: map['nomProducteur'] ?? '',
       originesFlorales: List<String>.from(map['originesFlorales'] ?? []),
       observations: map['observations'],
+      localisation: map['localisation'],
+      region: map['region'],
+      province: map['province'],
+      commune: map['commune'],
+      village: map['village'],
       contenants: (map['contenants'] as List<dynamic>? ?? [])
           .map((c) => IndividuelContenant.fromMap(c as Map<String, dynamic>))
           .toList(),
@@ -448,12 +570,18 @@ class CollecteStats {
   final double poids;
   final double montant;
   final int contenants;
+  final int? contenantsControles;
+  final int? contenantsNonControles;
+  final double? tauxControle;
 
   CollecteStats({
     required this.total,
     required this.poids,
     required this.montant,
     required this.contenants,
+    this.contenantsControles,
+    this.contenantsNonControles,
+    this.tauxControle,
   });
 
   factory CollecteStats.empty() {
@@ -462,6 +590,31 @@ class CollecteStats {
       poids: 0.0,
       montant: 0.0,
       contenants: 0,
+      contenantsControles: 0,
+      contenantsNonControles: 0,
+      tauxControle: 0.0,
+    );
+  }
+
+  /// Copie avec de nouvelles valeurs
+  CollecteStats copyWith({
+    int? total,
+    double? poids,
+    double? montant,
+    int? contenants,
+    int? contenantsControles,
+    int? contenantsNonControles,
+    double? tauxControle,
+  }) {
+    return CollecteStats(
+      total: total ?? this.total,
+      poids: poids ?? this.poids,
+      montant: montant ?? this.montant,
+      contenants: contenants ?? this.contenants,
+      contenantsControles: contenantsControles ?? this.contenantsControles,
+      contenantsNonControles:
+          contenantsNonControles ?? this.contenantsNonControles,
+      tauxControle: tauxControle ?? this.tauxControle,
     );
   }
 }
@@ -498,5 +651,126 @@ extension SortKeyExtension on SortKey {
       case SortKey.libelleDesc:
         return 'Libellés Z→A';
     }
+  }
+}
+
+/// Modèle pour les contenants de miellerie dans le module de contrôle
+class MiellerieContenant {
+  final String id;
+  final String typeContenant;
+  final String typeMiel;
+  final double quantite;
+  final double prixUnitaire;
+  final double montantTotal;
+  final String? observations;
+  final ContainerControlInfo controlInfo;
+
+  MiellerieContenant({
+    required this.id,
+    required this.typeContenant,
+    required this.typeMiel,
+    required this.quantite,
+    required this.prixUnitaire,
+    required this.montantTotal,
+    this.observations,
+    this.controlInfo = const ContainerControlInfo(),
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'typeContenant': typeContenant,
+      'typeMiel': typeMiel,
+      'quantite': quantite,
+      'prixUnitaire': prixUnitaire,
+      'montantTotal': montantTotal,
+      'observations': observations,
+      'controlInfo': controlInfo.toMap(),
+    };
+  }
+
+  factory MiellerieContenant.fromMap(Map<String, dynamic> map) {
+    return MiellerieContenant(
+      id: map['id'] ?? '',
+      typeContenant: map['typeContenant'] ?? '',
+      typeMiel: map['typeMiel'] ?? '',
+      quantite: (map['quantite'] ?? 0).toDouble(),
+      prixUnitaire: (map['prixUnitaire'] ?? 0).toDouble(),
+      montantTotal: (map['montantTotal'] ?? 0).toDouble(),
+      observations: map['observations'],
+      controlInfo: map['controlInfo'] != null
+          ? ContainerControlInfo.fromMap(map['controlInfo'])
+          : const ContainerControlInfo(),
+    );
+  }
+}
+
+/// Collecte Miellerie pour le module de contrôle
+class Miellerie extends BaseCollecte {
+  final String collecteurNom;
+  final String miellerieNom;
+  final String localite;
+  final String cooperativeNom;
+  final String repondant;
+  final List<MiellerieContenant> contenants;
+  final String? observations;
+
+  Miellerie({
+    required super.id,
+    required super.path,
+    required super.site,
+    required super.date,
+    super.technicien,
+    super.statut,
+    super.totalWeight,
+    super.totalAmount,
+    super.containersCount,
+    required this.collecteurNom,
+    required this.miellerieNom,
+    required this.localite,
+    required this.cooperativeNom,
+    required this.repondant,
+    required this.contenants,
+    this.observations,
+  });
+
+  factory Miellerie.fromFirestore(Map<String, dynamic> data, String docId, String docPath) {
+    final contenants = (data['contenants'] as List<dynamic>? ?? [])
+        .map((c) => MiellerieContenant.fromMap(c as Map<String, dynamic>))
+        .toList();
+
+    return Miellerie(
+      id: docId,
+      path: docPath,
+      site: data['site'] ?? '',
+      date: (data['date_collecte'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      technicien: data['collecteur_nom'],
+      statut: data['statut'] ?? 'collecte_terminee',
+      totalWeight: (data['poids_total'] ?? 0).toDouble(),
+      totalAmount: (data['montant_total'] ?? 0).toDouble(),
+      containersCount: contenants.length,
+      collecteurNom: data['collecteur_nom'] ?? '',
+      miellerieNom: data['miellerie_nom'] ?? '',
+      localite: data['localite'] ?? '',
+      cooperativeNom: data['cooperative_nom'] ?? '',
+      repondant: data['repondant'] ?? '',
+      contenants: contenants,
+      observations: data['observations'],
+    );
+  }
+
+  @override
+  Map<String, dynamic> toMap() {
+    final map = super.toMap();
+    map.addAll({
+      'collecteurNom': collecteurNom,
+      'miellerieNom': miellerieNom,
+      'localite': localite,
+      'cooperativeNom': cooperativeNom,
+      'repondant': repondant,
+      'observations': observations,
+      'contenants': contenants.map((c) => c.toMap()).toList(),
+    });
+    return map;
   }
 }

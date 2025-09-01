@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../../../data/models/collecte_models.dart';
 
-/// Widget custom pour afficher et modifier un contenant dans la collecte
-class ContenantCard extends StatefulWidget {
+/// Widget simple pour afficher un contenant (sans édition in-line)
+class ContenantCard extends StatelessWidget {
   final int index;
   final ContenantModel contenant;
   final VoidCallback? onSupprimer;
@@ -18,80 +17,10 @@ class ContenantCard extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<ContenantCard> createState() => _ContenantCardState();
-}
-
-class _ContenantCardState extends State<ContenantCard> {
-  late ContenantModel _contenant;
-
-  final _quantiteController = TextEditingController();
-  final _prixController = TextEditingController();
-  final _noteController =
-      TextEditingController(); // Nouveau contrôleur pour la note
-
-  // Listes des options disponibles
-  final List<String> _typesRuche = ['Traditionnelle', 'Moderne'];
-  final List<String> _typesMiel = ['Liquide', 'Brute', 'Cire'];
-  final List<String> _typesContenant = ['Bidon', 'Pot'];
-  final List<String> _predominancesFlorales = [
-    'Acacia',
-    'Eucalyptus',
-    'Karité',
-    'Néré',
-    'Baobab',
-    'Manguier',
-    'Citronnier',
-    'Fleurs sauvages',
-    'Mixte'
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _contenant = widget.contenant;
-    _quantiteController.text =
-        _contenant.quantite > 0 ? _contenant.quantite.toString() : '';
-    _prixController.text =
-        _contenant.prixUnitaire > 0 ? _contenant.prixUnitaire.toString() : '';
-    _noteController.text =
-        _contenant.note; // Initialiser avec la note existante
-  }
-
-  @override
-  void dispose() {
-    _quantiteController.dispose();
-    _prixController.dispose();
-    _noteController.dispose(); // Nettoyer le nouveau contrôleur
-    super.dispose();
-  }
-
-  void _updateContenant({
-    String? typeRuche,
-    String? typeMiel,
-    String? typeContenant,
-    double? quantite,
-    double? prixUnitaire,
-    String? predominanceFlorale,
-    String? note, // Nouveau paramètre
-  }) {
-    setState(() {
-      _contenant = _contenant.copyWith(
-        typeRuche: typeRuche,
-        typeMiel: typeMiel,
-        typeContenant: typeContenant,
-        quantite: quantite,
-        prixUnitaire: prixUnitaire,
-        predominanceFlorale: predominanceFlorale,
-        note: note, // Nouveau champ
-      );
-    });
-    widget.onContenantModified(_contenant);
-  }
-
-  @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 600;
+    final montantTotal = contenant.quantite * contenant.prixUnitaire;
 
     return Card(
       margin: EdgeInsets.only(bottom: isSmallScreen ? 12 : 16),
@@ -99,7 +28,7 @@ class _ContenantCardState extends State<ContenantCard> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(isSmallScreen ? 10 : 12),
       ),
-      child: Padding(
+      child: Container(
         padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -108,432 +37,137 @@ class _ContenantCardState extends State<ContenantCard> {
             Row(
               children: [
                 Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isSmallScreen ? 8 : 10,
-                    vertical: isSmallScreen ? 4 : 6,
-                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.blue[100],
-                    borderRadius: BorderRadius.circular(15),
+                    color: Colors.orange.shade100,
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    'Contenant ${widget.index + 1}',
+                    'Contenant ${index + 1}',
                     style: TextStyle(
-                      fontSize: isSmallScreen ? 12 : 14,
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue[800],
+                      color: Colors.orange.shade700,
+                      fontSize: isSmallScreen ? 12 : 14,
                     ),
                   ),
                 ),
                 const Spacer(),
-                if (widget.onSupprimer != null)
+                if (onSupprimer != null)
                   IconButton(
-                    onPressed: widget.onSupprimer,
+                    onPressed: onSupprimer,
                     icon: Icon(
                       Icons.delete_outline,
-                      color: Colors.red[600],
+                      color: Colors.red.shade400,
                       size: isSmallScreen ? 20 : 24,
                     ),
                     tooltip: 'Supprimer ce contenant',
                   ),
               ],
             ),
-            SizedBox(height: isSmallScreen ? 12 : 16),
 
-            // Ligne 1: Type de ruche et Type de miel
-            Row(
+            const SizedBox(height: 12),
+
+            // Informations du contenant avec badges
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                _buildInfoBadge(
+                  contenant.typeMiel,
+                  Colors.blue,
+                  Icons.water_drop,
+                ),
+                _buildInfoBadge(
+                  contenant.typeContenant,
+                  Colors.amber,
+                  Icons.inventory,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // Détails numériques
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Type de ruche *',
-                        style: TextStyle(
-                          fontSize: isSmallScreen ? 12 : 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey[700],
-                        ),
+                      _buildDetailItem(
+                        'Poids',
+                        '${contenant.quantite} kg',
+                        Icons.scale,
                       ),
-                      SizedBox(height: isSmallScreen ? 4 : 6),
-                      Container(
-                        height: isSmallScreen ? 40 : 48,
-                        padding: EdgeInsets.symmetric(
-                            horizontal: isSmallScreen ? 8 : 12),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey[300]!),
-                          borderRadius: BorderRadius.circular(8),
-                          color: Colors.white,
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _contenant.typeRuche.isEmpty
-                                ? null
-                                : _contenant.typeRuche,
-                            hint: Text(
-                              'Sélectionner',
-                              style: TextStyle(
-                                fontSize: isSmallScreen ? 12 : 14,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            isExpanded: true,
-                            items: _typesRuche.map((type) {
-                              return DropdownMenuItem<String>(
-                                value: type,
-                                child: Text(
-                                  type,
-                                  style: TextStyle(
-                                      fontSize: isSmallScreen ? 12 : 14),
-                                ),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              if (value != null) {
-                                _updateContenant(typeRuche: value);
-                              }
-                            },
-                          ),
-                        ),
+                      _buildDetailItem(
+                        'Prix unitaire',
+                        '${contenant.prixUnitaire.toStringAsFixed(0)} CFA/kg',
+                        Icons.monetization_on,
                       ),
                     ],
                   ),
-                ),
-                SizedBox(width: isSmallScreen ? 12 : 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Type de miel *',
-                        style: TextStyle(
-                          fontSize: isSmallScreen ? 12 : 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey[700],
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.calculate,
+                          color: Colors.green.shade600,
+                          size: 16,
                         ),
-                      ),
-                      SizedBox(height: isSmallScreen ? 4 : 6),
-                      Container(
-                        height: isSmallScreen ? 40 : 48,
-                        padding: EdgeInsets.symmetric(
-                            horizontal: isSmallScreen ? 8 : 12),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey[300]!),
-                          borderRadius: BorderRadius.circular(8),
-                          color: Colors.white,
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _contenant.typeMiel.isEmpty
-                                ? null
-                                : _contenant.typeMiel,
-                            hint: Text(
-                              'Sélectionner',
-                              style: TextStyle(
-                                fontSize: isSmallScreen ? 12 : 14,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            isExpanded: true,
-                            items: _typesMiel.map((type) {
-                              return DropdownMenuItem<String>(
-                                value: type,
-                                child: Text(
-                                  type,
-                                  style: TextStyle(
-                                      fontSize: isSmallScreen ? 12 : 14),
-                                ),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              if (value != null) {
-                                _updateContenant(typeMiel: value);
-                              }
-                            },
+                        const SizedBox(width: 8),
+                        Text(
+                          'Montant total: ${montantTotal.toStringAsFixed(0)} CFA',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green.shade700,
+                            fontSize: isSmallScreen ? 13 : 14,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: isSmallScreen ? 12 : 16),
-
-            // Ligne 2: Type de contenant
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Type de contenant *',
-                  style: TextStyle(
-                    fontSize: isSmallScreen ? 12 : 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[700],
-                  ),
-                ),
-                SizedBox(height: isSmallScreen ? 4 : 6),
-                Container(
-                  height: isSmallScreen ? 40 : 48,
-                  padding:
-                      EdgeInsets.symmetric(horizontal: isSmallScreen ? 8 : 12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey[300]!),
-                    borderRadius: BorderRadius.circular(8),
-                    color: Colors.white,
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _contenant.typeContenant.isEmpty
-                          ? null
-                          : _contenant.typeContenant,
-                      hint: Text(
-                        'Sélectionner le type de contenant',
-                        style: TextStyle(
-                          fontSize: isSmallScreen ? 12 : 14,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      isExpanded: true,
-                      items: _typesContenant.map((type) {
-                        return DropdownMenuItem<String>(
-                          value: type,
-                          child: Text(
-                            type,
-                            style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          _updateContenant(typeContenant: value);
-                        }
-                      },
+                      ],
                     ),
                   ),
-                ),
-              ],
-            ),
-            SizedBox(height: isSmallScreen ? 12 : 16),
-
-            // Ligne 3: Quantité et Prix unitaire
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Quantité (kg) *',
-                        style: TextStyle(
-                          fontSize: isSmallScreen ? 12 : 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey[700],
-                        ),
-                      ),
-                      SizedBox(height: isSmallScreen ? 4 : 6),
-                      TextFormField(
-                        controller: _quantiteController,
-                        decoration: InputDecoration(
-                          hintText: '0.0',
-                          hintStyle:
-                              TextStyle(fontSize: isSmallScreen ? 12 : 14),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: isSmallScreen ? 8 : 12,
-                            vertical: isSmallScreen ? 8 : 12,
-                          ),
-                          suffixText: 'kg',
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(
-                              RegExp(r'^\d*\.?\d*')),
-                        ],
-                        style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
-                        onChanged: (value) {
-                          final quantite = double.tryParse(value) ?? 0.0;
-                          _updateContenant(quantite: quantite);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(width: isSmallScreen ? 12 : 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Prix unitaire (FCFA/kg) *',
-                        style: TextStyle(
-                          fontSize: isSmallScreen ? 12 : 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey[700],
-                        ),
-                      ),
-                      SizedBox(height: isSmallScreen ? 4 : 6),
-                      TextFormField(
-                        controller: _prixController,
-                        decoration: InputDecoration(
-                          hintText: '0',
-                          hintStyle:
-                              TextStyle(fontSize: isSmallScreen ? 12 : 14),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: isSmallScreen ? 8 : 12,
-                            vertical: isSmallScreen ? 8 : 12,
-                          ),
-                          suffixText: 'FCFA',
-                        ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
-                        onChanged: (value) {
-                          final prix = double.tryParse(value) ?? 0.0;
-                          _updateContenant(prixUnitaire: prix);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: isSmallScreen ? 12 : 16),
-
-            // Ligne 4: Prédominance florale
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Prédominance florale',
-                  style: TextStyle(
-                    fontSize: isSmallScreen ? 12 : 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[700],
-                  ),
-                ),
-                SizedBox(height: isSmallScreen ? 4 : 6),
-                Container(
-                  height: isSmallScreen ? 40 : 48,
-                  padding:
-                      EdgeInsets.symmetric(horizontal: isSmallScreen ? 8 : 12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey[300]!),
-                    borderRadius: BorderRadius.circular(8),
-                    color: Colors.white,
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _contenant.predominanceFlorale.isEmpty
-                          ? null
-                          : _contenant.predominanceFlorale,
-                      hint: Text(
-                        'Sélectionner (optionnel)',
-                        style: TextStyle(
-                          fontSize: isSmallScreen ? 12 : 14,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      isExpanded: true,
-                      items: _predominancesFlorales.map((type) {
-                        return DropdownMenuItem<String>(
-                          value: type,
-                          child: Text(
-                            type,
-                            style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        _updateContenant(predominanceFlorale: value ?? '');
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: isSmallScreen ? 12 : 16),
-
-            // Ligne 5: Note sur le contenant (nouveau champ)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Note sur le contenant',
-                  style: TextStyle(
-                    fontSize: isSmallScreen ? 12 : 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[700],
-                  ),
-                ),
-                SizedBox(height: isSmallScreen ? 4 : 6),
-                TextFormField(
-                  controller: _noteController,
-                  decoration: InputDecoration(
-                    hintText: 'Votre avis sur ce contenant (optionnel)',
-                    hintStyle: TextStyle(fontSize: isSmallScreen ? 12 : 14),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: isSmallScreen ? 8 : 12,
-                      vertical: isSmallScreen ? 8 : 12,
-                    ),
-                    prefixIcon: Icon(
-                      Icons.note_alt_outlined,
-                      size: isSmallScreen ? 18 : 22,
-                    ),
-                  ),
-                  maxLines: 2,
-                  maxLength: 200,
-                  style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
-                  onChanged: (value) {
-                    _updateContenant(note: value);
-                  },
-                ),
-              ],
+                ],
+              ),
             ),
 
-            // Affichage du montant total calculé
-            if (_contenant.quantite > 0 && _contenant.prixUnitaire > 0) ...[
-              SizedBox(height: isSmallScreen ? 12 : 16),
+            // Notes si présentes
+            if (contenant.note.isNotEmpty) ...[
+              const SizedBox(height: 12),
               Container(
-                padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.green[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green[200]!),
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(6),
                 ),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(
-                      Icons.calculate,
-                      color: Colors.green[600],
-                      size: isSmallScreen ? 16 : 20,
+                      Icons.note,
+                      color: Colors.blue.shade600,
+                      size: 16,
                     ),
-                    SizedBox(width: isSmallScreen ? 6 : 8),
-                    Text(
-                      'Montant total: ',
-                      style: TextStyle(
-                        fontSize: isSmallScreen ? 12 : 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.green[800],
-                      ),
-                    ),
-                    Text(
-                      '${_contenant.montantTotal.toStringAsFixed(0)} FCFA',
-                      style: TextStyle(
-                        fontSize: isSmallScreen ? 12 : 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green[900],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        contenant.note,
+                        style: TextStyle(
+                          color: Colors.blue.shade700,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ],
@@ -543,6 +177,69 @@ class _ContenantCardState extends State<ContenantCard> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildInfoBadge(String text, MaterialColor color, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.shade100,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: color.shade700,
+            size: 14,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              color: color.shade700,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailItem(String label, String value, IconData icon) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              icon,
+              color: Colors.grey.shade600,
+              size: 14,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+          ),
+        ),
+      ],
     );
   }
 }
