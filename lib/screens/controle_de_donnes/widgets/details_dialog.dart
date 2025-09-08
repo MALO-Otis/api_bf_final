@@ -45,6 +45,17 @@ class _DetailsDialogState extends State<DetailsDialog> {
     super.initState();
     _refreshKey = ValueNotifier<int>(0);
     _setupGlobalRefreshListener();
+
+    // 🆕 Notifier l'ouverture de l'interface de détails
+    if (widget.item != null) {
+      GlobalRefreshService().notifyInterfaceSync(
+        action: 'collecte_details_opened',
+        collecteId: widget.item!.id,
+        additionalData: {
+          'section': widget.section.name,
+        },
+      );
+    }
   }
 
   @override
@@ -78,13 +89,6 @@ class _DetailsDialogState extends State<DetailsDialog> {
         _refreshAllData();
       }
     });
-  }
-
-  // Méthode pour forcer la mise à jour des statistiques seulement
-  void _refreshControlStats() {
-    if (mounted) {
-      _refreshKey.value++;
-    }
   }
 
   // Méthode pour recharger complètement les données de la collecte
@@ -133,7 +137,7 @@ class _DetailsDialogState extends State<DetailsDialog> {
                 color: Theme.of(context)
                     .colorScheme
                     .onSurfaceVariant
-                    .withOpacity(0.4),
+                    .withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -178,7 +182,7 @@ class _DetailsDialogState extends State<DetailsDialog> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: Row(
@@ -251,7 +255,7 @@ class _DetailsDialogState extends State<DetailsDialog> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
       ),
       child: Row(
@@ -317,7 +321,8 @@ class _DetailsDialogState extends State<DetailsDialog> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
+        border:
+            Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.2)),
         borderRadius: BorderRadius.circular(8),
         color: theme.colorScheme.surface,
       ),
@@ -724,7 +729,8 @@ class _DetailsDialogState extends State<DetailsDialog> {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+          color:
+              theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -759,156 +765,10 @@ class _DetailsDialogState extends State<DetailsDialog> {
         ...rows.asMap().entries.map((entry) {
           final index = entry.key;
           final row = entry.value;
+          final containerCode = _getContainerCodeByIndex(index);
 
-          // ✅ CORRECTION: Utiliser l'ID réel du contenant
-          String containerCode =
-              'C${(index + 1).toString().padLeft(3, '0')}'; // fallback
-
-          // Récupérer l'ID réel selon le type de collecte
-          if (widget.item is Recolte) {
-            final recolte = widget.item as Recolte;
-            if (index < recolte.contenants.length) {
-              containerCode = recolte.contenants[index].id;
-            }
-          } else if (widget.item is Scoop) {
-            final scoop = widget.item as Scoop;
-            if (index < scoop.contenants.length) {
-              containerCode = scoop.contenants[index].id;
-            }
-          } else if (widget.item is Individuel) {
-            final individuel = widget.item as Individuel;
-            if (index < individuel.contenants.length) {
-              containerCode = individuel.contenants[index].id;
-            }
-          }
-
-          return Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header du contenant avec bouton contrôler
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primaryContainer,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          'Contenant $containerCode',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: theme.colorScheme.onPrimaryContainer,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      ValueListenableBuilder<int>(
-                        valueListenable: _refreshKey,
-                        builder: (context, refreshValue, child) {
-                          return FutureBuilder<bool>(
-                            key: ValueKey(
-                                'container_control_${containerCode}_$refreshValue'),
-                            future: _isContainerControlled(containerCode),
-                            builder: (context, snapshot) {
-                              final isControlled = snapshot.data ?? false;
-                              final isLoading = snapshot.connectionState ==
-                                  ConnectionState.waiting;
-
-                              if (isControlled) {
-                                // Si contrôlé, afficher bouton "Modifier le contrôle" (ADMIN SEULEMENT)
-                                return _buildModifyControlButton(
-                                    context, containerCode);
-                              } else {
-                                // Si non contrôlé, afficher bouton "Contrôler"
-                                return FilledButton.icon(
-                                  onPressed: isLoading
-                                      ? null
-                                      : () async {
-                                          final qualityService =
-                                              QualityControlService();
-                                          final existingControl =
-                                              await qualityService
-                                                  .getQualityControl(
-                                                      containerCode,
-                                                      widget.item!.date);
-                                          _showQualityControlForm(
-                                              context, containerCode,
-                                              existingData: existingControl);
-                                        },
-                                  icon: isLoading
-                                      ? const SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(
-                                              strokeWidth: 2),
-                                        )
-                                      : const Icon(Icons.fact_check, size: 16),
-                                  label: Text(isLoading ? '...' : 'Contrôler'),
-                                  style: FilledButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 6),
-                                    minimumSize: const Size(0, 32),
-                                    textStyle: const TextStyle(fontSize: 12),
-                                  ),
-                                );
-                              }
-                            },
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Détails du contenant
-                  ..._getTableHeaders().asMap().entries.map((headerEntry) {
-                    final headerIndex = headerEntry.key;
-                    final header = headerEntry.value;
-                    final value =
-                        headerIndex < row.length ? row[headerIndex] : '';
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(
-                            width: 90,
-                            child: Text(
-                              '$header:',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              value,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-
-                  // Status indicateur du contrôle
-                  const SizedBox(height: 8),
-                  _buildControlStatus(context, containerCode),
-                ],
-              ),
-            ),
-          );
+          return _buildMobileContainerCard(
+              context, theme, containerCode, row, index);
         }).toList(),
       ],
     );
@@ -1055,7 +915,7 @@ class _DetailsDialogState extends State<DetailsDialog> {
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: theme.colorScheme.outline.withOpacity(0.2),
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
           ),
         ),
       ),
@@ -1095,7 +955,7 @@ class _DetailsDialogState extends State<DetailsDialog> {
                 icon: const Icon(Icons.close),
                 iconSize: 20,
                 style: IconButton.styleFrom(
-                  backgroundColor: theme.colorScheme.surfaceVariant,
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
                   foregroundColor: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
@@ -1158,7 +1018,7 @@ class _DetailsDialogState extends State<DetailsDialog> {
       decoration: BoxDecoration(
         border: Border(
           top: BorderSide(
-            color: theme.colorScheme.outline.withOpacity(0.2),
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
           ),
         ),
       ),
@@ -1204,7 +1064,7 @@ class _DetailsDialogState extends State<DetailsDialog> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -1329,8 +1189,8 @@ class _DetailsDialogState extends State<DetailsDialog> {
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            border:
-                Border.all(color: theme.colorScheme.outline.withOpacity(0.3)),
+            border: Border.all(
+                color: theme.colorScheme.outline.withValues(alpha: 0.3)),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Column(
@@ -1389,18 +1249,6 @@ class _DetailsDialogState extends State<DetailsDialog> {
     );
   }
 
-  // Méthode helper pour obtenir le nombre de contenants
-  int _getContainerCount(BaseCollecte item) {
-    if (item is Recolte) {
-      return item.contenants.length;
-    } else if (item is Scoop) {
-      return item.contenants.length;
-    } else if (item is Individuel) {
-      return item.contenants.length;
-    }
-    return 0;
-  }
-
   // Fonction pour afficher le statut de contrôle d'un contenant (OPTIMISÉ)
   Widget _buildControlStatus(BuildContext context, String containerCode) {
     final theme = Theme.of(context);
@@ -1442,9 +1290,9 @@ class _DetailsDialogState extends State<DetailsDialog> {
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
+                  color: statusColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: statusColor.withOpacity(0.3)),
+                  border: Border.all(color: statusColor.withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1481,9 +1329,9 @@ class _DetailsDialogState extends State<DetailsDialog> {
                     IconButton(
                       onPressed: () async {
                         // Si besoin de modifier, récupérer les données complètes depuis Firestore
-                        final fullControl =
-                            await qualityService.getQualityControl(
-                                containerCode, widget.item!.date);
+                        final fullControl = await qualityService
+                            .getQualityControl(containerCode, widget.item!.date,
+                                collecteId: widget.item!.id);
                         _showQualityControlForm(context, containerCode,
                             existingData: fullControl);
                       },
@@ -1501,7 +1349,7 @@ class _DetailsDialogState extends State<DetailsDialog> {
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceVariant,
+                  color: theme.colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -1526,61 +1374,6 @@ class _DetailsDialogState extends State<DetailsDialog> {
           },
         );
       },
-    );
-  }
-
-  /// Construit le bouton de modification selon les permissions utilisateur
-  Widget _buildModifyControlButton(BuildContext context, String containerCode) {
-    // 🔐 VÉRIFIER LES PERMISSIONS UTILISATEUR
-    final userSession = Get.find<UserSession>();
-    final userRole = userSession.role?.toLowerCase() ?? '';
-    final isAdmin = userRole.contains('admin');
-
-    if (!isAdmin) {
-      // 🚫 CONTRÔLEUR: Afficher un message informatif
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey.shade300),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.info_outline, size: 16, color: Colors.grey.shade600),
-            const SizedBox(width: 6),
-            Text(
-              'Contrôlé',
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // ✅ ADMIN: Peut modifier le contrôle
-    return FilledButton.icon(
-      onPressed: () async {
-        final qualityService = QualityControlService();
-        final existingControl = await qualityService.getQualityControl(
-            containerCode, widget.item!.date);
-        _showQualityControlForm(context, containerCode,
-            existingData: existingControl);
-      },
-      icon: const Icon(Icons.edit, size: 16),
-      label: const Text('Modifier'),
-      style: FilledButton.styleFrom(
-        backgroundColor: Colors.orange,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        minimumSize: const Size(0, 32),
-        textStyle: const TextStyle(fontSize: 12),
-      ),
     );
   }
 
@@ -1681,7 +1474,8 @@ class _DetailsDialogState extends State<DetailsDialog> {
       return Container(
         padding: const EdgeInsets.all(32),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+          color:
+              theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -1715,8 +1509,8 @@ class _DetailsDialogState extends State<DetailsDialog> {
         const SizedBox(height: 16),
         Container(
           decoration: BoxDecoration(
-            border:
-                Border.all(color: theme.colorScheme.outline.withOpacity(0.3)),
+            border: Border.all(
+                color: theme.colorScheme.outline.withValues(alpha: 0.3)),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Column(
@@ -1725,7 +1519,8 @@ class _DetailsDialogState extends State<DetailsDialog> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+                  color: theme.colorScheme.surfaceContainerHighest
+                      .withValues(alpha: 0.5),
                   borderRadius:
                       const BorderRadius.vertical(top: Radius.circular(8)),
                 ),
@@ -1751,84 +1546,10 @@ class _DetailsDialogState extends State<DetailsDialog> {
               ...rows.asMap().entries.map((entry) {
                 final index = entry.key;
                 final row = entry.value;
+                final containerCode = _getContainerCodeByIndex(index);
 
-                // ✅ CORRECTION: Utiliser l'ID réel du contenant
-                String containerCode =
-                    'C${(index + 1).toString().padLeft(3, '0')}'; // fallback
-
-                // Récupérer l'ID réel selon le type de collecte
-                if (widget.item is Recolte) {
-                  final recolte = widget.item as Recolte;
-                  if (index < recolte.contenants.length) {
-                    containerCode = recolte.contenants[index].id;
-                  }
-                } else if (widget.item is Scoop) {
-                  final scoop = widget.item as Scoop;
-                  if (index < scoop.contenants.length) {
-                    containerCode = scoop.contenants[index].id;
-                  }
-                } else if (widget.item is Individuel) {
-                  final individuel = widget.item as Individuel;
-                  if (index < individuel.contenants.length) {
-                    containerCode = individuel.contenants[index].id;
-                  }
-                }
-
-                return Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: theme.colorScheme.outline.withOpacity(0.2),
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 80,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primaryContainer,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            containerCode,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: theme.colorScheme.onPrimaryContainer,
-                            ),
-                          ),
-                        ),
-                      ),
-                      ...row.map((cell) => Expanded(child: Text(cell))),
-                      SizedBox(
-                        width: 100,
-                        child: FilledButton.icon(
-                          onPressed: () async {
-                            final qualityService = QualityControlService();
-                            final existingControl =
-                                await qualityService.getQualityControl(
-                                    containerCode, widget.item!.date);
-                            _showQualityControlForm(context, containerCode,
-                                existingData: existingControl);
-                          },
-                          icon: const Icon(Icons.fact_check, size: 14),
-                          label: const Text('Contrôler'),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            minimumSize: const Size(0, 28),
-                            textStyle: const TextStyle(fontSize: 11),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
+                return _buildDesktopContainerRow(
+                    context, theme, containerCode, row);
               }),
             ],
           ),
@@ -1867,15 +1588,15 @@ class _DetailsDialogState extends State<DetailsDialog> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            theme.colorScheme.primary.withOpacity(0.05),
-            theme.colorScheme.primary.withOpacity(0.02),
+            theme.colorScheme.primary.withValues(alpha: 0.05),
+            theme.colorScheme.primary.withValues(alpha: 0.02),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: theme.colorScheme.primary.withOpacity(0.2),
+          color: theme.colorScheme.primary.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -1888,7 +1609,7 @@ class _DetailsDialogState extends State<DetailsDialog> {
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Icon(
@@ -1915,7 +1636,7 @@ class _DetailsDialogState extends State<DetailsDialog> {
                     padding: const EdgeInsets.all(4),
                     child: Icon(
                       Icons.copy,
-                      color: theme.colorScheme.primary.withOpacity(0.7),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.7),
                       size: 16,
                     ),
                   ),
@@ -1954,7 +1675,7 @@ class _DetailsDialogState extends State<DetailsDialog> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withOpacity(0.08),
+                color: theme.colorScheme.primary.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Column(
@@ -2026,30 +1747,227 @@ class _DetailsDialogState extends State<DetailsDialog> {
     );
   }
 
-  /// Fonctions d'extraction des informations de localisation depuis le champ localisation (legacy)
-  String? _extractRegionFromLocalisation(String? localisation) {
-    if (localisation == null || localisation.isEmpty) return null;
-    // Format attendu: "Région > Province > Commune > Village" ou similaire
-    final parts = localisation.split('>').map((e) => e.trim()).toList();
-    return parts.isNotEmpty ? parts[0] : null;
+  /// Construit le bouton de contrôle selon l'état et les permissions
+  Widget _buildControlButton(BuildContext context, String containerCode,
+      bool isControlled, bool isLoading,
+      {bool isDesktop = false}) {
+    final userSession = Get.find<UserSession>();
+    final userRole = userSession.role?.toLowerCase() ?? '';
+    final isAdmin = userRole.contains('admin');
+
+    if (isControlled) {
+      if (!isAdmin) {
+        // Contrôleur: Afficher un message informatif
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade300),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.info_outline, size: 16, color: Colors.grey.shade600),
+              const SizedBox(width: 6),
+              Text(
+                'Contrôlé',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      // Admin: Peut modifier le contrôle
+      return FilledButton.icon(
+        onPressed: () => _handleControlAction(context, containerCode),
+        icon: const Icon(Icons.edit, size: 16),
+        label: const Text('Modifier'),
+        style: FilledButton.styleFrom(
+          backgroundColor: Colors.orange,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          minimumSize: Size(0, isDesktop ? 28 : 32),
+          textStyle: TextStyle(fontSize: isDesktop ? 11 : 12),
+        ),
+      );
+    } else {
+      // Non contrôlé: Afficher bouton "Contrôler"
+      return FilledButton.icon(
+        onPressed: isLoading
+            ? null
+            : () => _handleControlAction(context, containerCode),
+        icon: isLoading
+            ? SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(Icons.fact_check, size: isDesktop ? 14 : 16),
+        label: Text(isLoading ? '...' : 'Contrôler'),
+        style: FilledButton.styleFrom(
+          padding: EdgeInsets.symmetric(
+              horizontal: isDesktop ? 8 : 12, vertical: isDesktop ? 4 : 6),
+          minimumSize: Size(0, isDesktop ? 28 : 32),
+          textStyle: TextStyle(fontSize: isDesktop ? 11 : 12),
+        ),
+      );
+    }
   }
 
-  String? _extractProvinceFromLocalisation(String? localisation) {
-    if (localisation == null || localisation.isEmpty) return null;
-    final parts = localisation.split('>').map((e) => e.trim()).toList();
-    return parts.length > 1 ? parts[1] : null;
+  /// Gère l'action de contrôle (création ou modification)
+  void _handleControlAction(BuildContext context, String containerCode) async {
+    final qualityService = QualityControlService();
+    final existingControl = await qualityService.getQualityControl(
+        containerCode, widget.item!.date,
+        collecteId: widget.item!.id);
+    _showQualityControlForm(context, containerCode,
+        existingData: existingControl);
   }
 
-  String? _extractCommuneFromLocalisation(String? localisation) {
-    if (localisation == null || localisation.isEmpty) return null;
-    final parts = localisation.split('>').map((e) => e.trim()).toList();
-    return parts.length > 2 ? parts[2] : null;
+  /// Construit une carte de contenant pour mobile
+  Widget _buildMobileContainerCard(BuildContext context, ThemeData theme,
+      String containerCode, List<String> row, int index) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header du contenant avec bouton contrôler
+            Row(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Contenant $containerCode',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                ValueListenableBuilder<int>(
+                  valueListenable: _refreshKey,
+                  builder: (context, refreshValue, child) {
+                    return FutureBuilder<bool>(
+                      key: ValueKey(
+                          'container_control_${containerCode}_$refreshValue'),
+                      future: _isContainerControlled(containerCode),
+                      builder: (context, snapshot) {
+                        final isControlled = snapshot.data ?? false;
+                        final isLoading =
+                            snapshot.connectionState == ConnectionState.waiting;
+                        return _buildControlButton(
+                            context, containerCode, isControlled, isLoading);
+                      },
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Détails du contenant
+            ..._buildContainerDetails(context, theme, row),
+            // Status indicateur du contrôle
+            const SizedBox(height: 8),
+            _buildControlStatus(context, containerCode),
+          ],
+        ),
+      ),
+    );
   }
 
-  String? _extractVillageFromLocalisation(String? localisation) {
-    if (localisation == null || localisation.isEmpty) return null;
-    final parts = localisation.split('>').map((e) => e.trim()).toList();
-    return parts.length > 3 ? parts[3] : null;
+  /// Construit une ligne de contenant pour desktop
+  Widget _buildDesktopContainerRow(BuildContext context, ThemeData theme,
+      String containerCode, List<String> row) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 80,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                containerCode,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.onPrimaryContainer,
+                ),
+              ),
+            ),
+          ),
+          ...row.map((cell) => Expanded(child: Text(cell))),
+          SizedBox(
+            width: 100,
+            child: _buildControlButton(context, containerCode, false, false,
+                isDesktop: true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Construit les détails d'un contenant
+  List<Widget> _buildContainerDetails(
+      BuildContext context, ThemeData theme, List<String> row) {
+    return _getTableHeaders().asMap().entries.map((headerEntry) {
+      final headerIndex = headerEntry.key;
+      final header = headerEntry.value;
+      final value = headerIndex < row.length ? row[headerIndex] : '';
+
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 90,
+              child: Text(
+                '$header:',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                value,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }).toList();
   }
 
   /// Vérifie si un contenant spécifique est contrôlé
@@ -2065,7 +1983,8 @@ class _DetailsDialogState extends State<DetailsDialog> {
 
       // Fallback: vérifier dans la base de données
       final existingControl = await qualityService.getQualityControl(
-          containerCode, widget.item!.date);
+          containerCode, widget.item!.date,
+          collecteId: widget.item!.id);
 
       return existingControl != null;
     } catch (e) {
@@ -2111,21 +2030,33 @@ class _DetailsDialogState extends State<DetailsDialog> {
   List<String> _getContainerCodes() {
     if (widget.item == null) return [];
 
-    // ✅ CORRECTION: Retourner les vraies ID des contenants
-    if (widget.item is Recolte) {
-      final recolte = widget.item as Recolte;
-      return recolte.contenants.map((c) => c.id).toList();
-    } else if (widget.item is Scoop) {
-      final scoop = widget.item as Scoop;
-      return scoop.contenants.map((c) => c.id).toList();
-    } else if (widget.item is Individuel) {
-      final individuel = widget.item as Individuel;
-      return individuel.contenants.map((c) => c.id).toList();
-    }
+    return _getContainersFromItem().map<String>((container) {
+      if (container.id != null) return container.id as String;
+      return 'UNKNOWN';
+    }).toList();
+  }
 
-    // Fallback : ancienne méthode
-    final containerCount = _getContainerCount(widget.item!);
-    return List.generate(containerCount,
-        (index) => 'C${(index + 1).toString().padLeft(3, '0')}');
+  /// Obtient le code d'un contenant par son index
+  String _getContainerCodeByIndex(int index) {
+    final containers = _getContainersFromItem();
+    if (index < containers.length) {
+      final container = containers[index];
+      if (container.id != null) return container.id;
+    }
+    return 'C${(index + 1).toString().padLeft(3, '0')}'; // fallback
+  }
+
+  /// Obtient la liste des contenants selon le type d'item
+  List<dynamic> _getContainersFromItem() {
+    if (widget.item is Recolte) {
+      return (widget.item as Recolte).contenants;
+    } else if (widget.item is Scoop) {
+      return (widget.item as Scoop).contenants;
+    } else if (widget.item is Individuel) {
+      return (widget.item as Individuel).contenants;
+    } else if (widget.item is Miellerie) {
+      return (widget.item as Miellerie).contenants;
+    }
+    return [];
   }
 }

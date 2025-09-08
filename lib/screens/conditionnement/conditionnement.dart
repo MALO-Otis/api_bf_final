@@ -97,7 +97,7 @@ class ConditionnementController extends GetxController {
 
   // Applique les prix selon la nature du lot
   double getPrixAuto(String type) {
-    final florale = (predominanceFlorale.value ?? '').toLowerCase();
+    final florale = (predominanceFlorale.value).toLowerCase();
     if (_isMonoFleur(florale)) {
       return prixGrosMonoFleur[type] ?? prixGrosMilleFleurs[type] ?? 0.0;
     } else {

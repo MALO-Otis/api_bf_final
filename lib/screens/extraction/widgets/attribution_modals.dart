@@ -1,3 +1,8 @@
+/*
+/// ⚠️ CODE COMPLÈTEMENT COMMENTÉ - NE PLUS UTILISER ⚠️
+/// Ces modals d'attribution (extraction) ne sont plus utilisés.
+/// Le nouveau modal ModernAttributionModal est dans AttributionPageComplete.
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/attribution_models.dart';
@@ -618,3 +623,6 @@ class _AttributionFormModalState extends State<AttributionFormModal>
     }
   }
 }
+*/
+
+// ⚠️ Fichier complètement commenté - Le nouveau modal ModernAttributionModal est dans AttributionPageComplete

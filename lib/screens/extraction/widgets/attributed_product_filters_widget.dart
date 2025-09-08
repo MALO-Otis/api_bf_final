@@ -599,6 +599,8 @@ class _AttributedProductFiltersWidgetState
     switch (nature) {
       case ProductNature.brut:
         return Colors.amber;
+      case ProductNature.liquide:
+        return Colors.lightBlue;
       case ProductNature.filtre:
         return Colors.blue;
       case ProductNature.cire:

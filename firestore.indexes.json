@@ -1,26 +1,107 @@
 {
-  // Example:
-  //
-  // "indexes": [
-  //   {
-  //     "collectionGroup": "widgets",
-  //     "queryScope": "COLLECTION",
-  //     "fields": [
-  //       { "fieldPath": "foo", "arrayConfig": "CONTAINS" },
-  //       { "fieldPath": "bar", "mode": "DESCENDING" }
-  //     ]
-  //   },
-  //
-  //  "fieldOverrides": [
-  //    {
-  //      "collectionGroup": "widgets",
-  //      "fieldPath": "baz",
-  //      "indexes": [
-  //        { "order": "ASCENDING", "queryScope": "COLLECTION" }
-  //      ]
-  //    },
-  //   ]
-  // ]
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "conditionnement",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "site",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "conditionnement",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "site",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "filtrage",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "statutFiltrage",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "site",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateFiltrage",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "ventes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "commercialId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateVente",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prelevements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "commercialId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "datePrelevement",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "restitutions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "commercialId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateRestitution",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "pertes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "commercialId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "datePerte",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }

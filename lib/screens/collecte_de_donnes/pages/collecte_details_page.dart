@@ -1,6 +1,6 @@
 /// Page de détails moderne pour les collectes avec codes de localisation intégrés
 import 'package:flutter/material.dart';
-import '../widgets/localisation_code_widget.dart';
+
 import '../widgets/collecte_details_card.dart';
 
 class CollecteDetailsPage extends StatelessWidget {
@@ -67,6 +67,7 @@ class CollecteDetailsPage extends StatelessWidget {
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'fab-collecte-details-edit',
         onPressed: () => _editCollecte(context),
         backgroundColor: _getTypeColor(type),
         icon: const Icon(Icons.edit, color: Colors.white),

@@ -8,6 +8,7 @@ enum ConformityStatus { conforme, nonConforme }
 
 /// Modèle pour les données de contrôle qualité
 class QualityControlData {
+  final String? documentId; // 🆕 ID du document Firestore
   final String containerCode;
   final DateTime receptionDate;
   final String producer;
@@ -28,8 +29,14 @@ class QualityControlData {
   final String? observations;
   final DateTime createdAt;
   final String? controllerName;
+  final bool estAttribue; // Si le produit a été attribué
+  final String? attributionId; // ID de l'attribution si attribué
+  final String?
+      typeAttribution; // Type d'attribution (extraction, filtrage, cire)
+  final DateTime? dateAttribution; // Date d'attribution
 
   const QualityControlData({
+    this.documentId, // 🆕 ID du document Firestore
     required this.containerCode,
     required this.receptionDate,
     required this.producer,
@@ -50,9 +57,14 @@ class QualityControlData {
     this.observations,
     required this.createdAt,
     this.controllerName,
+    this.estAttribue = false,
+    this.attributionId,
+    this.typeAttribution,
+    this.dateAttribution,
   });
 
   QualityControlData copyWith({
+    String? documentId, // 🆕 ID du document Firestore
     String? containerCode,
     DateTime? receptionDate,
     String? producer,
@@ -73,8 +85,13 @@ class QualityControlData {
     String? observations,
     DateTime? createdAt,
     String? controllerName,
+    bool? estAttribue,
+    String? attributionId,
+    String? typeAttribution,
+    DateTime? dateAttribution,
   }) {
     return QualityControlData(
+      documentId: documentId ?? this.documentId, // 🆕 ID du document Firestore
       containerCode: containerCode ?? this.containerCode,
       receptionDate: receptionDate ?? this.receptionDate,
       producer: producer ?? this.producer,
@@ -95,6 +112,10 @@ class QualityControlData {
       observations: observations ?? this.observations,
       createdAt: createdAt ?? this.createdAt,
       controllerName: controllerName ?? this.controllerName,
+      estAttribue: estAttribue ?? this.estAttribue,
+      attributionId: attributionId ?? this.attributionId,
+      typeAttribution: typeAttribution ?? this.typeAttribution,
+      dateAttribution: dateAttribution ?? this.dateAttribution,
     );
   }
 
@@ -120,12 +141,19 @@ class QualityControlData {
       'observations': observations,
       'createdAt': createdAt.toIso8601String(),
       'controllerName': controllerName,
+      'estAttribue': estAttribue,
+      'attributionId': attributionId,
+      'typeAttribution': typeAttribution,
+      'dateAttribution': dateAttribution?.toIso8601String(),
     };
   }
 
   /// Construit un QualityControlData depuis les données Firestore
-  factory QualityControlData.fromFirestore(Map<String, dynamic> data) {
+  factory QualityControlData.fromFirestore(Map<String, dynamic> data,
+      {String? documentId}) {
     return QualityControlData(
+      documentId:
+          documentId, // 🆕 ID du document Firestore passé depuis le service
       containerCode: data['containerCode'] ?? '',
       receptionDate: data['receptionDate'] is Timestamp
           ? (data['receptionDate'] as Timestamp).toDate()
@@ -166,11 +194,21 @@ class QualityControlData {
           : DateTime.parse(
               data['createdAt'] ?? DateTime.now().toIso8601String()),
       controllerName: data['controllerName'] ?? '',
+      estAttribue: data['estAttribue'] ?? false,
+      attributionId: data['attributionId'],
+      typeAttribution: data['typeAttribution'],
+      dateAttribution: data['dateAttribution'] != null
+          ? (data['dateAttribution'] is Timestamp
+              ? (data['dateAttribution'] as Timestamp).toDate()
+              : DateTime.parse(data['dateAttribution']))
+          : null,
     );
   }
 
-  factory QualityControlData.fromJson(Map<String, dynamic> json) {
+  factory QualityControlData.fromJson(Map<String, dynamic> json,
+      {String? documentId}) {
     return QualityControlData(
+      documentId: documentId, // 🆕 ID du document
       containerCode: json['containerCode'] ?? '',
       receptionDate: DateTime.parse(json['receptionDate']),
       producer: json['producer'] ?? '',
@@ -201,6 +239,12 @@ class QualityControlData {
       observations: json['observations'],
       createdAt: DateTime.parse(json['createdAt']),
       controllerName: json['controllerName'],
+      estAttribue: json['estAttribue'] ?? false,
+      attributionId: json['attributionId'],
+      typeAttribution: json['typeAttribution'],
+      dateAttribution: json['dateAttribution'] != null
+          ? DateTime.parse(json['dateAttribution'])
+          : null,
     );
   }
 }

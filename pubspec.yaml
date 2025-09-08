@@ -48,6 +48,7 @@ dependencies:
   multi_select_flutter: ^4.1.1
   flutter_multi_select_items:
   url_launcher:
+  get: ^4.6.6
   intl:
   excel:
   fl_chart:

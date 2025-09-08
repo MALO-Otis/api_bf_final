@@ -10,7 +10,11 @@ import '../widgets/attribution_modals.dart';
 import '../widgets/attribution_filters.dart';
 import '../widgets/attribution_stats.dart';
 
-/// Page principale de gestion des attributions d'extraction/maturation
+/*
+/// ⚠️ CODE COMPLÈTEMENT COMMENTÉ - NE PLUS UTILISER ⚠️
+/// Cette page AttributionPage (extraction) n'est plus utilisée.
+/// Le système d'attribution principal utilise maintenant AttributionPageComplete.
+
 class AttributionPage extends StatefulWidget {
   const AttributionPage({super.key});
 
@@ -374,6 +378,7 @@ class _AttributionPageState extends State<AttributionPage>
               ],
             ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'fab-extraction-attribution-new',
         onPressed: _showNewAttributionModal,
         icon: const Icon(Icons.add),
         label: const Text('Nouvelle Attribution'),
@@ -520,3 +525,6 @@ class _AttributionPageState extends State<AttributionPage>
     }
   }
 }
+*/
+
+// ⚠️ Fichier complètement commenté - Utiliser AttributionPageComplete à la place

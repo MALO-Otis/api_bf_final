@@ -11,6 +11,7 @@ import 'package:apisavana_gestion/utils/smart_appbar.dart';
 import 'package:apisavana_gestion/data/services/stats_recoltes_service.dart';
 import '../../controle_de_donnes/services/global_refresh_service.dart';
 import '../../controle_de_donnes/services/quality_control_service.dart';
+import '../../../services/universal_container_id_service.dart';
 import 'dart:async';
 
 // Modèle pour un contenant de récolte
@@ -591,20 +592,7 @@ class _NouvelleCollecteRecoltePageState
                 .trim(),
         'utilisateur_email': currentUserData!['email'] ?? '',
         'predominances_florales': selectedFlorales,
-        'contenants': containers.asMap().entries.map((entry) {
-          final index = entry.key;
-          final c = entry.value;
-          final containerId =
-              'C${(index + 1).toString().padLeft(3, '0')}_recolte';
-          return {
-            'id': containerId, // 🆕 ID unique pour chaque contenant
-            'hiveType': c.hiveType,
-            'containerType': c.containerType,
-            'weight': c.weight,
-            'unitPrice': c.unitPrice,
-            'total': c.total,
-          };
-        }).toList(),
+        'contenants': await _generateContainerIdsForRecolte(containers),
         'totalWeight': totalWeight,
         'totalAmount': totalAmount,
         'status': 'en_attente',
@@ -2324,5 +2312,76 @@ class _NouvelleCollecteRecoltePageState
         ],
       ),
     );
+  }
+
+  /// Génère les IDs universels pour les contenants de récolte
+  Future<List<Map<String, dynamic>>> _generateContainerIdsForRecolte(
+      List<HarvestContainer> containers) async {
+    try {
+      final universalService = UniversalContainerIdService();
+
+      // Récupérer les informations nécessaires
+      final village = villagePersonnaliseActive
+          ? villagePersonnaliseController.text.trim()
+          : selectedVillage ?? '';
+      final technicien = selectedTechnician ?? '';
+
+      // Date de la collecte (date actuelle)
+      final dateCollecte = DateTime.now();
+
+      // Générer les IDs universels (pas de producteur pour les récoltes - sites d'entreprise)
+      final containerIds = await universalService.generateCollecteContainerIds(
+        type: CollecteType.recolte,
+        village: village,
+        technicien: technicien,
+        // producteur: null, // Pas de producteur pour les récoltes
+        dateCollecte: dateCollecte,
+        nombreContenants: containers.length,
+      );
+
+      // Créer la liste des contenants avec les nouveaux IDs
+      final List<Map<String, dynamic>> contenantsAvecIds = [];
+
+      for (int i = 0; i < containers.length; i++) {
+        final container = containers[i];
+        final containerId = containerIds[i];
+
+        contenantsAvecIds.add({
+          'id': containerId, // 🆕 ID universel unique
+          'hiveType': container.hiveType,
+          'containerType': container.containerType,
+          'weight': container.weight,
+          'unitPrice': container.unitPrice,
+          'total': container.total,
+        });
+      }
+
+      print(
+          '✅ RECOLTE: IDs universels générés pour ${containers.length} contenants');
+      for (final id in containerIds) {
+        print('   📦 $id');
+      }
+
+      return contenantsAvecIds;
+    } catch (e) {
+      print('❌ RECOLTE: Erreur génération IDs universels: $e');
+
+      // Fallback vers l'ancien système en cas d'erreur
+      return containers.asMap().entries.map((entry) {
+        final index = entry.key;
+        final c = entry.value;
+        final containerId =
+            'C${(index + 1).toString().padLeft(3, '0')}_recolte_fallback';
+
+        return {
+          'id': containerId,
+          'hiveType': c.hiveType,
+          'containerType': c.containerType,
+          'weight': c.weight,
+          'unitPrice': c.unitPrice,
+          'total': c.total,
+        };
+      }).toList();
+    }
   }
 }

@@ -6,6 +6,7 @@ import '../../../data/models/miellerie_models.dart';
 import '../../../data/services/stats_mielleries_service.dart';
 import '../../../data/personnel/personnel_apisavana.dart';
 import '../../../authentication/user_session.dart';
+import '../../../services/universal_container_id_service.dart';
 import '../historiques_collectes.dart';
 
 class NouvelleCollecteMielleriePage extends StatefulWidget {
@@ -96,8 +97,9 @@ class _NouvelleCollecteMielleriePageState
     if (!_contenantFormKey.currentState!.validate()) return;
 
     // Générer un ID unique pour le contenant
-    final containerId = 'C${(_contenants.length + 1).toString().padLeft(3, '0')}_miellerie';
-    
+    final containerId =
+        'C${(_contenants.length + 1).toString().padLeft(3, '0')}_miellerie';
+
     final contenant = ContenantMiellerieModel(
       id: containerId,
       typeContenant: _typeContenant,
@@ -183,6 +185,9 @@ class _NouvelleCollecteMielleriePageState
     setState(() => _isLoading = true);
 
     try {
+      // Générer les IDs universels pour les contenants
+      final contenantsAvecIds = await _genererIdsUniversels(_contenants);
+
       final collecte = CollecteMiellerieModel(
         id: '',
         dateCollecte: _dateCollecte,
@@ -198,7 +203,7 @@ class _NouvelleCollecteMielleriePageState
         repondant: _repondantController.text.isNotEmpty
             ? _repondantController.text
             : 'Responsable $_selectedSiteMiellerie!',
-        contenants: _contenants,
+        contenants: contenantsAvecIds,
         poidsTotal: _poidsTotal,
         montantTotal: _montantTotal,
         observations: _observationsController.text,
@@ -993,5 +998,81 @@ class _NouvelleCollecteMielleriePageState
         ),
       ),
     );
+  }
+
+  /// Génère les IDs universels pour les contenants Miellerie
+  Future<List<ContenantMiellerieModel>> _genererIdsUniversels(
+    List<ContenantMiellerieModel> contenants,
+  ) async {
+    try {
+      final universalService = UniversalContainerIdService();
+
+      // Récupérer les informations nécessaires pour les Mielleries
+      final miellerieNom = _selectedSiteMiellerie ?? 'MIELLERIE_INCONNUE';
+      final technicien = _selectedCollecteur?.nomComplet ??
+          _userSession.nom ??
+          'TECHNICIEN_INCONNU';
+      final village = _localiteController.text.isNotEmpty
+          ? _localiteController.text
+          : (_selectedSiteMiellerie ?? 'VILLAGE_INCONNU');
+
+      // Pour les Mielleries, on utilise le nom de la miellerie comme "producteur"
+      final producteur = miellerieNom;
+
+      // Date de la collecte
+      final dateCollecte = _dateCollecte;
+
+      // Générer les IDs universels
+      final containerIds = await universalService.generateCollecteContainerIds(
+        type: CollecteType.miellerie,
+        village: village,
+        technicien: technicien,
+        producteur: producteur,
+        dateCollecte: dateCollecte,
+        nombreContenants: contenants.length,
+      );
+
+      // Créer la liste des contenants avec les nouveaux IDs
+      final List<ContenantMiellerieModel> contenantsAvecIds = [];
+
+      for (int i = 0; i < contenants.length; i++) {
+        final contenant = contenants[i];
+        final nouvelId = containerIds[i];
+
+        // Créer un nouveau contenant avec l'ID universel
+        final nouveauContenant = contenant.copyWith(id: nouvelId);
+        contenantsAvecIds.add(nouveauContenant);
+      }
+
+      print(
+          '✅ MIELLERIE: IDs universels générés pour ${contenants.length} contenants');
+      print('   🏭 Miellerie: $miellerieNom');
+      print('   📍 Village: $village');
+      print('   👨‍💼 Technicien: $technicien');
+      print(
+          '   📅 Date: ${dateCollecte.day}/${dateCollecte.month}/${dateCollecte.year}');
+
+      for (final id in containerIds) {
+        print('   📦 $id');
+      }
+
+      return contenantsAvecIds;
+    } catch (e) {
+      print('❌ MIELLERIE: Erreur génération IDs universels: $e');
+
+      // Fallback vers l'ancien système en cas d'erreur
+      final List<ContenantMiellerieModel> contenantsFallback = [];
+
+      for (int i = 0; i < contenants.length; i++) {
+        final contenant = contenants[i];
+        final fallbackId =
+            'C${(i + 1).toString().padLeft(4, '0')}_miellerie_fallback_${DateTime.now().millisecondsSinceEpoch}';
+
+        final nouveauContenant = contenant.copyWith(id: fallbackId);
+        contenantsFallback.add(nouveauContenant);
+      }
+
+      return contenantsFallback;
+    }
   }
 }

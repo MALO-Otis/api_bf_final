@@ -1,425 +1,467 @@
-// Modèles pour le nouveau système d'attribution intelligent
+/// 🎯 MODÈLES UNIFIÉS POUR LE SYSTÈME D'ATTRIBUTION V2
+///
+/// Ce fichier contient tous les modèles nécessaires pour le nouveau
+/// système d'attribution unifié intégrant extraction, filtrage et traitement cire
+
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// Types d'attribution disponibles
-enum AttributionType {
-  extraction('Pour Extraction', 'Produits bruts uniquement'),
-  filtration('Pour Filtration', 'Produits filtrés uniquement'),
-  traitementCire('Pour Traitement Cire', 'Produits cire uniquement');
-
-  const AttributionType(this.label, this.description);
-  final String label;
-  final String description;
-}
-
-/// Types de produits selon leur nature
+/// 🏷️ NATURE DES PRODUITS
+///
+/// Définit la nature d'un produit pour déterminer son traitement
 enum ProductNature {
-  brut('Brut'),
-  filtre('Filtré'),
-  cire('Cire');
+  brut('Brut'), // Pour extraction
+  liquide('Liquide'), // Pour filtrage
+  cire('Cire'), // Pour traitement cire
+  filtre('Filtré'); // Déjà filtré
 
   const ProductNature(this.label);
   final String label;
 }
 
-/// Sites disponibles pour attribution
-enum SiteAttribution {
-  koudougou('Koudougou'),
-  bobo('Bobo-Dioulasso'),
-  po('Pô'),
-  mangodara('Mangodara'),
-  sindou('Sindou'),
-  orodara('Orodara'),
-  sapouy('Sapouy'),
-  leo('Léo'),
-  bagre('Bagré');
+/// 📋 TYPE D'ATTRIBUTION
+///
+/// Définit les différents types de processus d'attribution
+enum AttributionType {
+  extraction('Extraction', 'extraction'),
+  filtration('Filtrage', 'filtration'),
+  traitementCire('Traitement Cire', 'traitement_cire');
 
-  const SiteAttribution(this.nom);
-  final String nom;
+  const AttributionType(this.label, this.value);
+  final String label;
+  final String value;
 }
 
-/// Modèle pour un produit contrôlé disponible pour attribution
+/// 🧪 MODÈLE PRODUIT CONTRÔLÉ
+///
+/// Représente un produit ayant passé le contrôle qualité et disponible pour attribution
 class ProductControle {
   final String id;
   final String codeContenant;
-  final String typeCollecte; // 'recolte', 'individuel', 'scoop', 'miellerie'
-  final String collecteId;
+  final DateTime dateReception;
   final String producteur;
   final String village;
-  final ProductNature nature; // Déterminé par le type de miel
+  final String commune;
+  final String quartier;
+  final ProductNature nature;
   final String typeContenant;
-  final double poids;
+  final String numeroContenant;
+  final double poidsTotal;
+  final double poidsMiel;
+  final String qualite;
   final double? teneurEau;
   final String predominanceFlorale;
-  final String qualite;
-  final DateTime dateReception;
-  final DateTime dateCollecte;
-  final String collecteur;
-  final String siteOrigine;
   final bool estConforme;
   final String? causeNonConformite;
   final String? observations;
-  final bool estAttribue; // Si déjà attribué
-  final String? attributionId; // ID de l'attribution si attribué
+  final DateTime dateControle;
+  final String? controleur;
+  final bool estAttribue;
+  final String? attributionId;
+  final String? typeAttribution;
+  final DateTime? dateAttribution;
+  final String? controlId; // 🆕 ID du document de contrôle qualité
+  final String siteOrigine;
+  final String collecteId;
+  final String typeCollecte;
+  final DateTime dateCollecte;
+  final bool estControle;
+  final String statutControle;
+  final Map<String, dynamic>? metadata;
 
   const ProductControle({
     required this.id,
     required this.codeContenant,
-    required this.typeCollecte,
-    required this.collecteId,
+    required this.dateReception,
     required this.producteur,
     required this.village,
+    required this.commune,
+    required this.quartier,
     required this.nature,
     required this.typeContenant,
-    required this.poids,
+    required this.numeroContenant,
+    required this.poidsTotal,
+    required this.poidsMiel,
+    required this.qualite,
     this.teneurEau,
     required this.predominanceFlorale,
-    required this.qualite,
-    required this.dateReception,
-    required this.dateCollecte,
-    required this.collecteur,
-    required this.siteOrigine,
     required this.estConforme,
     this.causeNonConformite,
     this.observations,
+    required this.dateControle,
+    this.controleur,
     this.estAttribue = false,
     this.attributionId,
+    this.typeAttribution,
+    this.dateAttribution,
+    this.controlId, // 🆕 ID du document de contrôle qualité
+    required this.siteOrigine,
+    required this.collecteId,
+    required this.typeCollecte,
+    required this.dateCollecte,
+    this.estControle = true,
+    this.statutControle = 'valide',
+    this.metadata,
   });
 
-  ProductControle copyWith({
-    String? id,
-    String? codeContenant,
-    String? typeCollecte,
-    String? collecteId,
-    String? producteur,
-    String? village,
-    ProductNature? nature,
-    String? typeContenant,
-    double? poids,
-    double? teneurEau,
-    String? predominanceFlorale,
-    String? qualite,
-    DateTime? dateReception,
-    DateTime? dateCollecte,
-    String? collecteur,
-    String? siteOrigine,
-    bool? estConforme,
-    String? causeNonConformite,
-    String? observations,
-    bool? estAttribue,
-    String? attributionId,
-  }) {
-    return ProductControle(
-      id: id ?? this.id,
-      codeContenant: codeContenant ?? this.codeContenant,
-      typeCollecte: typeCollecte ?? this.typeCollecte,
-      collecteId: collecteId ?? this.collecteId,
-      producteur: producteur ?? this.producteur,
-      village: village ?? this.village,
-      nature: nature ?? this.nature,
-      typeContenant: typeContenant ?? this.typeContenant,
-      poids: poids ?? this.poids,
-      teneurEau: teneurEau ?? this.teneurEau,
-      predominanceFlorale: predominanceFlorale ?? this.predominanceFlorale,
-      qualite: qualite ?? this.qualite,
-      dateReception: dateReception ?? this.dateReception,
-      dateCollecte: dateCollecte ?? this.dateCollecte,
-      collecteur: collecteur ?? this.collecteur,
-      siteOrigine: siteOrigine ?? this.siteOrigine,
-      estConforme: estConforme ?? this.estConforme,
-      causeNonConformite: causeNonConformite ?? this.causeNonConformite,
-      observations: observations ?? this.observations,
-      estAttribue: estAttribue ?? this.estAttribue,
-      attributionId: attributionId ?? this.attributionId,
-    );
+  /// Vérifie si le produit est urgent (> 7 jours)
+  bool get isUrgent {
+    final daysSinceReception = DateTime.now().difference(dateReception).inDays;
+    return daysSinceReception > 7;
   }
 
+  /// Retourne la couleur associée à la qualité
+  Color get qualiteColor {
+    switch (qualite.toLowerCase()) {
+      case 'excellent':
+        return Colors.green[700]!;
+      case 'très bon':
+        return Colors.green[500]!;
+      case 'bon':
+        return Colors.orange[600]!;
+      case 'moyen':
+        return Colors.orange[400]!;
+      case 'passable':
+        return Colors.red[400]!;
+      default:
+        return Colors.grey[600]!;
+    }
+  }
+
+  /// Retourne l'icône associée à la nature
+  IconData get natureIcon {
+    switch (nature) {
+      case ProductNature.brut:
+        return Icons.science;
+      case ProductNature.liquide:
+        return Icons.water_drop;
+      case ProductNature.cire:
+        return Icons.spa;
+      case ProductNature.filtre:
+        return Icons.filter_alt;
+    }
+  }
+
+  /// Retourne la couleur associée à la nature
+  Color get natureColor {
+    switch (nature) {
+      case ProductNature.brut:
+        return Colors.brown;
+      case ProductNature.liquide:
+        return Colors.blue;
+      case ProductNature.cire:
+        return Colors.amber[700]!;
+      case ProductNature.filtre:
+        return Colors.green;
+    }
+  }
+
+  /// Conversion vers Map pour Firestore
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'code_contenant': codeContenant,
-      'type_collecte': typeCollecte,
-      'collecte_id': collecteId,
+      'codeContenant': codeContenant,
+      'dateReception': dateReception.toIso8601String(),
       'producteur': producteur,
       'village': village,
+      'commune': commune,
+      'quartier': quartier,
       'nature': nature.name,
-      'type_contenant': typeContenant,
-      'poids': poids,
-      'teneur_eau': teneurEau,
-      'predominance_florale': predominanceFlorale,
+      'typeContenant': typeContenant,
+      'numeroContenant': numeroContenant,
+      'poidsTotal': poidsTotal,
+      'poidsMiel': poidsMiel,
       'qualite': qualite,
-      'date_reception': dateReception.toIso8601String(),
-      'date_collecte': dateCollecte.toIso8601String(),
-      'collecteur': collecteur,
-      'site_origine': siteOrigine,
-      'est_conforme': estConforme,
-      'cause_non_conformite': causeNonConformite,
+      'teneurEau': teneurEau,
+      'predominanceFlorale': predominanceFlorale,
+      'estConforme': estConforme,
+      'causeNonConformite': causeNonConformite,
       'observations': observations,
-      'est_attribue': estAttribue,
-      'attribution_id': attributionId,
+      'dateControle': dateControle.toIso8601String(),
+      'controleur': controleur,
+      'estAttribue': estAttribue,
+      'attributionId': attributionId,
+      'typeAttribution': typeAttribution,
+      'dateAttribution': dateAttribution?.toIso8601String(),
+      'controlId': controlId, // 🆕 ID du document de contrôle qualité
+      'siteOrigine': siteOrigine,
+      'collecteId': collecteId,
+      'typeCollecte': typeCollecte,
+      'dateCollecte': dateCollecte.toIso8601String(),
+      'estControle': estControle,
+      'statutControle': statutControle,
+      'metadata': metadata,
+      'createdAt': DateTime.now().toIso8601String(),
     };
   }
 
+  /// Création depuis Map Firestore
   factory ProductControle.fromMap(Map<String, dynamic> map) {
     return ProductControle(
       id: map['id'] ?? '',
-      codeContenant: map['code_contenant'] ?? '',
-      typeCollecte: map['type_collecte'] ?? '',
-      collecteId: map['collecte_id'] ?? '',
+      codeContenant: map['codeContenant'] ?? '',
+      dateReception: _parseDateTime(map['dateReception']),
       producteur: map['producteur'] ?? '',
       village: map['village'] ?? '',
+      commune: map['commune'] ?? '',
+      quartier: map['quartier'] ?? '',
       nature: ProductNature.values.firstWhere(
         (n) => n.name == map['nature'],
         orElse: () => ProductNature.brut,
       ),
-      typeContenant: map['type_contenant'] ?? '',
-      poids: (map['poids'] ?? 0.0).toDouble(),
-      teneurEau: map['teneur_eau']?.toDouble(),
-      predominanceFlorale: map['predominance_florale'] ?? '',
+      typeContenant: map['typeContenant'] ?? '',
+      numeroContenant: map['numeroContenant'] ?? '',
+      poidsTotal: (map['poidsTotal'] as num?)?.toDouble() ?? 0.0,
+      poidsMiel: (map['poidsMiel'] as num?)?.toDouble() ?? 0.0,
       qualite: map['qualite'] ?? '',
-      dateReception: DateTime.parse(map['date_reception']),
-      dateCollecte: DateTime.parse(map['date_collecte']),
-      collecteur: map['collecteur'] ?? '',
-      siteOrigine: map['site_origine'] ?? '',
-      estConforme: map['est_conforme'] ?? true,
-      causeNonConformite: map['cause_non_conformite'],
+      teneurEau: (map['teneurEau'] as num?)?.toDouble(),
+      predominanceFlorale: map['predominanceFlorale'] ?? '',
+      estConforme: map['estConforme'] ?? false,
+      causeNonConformite: map['causeNonConformite'],
       observations: map['observations'],
-      estAttribue: map['est_attribue'] ?? false,
-      attributionId: map['attribution_id'],
+      dateControle: _parseDateTime(map['dateControle']),
+      controleur: map['controleur'],
+      estAttribue: map['estAttribue'] ?? false,
+      attributionId: map['attributionId'],
+      typeAttribution: map['typeAttribution'],
+      dateAttribution: map['dateAttribution'] != null
+          ? _parseDateTime(map['dateAttribution'])
+          : null,
+      controlId: map['controlId'], // 🆕 ID du document de contrôle qualité
+      siteOrigine: map['siteOrigine'] ?? '',
+      collecteId: map['collecteId'] ?? '',
+      typeCollecte: map['typeCollecte'] ?? '',
+      dateCollecte: _parseDateTime(map['dateCollecte']),
+      estControle: map['estControle'] ?? true,
+      statutControle: map['statutControle'] ?? 'valide',
+      metadata: map['metadata'],
     );
   }
-}
 
-/// Regroupement des produits par collecte
-class CollecteGroup {
-  final String collecteId;
-  final String typeCollecte;
-  final String producteur;
-  final DateTime dateCollecte;
-  final String collecteur;
-  final String siteOrigine;
-  final List<ProductControle> produits;
-  final bool isExpanded;
+  /// Parse DateTime depuis différents formats
+  static DateTime _parseDateTime(dynamic value) {
+    if (value == null) return DateTime.now();
+    if (value is Timestamp) return value.toDate();
+    if (value is String) return DateTime.parse(value);
+    return DateTime.now();
+  }
 
-  const CollecteGroup({
-    required this.collecteId,
-    required this.typeCollecte,
-    required this.producteur,
-    required this.dateCollecte,
-    required this.collecteur,
-    required this.siteOrigine,
-    required this.produits,
-    this.isExpanded = false,
-  });
-
-  int get totalProduits => produits.length;
-  int get produitsConformes => produits.where((p) => p.estConforme).length;
-  int get produitsNonConformes => produits.where((p) => !p.estConforme).length;
-  int get produitsAttribues => produits.where((p) => p.estAttribue).length;
-  int get produitsDisponibles => produits.where((p) => !p.estAttribue).length;
-  double get poidsTotal => produits.fold(0.0, (sum, p) => sum + p.poids);
-
-  CollecteGroup copyWith({
+  /// Crée une copie avec des modifications
+  ProductControle copyWith({
+    String? id,
+    String? codeContenant,
+    DateTime? dateReception,
+    String? producteur,
+    String? village,
+    String? commune,
+    String? quartier,
+    ProductNature? nature,
+    String? typeContenant,
+    String? numeroContenant,
+    double? poidsTotal,
+    double? poidsMiel,
+    String? qualite,
+    double? teneurEau,
+    String? predominanceFlorale,
+    bool? estConforme,
+    String? causeNonConformite,
+    String? observations,
+    DateTime? dateControle,
+    String? controleur,
+    bool? estAttribue,
+    String? attributionId,
+    String? typeAttribution,
+    DateTime? dateAttribution,
+    String? controlId, // 🆕 ID du document de contrôle qualité
+    String? siteOrigine,
     String? collecteId,
     String? typeCollecte,
-    String? producteur,
     DateTime? dateCollecte,
-    String? collecteur,
-    String? siteOrigine,
-    List<ProductControle>? produits,
-    bool? isExpanded,
+    bool? estControle,
+    String? statutControle,
+    Map<String, dynamic>? metadata,
   }) {
-    return CollecteGroup(
+    return ProductControle(
+      id: id ?? this.id,
+      codeContenant: codeContenant ?? this.codeContenant,
+      dateReception: dateReception ?? this.dateReception,
+      producteur: producteur ?? this.producteur,
+      village: village ?? this.village,
+      commune: commune ?? this.commune,
+      quartier: quartier ?? this.quartier,
+      nature: nature ?? this.nature,
+      typeContenant: typeContenant ?? this.typeContenant,
+      numeroContenant: numeroContenant ?? this.numeroContenant,
+      poidsTotal: poidsTotal ?? this.poidsTotal,
+      poidsMiel: poidsMiel ?? this.poidsMiel,
+      qualite: qualite ?? this.qualite,
+      teneurEau: teneurEau ?? this.teneurEau,
+      predominanceFlorale: predominanceFlorale ?? this.predominanceFlorale,
+      estConforme: estConforme ?? this.estConforme,
+      causeNonConformite: causeNonConformite ?? this.causeNonConformite,
+      observations: observations ?? this.observations,
+      dateControle: dateControle ?? this.dateControle,
+      controleur: controleur ?? this.controleur,
+      estAttribue: estAttribue ?? this.estAttribue,
+      attributionId: attributionId ?? this.attributionId,
+      typeAttribution: typeAttribution ?? this.typeAttribution,
+      dateAttribution: dateAttribution ?? this.dateAttribution,
+      controlId:
+          controlId ?? this.controlId, // 🆕 ID du document de contrôle qualité
+      siteOrigine: siteOrigine ?? this.siteOrigine,
       collecteId: collecteId ?? this.collecteId,
       typeCollecte: typeCollecte ?? this.typeCollecte,
-      producteur: producteur ?? this.producteur,
       dateCollecte: dateCollecte ?? this.dateCollecte,
-      collecteur: collecteur ?? this.collecteur,
-      siteOrigine: siteOrigine ?? this.siteOrigine,
-      produits: produits ?? this.produits,
-      isExpanded: isExpanded ?? this.isExpanded,
+      estControle: estControle ?? this.estControle,
+      statutControle: statutControle ?? this.statutControle,
+      metadata: metadata ?? this.metadata,
     );
   }
 }
 
-/// Modèle pour une attribution créée
-class AttributionProduits {
+/// 📊 ATTRIBUTION DE CONTRÔLE
+///
+/// Modèle pour les attributions créées depuis le contrôle qualité
+class ControlAttribution {
   final String id;
   final AttributionType type;
-  final SiteAttribution siteDestination;
-  final List<String> produitsIds;
-  final DateTime dateAttribution;
-  final String attributeurId;
-  final String attributeurNom;
-  final String? instructions;
-  final String? observations;
-  final String statut; // 'en_attente', 'accepte', 'en_cours', 'termine'
+  final ProductNature natureProduitsAttribues;
+  final String utilisateur;
+  final List<String> listeContenants;
+  final String sourceCollecteId;
+  final String sourceType;
+  final String siteOrigine;
+  final String siteReceveur;
+  final DateTime dateCollecte;
+  final DateTime dateCreation;
+  final String statut;
+  final String? commentaires;
+  final Map<String, dynamic>? metadata;
 
-  const AttributionProduits({
+  const ControlAttribution({
     required this.id,
     required this.type,
-    required this.siteDestination,
-    required this.produitsIds,
-    required this.dateAttribution,
-    required this.attributeurId,
-    required this.attributeurNom,
-    this.instructions,
-    this.observations,
-    this.statut = 'en_attente',
+    required this.natureProduitsAttribues,
+    required this.utilisateur,
+    required this.listeContenants,
+    required this.sourceCollecteId,
+    required this.sourceType,
+    required this.siteOrigine,
+    required this.siteReceveur,
+    required this.dateCollecte,
+    required this.dateCreation,
+    this.statut = 'attribué',
+    this.commentaires,
+    this.metadata,
   });
 
+  /// Conversion vers Map pour Firestore
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'type': type.name,
-      'site_destination': siteDestination.name,
-      'produits_ids': produitsIds,
-      'date_attribution': dateAttribution.toIso8601String(),
-      'attributeur_id': attributeurId,
-      'attributeur_nom': attributeurNom,
-      'instructions': instructions,
-      'observations': observations,
+      'type': type.value,
+      'natureProduitsAttribues': natureProduitsAttribues.name,
+      'utilisateur': utilisateur,
+      'listeContenants': listeContenants,
+      'sourceCollecteId': sourceCollecteId,
+      'sourceType': sourceType,
+      'siteOrigine': siteOrigine,
+      'siteReceveur': siteReceveur,
+      'dateCollecte': dateCollecte.toIso8601String(),
+      'dateCreation': dateCreation.toIso8601String(),
       'statut': statut,
+      'commentaires': commentaires,
+      'metadata': metadata,
     };
   }
 
-  factory AttributionProduits.fromMap(Map<String, dynamic> map) {
-    return AttributionProduits(
+  /// Création depuis Map Firestore
+  factory ControlAttribution.fromMap(Map<String, dynamic> map) {
+    return ControlAttribution(
       id: map['id'] ?? '',
       type: AttributionType.values.firstWhere(
-        (t) => t.name == map['type'],
+        (t) => t.value == map['type'],
         orElse: () => AttributionType.extraction,
       ),
-      siteDestination: SiteAttribution.values.firstWhere(
-        (s) => s.name == map['site_destination'],
-        orElse: () => SiteAttribution.koudougou,
+      natureProduitsAttribues: ProductNature.values.firstWhere(
+        (n) => n.name == map['natureProduitsAttribues'],
+        orElse: () => ProductNature.brut,
       ),
-      produitsIds: List<String>.from(map['produits_ids'] ?? []),
-      dateAttribution: DateTime.parse(map['date_attribution']),
-      attributeurId: map['attributeur_id'] ?? '',
-      attributeurNom: map['attributeur_nom'] ?? '',
-      instructions: map['instructions'],
-      observations: map['observations'],
-      statut: map['statut'] ?? 'en_attente',
+      utilisateur: map['utilisateur'] ?? '',
+      listeContenants: List<String>.from(map['listeContenants'] ?? []),
+      sourceCollecteId: map['sourceCollecteId'] ?? '',
+      sourceType: map['sourceType'] ?? '',
+      siteOrigine: map['siteOrigine'] ?? '',
+      siteReceveur: map['siteReceveur'] ?? '',
+      dateCollecte: ProductControle._parseDateTime(map['dateCollecte']),
+      dateCreation: ProductControle._parseDateTime(map['dateCreation']),
+      statut: map['statut'] ?? 'attribué',
+      commentaires: map['commentaires'],
+      metadata: map['metadata'],
     );
   }
 }
 
-/// Utilitaires pour les attributions
+/// 🛠️ UTILITAIRES POUR L'ATTRIBUTION
 class AttributionUtils {
-  /// Détermine si un produit peut être attribué selon le type d'attribution
+  /// Vérifie si un produit peut être attribué pour un type donné
   static bool peutEtreAttribue(ProductControle produit, AttributionType type) {
-    if (!produit.estConforme || produit.estAttribue) {
+    // VERIFICATION CRITIQUE: Le produit DOIT être contrôlé ET conforme
+    if (!produit.estControle || !produit.estConforme || produit.estAttribue) {
       return false;
     }
 
+    // Vérifier que le statut de contrôle est validé
+    if (produit.statutControle != 'valide' &&
+        produit.statutControle != 'termine') {
+      return false;
+    }
+
+    // Vérification selon le type d'attribution
     switch (type) {
       case AttributionType.extraction:
         return produit.nature == ProductNature.brut;
       case AttributionType.filtration:
-        return produit.nature == ProductNature.filtre;
+        return produit.nature == ProductNature.liquide;
       case AttributionType.traitementCire:
+        // Pour la cire, on accepte même si pas encore contrôlée
         return produit.nature == ProductNature.cire;
     }
   }
 
-  /// Filtre les produits selon le type d'attribution
-  static List<ProductControle> filtrerProduitsParType(
-    List<ProductControle> produits,
-    AttributionType type,
-  ) {
-    return produits.where((p) => peutEtreAttribue(p, type)).toList();
-  }
-
-  /// Détermine la nature du produit selon le type de miel
-  static ProductNature determinerNature(String typeMiel) {
-    final type = typeMiel.toLowerCase();
-    if (type.contains('cire')) {
-      return ProductNature.cire;
-    } else if (type.contains('filtr') || type.contains('liquid')) {
-      return ProductNature.filtre;
-    } else {
-      return ProductNature.brut;
-    }
-  }
-
-  /// Couleur pour le type de collecte
-  static Color getCouleurTypeCollecte(String typeCollecte) {
-    switch (typeCollecte.toLowerCase()) {
-      case 'recolte':
-        return Colors.green;
-      case 'individuel':
-        return Colors.blue;
-      case 'scoop':
-        return Colors.orange;
-      case 'miellerie':
-        return Colors.purple;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  /// Icône pour le type de collecte
-  static IconData getIconeTypeCollecte(String typeCollecte) {
-    switch (typeCollecte.toLowerCase()) {
-      case 'recolte':
-        return Icons.agriculture;
-      case 'individuel':
-        return Icons.person;
-      case 'scoop':
-        return Icons.groups;
-      case 'miellerie':
-        return Icons.factory;
-      default:
-        return Icons.inventory;
-    }
-  }
-
-  /// Couleur pour la nature du produit
-  static Color getCouleurNature(ProductNature nature) {
-    switch (nature) {
-      case ProductNature.brut:
-        return Colors.amber;
-      case ProductNature.filtre:
-        return Colors.blue;
-      case ProductNature.cire:
-        return Colors.brown;
-    }
-  }
-
-  /// Icône pour la nature du produit
-  static IconData getIconeNature(ProductNature nature) {
-    switch (nature) {
-      case ProductNature.brut:
-        return Icons.water_drop;
-      case ProductNature.filtre:
-        return Icons.filter_alt;
-      case ProductNature.cire:
-        return Icons.texture;
-    }
-  }
-
-  /// Couleur pour le type d'attribution
-  static Color getCouleurAttribution(AttributionType type) {
+  /// Retourne la couleur associée à un type d'attribution
+  static Color getCouleurType(AttributionType type) {
     switch (type) {
       case AttributionType.extraction:
-        return Colors.green;
+        return Colors.brown;
       case AttributionType.filtration:
         return Colors.blue;
       case AttributionType.traitementCire:
-        return Colors.brown;
+        return Colors.amber[700]!;
     }
   }
 
-  /// Icône pour le type d'attribution
-  static IconData getIconeAttribution(AttributionType type) {
+  /// Retourne l'icône associée à un type d'attribution
+  static IconData getIconeType(AttributionType type) {
     switch (type) {
       case AttributionType.extraction:
         return Icons.science;
       case AttributionType.filtration:
-        return Icons.filter_alt;
+        return Icons.water_drop;
       case AttributionType.traitementCire:
-        return Icons.texture;
+        return Icons.spa;
+    }
+  }
+
+  /// Retourne la description d'un type d'attribution
+  static String getDescriptionType(AttributionType type) {
+    switch (type) {
+      case AttributionType.extraction:
+        return 'Processus d\'extraction du miel brut';
+      case AttributionType.filtration:
+        return 'Processus de filtrage du miel liquide';
+      case AttributionType.traitementCire:
+        return 'Processus de traitement de la cire';
     }
   }
 }

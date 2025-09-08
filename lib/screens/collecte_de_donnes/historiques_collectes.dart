@@ -10,8 +10,8 @@ import 'package:apisavana_gestion/utils/smart_appbar.dart';
 import 'package:apisavana_gestion/data/geographe/geographie.dart';
 import 'nos_collecte_recoltes/edit_collecte_recolte.dart';
 import 'nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
-import 'nouvelle_collecte_scoop.dart';
-import 'nouvelle_collecte_individuelle.dart' hide SizedBox;
+
+import 'nouvelle_collecte_individuelle.dart';
 import 'nos_collectes_individuels/edit_collecte_individuelle.dart';
 import '../dashboard/dashboard.dart';
 import 'nos_achats_scoop_contenants/nouvel_achat_scoop_contenants.dart';
@@ -1539,6 +1539,7 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
 
   Widget _buildFAB() {
     return FloatingActionButton.extended(
+      heroTag: 'fab-historiques-collectes-new',
       onPressed: () {
         _showNewCollecteMenu();
       },

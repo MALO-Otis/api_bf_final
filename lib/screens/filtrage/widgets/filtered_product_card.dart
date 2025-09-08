@@ -75,7 +75,7 @@ class FilteredProductCard extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: _getCollecteTypeColor().withOpacity(0.1),
+            color: _getCollecteTypeColor().withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
@@ -105,7 +105,8 @@ class FilteredProductCard extends StatelessWidget {
               Text(
                 product.codeContenant,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
+                  color:
+                      theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
                   fontFamily: 'monospace',
                 ),
                 maxLines: 1,
@@ -148,9 +149,9 @@ class FilteredProductCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: statusColor.withOpacity(0.1),
+        color: statusColor.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: statusColor.withOpacity(0.3)),
+        border: Border.all(color: statusColor.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -269,20 +270,22 @@ class FilteredProductCard extends StatelessWidget {
             Icon(
               Icons.person,
               size: 16,
-              color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
+              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
             ),
             const SizedBox(width: 4),
             Text(
               'Attribué par ${product.attributeur}',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
+                color:
+                    theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
               ),
             ),
             const SizedBox(width: 8),
             Text(
               _formatDate(product.dateAttribution),
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
+                color:
+                    theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
               ),
             ),
           ],
@@ -407,7 +410,8 @@ class FilteredProductCard extends StatelessWidget {
               Text(
                 label,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
+                  color:
+                      theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -432,9 +436,9 @@ class FilteredProductCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -491,6 +495,8 @@ class FilteredProductCard extends StatelessWidget {
     switch (product.nature) {
       case ProductNature.brut:
         return Colors.amber;
+      case ProductNature.liquide:
+        return Colors.lightBlue;
       case ProductNature.filtre:
         return Colors.blue;
       case ProductNature.cire:

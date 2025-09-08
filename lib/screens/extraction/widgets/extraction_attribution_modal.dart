@@ -287,7 +287,7 @@ class _ExtractionAttributionModalState
                 items: SiteAttribution.values
                     .map((site) => DropdownMenuItem(
                           value: site,
-                          child: Text(site.nom),
+                          child: Text(site.name),
                         ))
                     .toList(),
                 onChanged: (value) {
@@ -526,7 +526,7 @@ class _ExtractionAttributionModalState
                 Expanded(
                   child: _buildResumeItem(
                     'Destination',
-                    _selectedSite.nom,
+                    _selectedSite.name,
                     Icons.location_on,
                     theme,
                   ),
@@ -650,8 +650,8 @@ class _ExtractionAttributionModalState
 
     try {
       await _service.creerAttribution(
-        type: _selectedType,
-        siteDestination: _selectedSite,
+        type: _selectedType.value, // Convertir enum en string
+        siteDestination: _selectedSite.value, // Convertir enum en string
         produitsExtraitsIds: _selectedProduits.toList(),
         extracteurId: widget.extracteurId,
         extracteurNom: widget.extracteurNom,
@@ -690,4 +690,3 @@ class _ExtractionAttributionModalState
     }
   }
 }
-

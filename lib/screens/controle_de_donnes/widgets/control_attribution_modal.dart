@@ -1,10 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import '../models/attribution_models.dart';
 import '../models/collecte_models.dart';
-import '../services/control_attribution_service.dart';
+import '../models/attribution_models_v2.dart';
+import '../services/firestore_attribution_service.dart';
 
+/// 🎯 SYSTÈME D'ATTRIBUTION PRINCIPAL - FICHIER ACTIF 🎯
+///
+/// ✅ CE FICHIER EST LE SYSTÈME D'ATTRIBUTION PRINCIPAL UTILISÉ DANS L'APPLICATION
+///
+/// Utilisation:
+/// - Accessible via les boutons "Attribuer à Extraction" et "Attribuer à Filtration"
+/// - Dans les cartes de collecte du module Contrôle de Données
+///
+/// ⚠️ IMPORTANT:
+/// - AttributionPageComplete est désactivé - NE PLUS L'UTILISER
+/// - Toutes les modifications d'attribution doivent être faites ICI
+///
 /// Modal de création d'attribution depuis le module Contrôle
 class ControlAttributionModal extends StatefulWidget {
   final BaseCollecte collecte;
@@ -25,7 +37,7 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
     with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _commentairesController = TextEditingController();
-  final _attributionService = ControlAttributionService();
+  final _attributionService = FirestoreAttributionService();
 
   // État du formulaire
   String _utilisateur = '';
@@ -112,19 +124,45 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
         return _sitesExtraction;
       case AttributionType.filtration:
         return _sitesFiltrage;
-      // case AttributionType.traitementCire:
-      //   return _sitesCire;
+      case AttributionType.traitementCire:
+        return _sitesFiltrage; // Use same sites as filtrage for now
     }
   }
 
   void _loadAvailableContenants() {
-    _availableContenants =
-        _attributionService.getContenantsDisponibles(widget.collecte);
+    _availableContenants = _getContenantsDisponibles(widget.collecte);
     if (_availableContenants.isNotEmpty) {
       // Sélectionner tous les contenants par défaut
       _selectedContenants = List.from(_availableContenants);
     }
     setState(() {});
+  }
+
+  /// Récupère la liste des contenants disponibles depuis une collecte
+  List<String> _getContenantsDisponibles(BaseCollecte collecte) {
+    List<String> contenants = [];
+
+    if (collecte is Recolte) {
+      for (int i = 0; i < collecte.contenants.length; i++) {
+        // Générer un ID unique pour chaque contenant
+        contenants.add('${collecte.id}_cont_${i + 1}');
+      }
+    } else if (collecte is Scoop) {
+      for (int i = 0; i < (collecte.containersCount ?? 0); i++) {
+        contenants.add('${collecte.id}_scoop_${i + 1}');
+      }
+    } else if (collecte is Individuel) {
+      for (int i = 0; i < (collecte.containersCount ?? 0); i++) {
+        contenants.add('${collecte.id}_indiv_${i + 1}');
+      }
+    } else {
+      // Pour les autres types, utiliser le nombre de contenants
+      for (int i = 0; i < (collecte.containersCount ?? 0); i++) {
+        contenants.add('${collecte.id}_cont_${i + 1}');
+      }
+    }
+
+    return contenants;
   }
 
   @override
@@ -204,9 +242,7 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: widget.type == AttributionType.extraction
-              ? [Colors.blue.shade600, Colors.blue.shade800]
-              : [Colors.purple.shade600, Colors.purple.shade800],
+          colors: _getTypeGradientColors(),
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -214,19 +250,29 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: _getTypeColor().withOpacity(0.3),
+            spreadRadius: 2,
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
+            width: 50,
+            height: 50,
             padding: const EdgeInsets.all(12),
-            decoration: const BoxDecoration(
-              color: Colors.white24,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
               shape: BoxShape.circle,
+              border:
+                  Border.all(color: Colors.white.withOpacity(0.3), width: 2),
             ),
             child: Icon(
-              widget.type == AttributionType.extraction
-                  ? Icons.science
-                  : Icons.filter_alt,
+              _getTypeIcon(),
               color: Colors.white,
               size: 24,
             ),
@@ -237,73 +283,278 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Attribuer à ${widget.type.label}',
+                  '${_getTypeEmoji()} Attribution ${widget.type.label}',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 20,
+                    fontSize: 22,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                const SizedBox(height: 4),
                 Text(
-                  'Collecte: ${widget.collecte.site} - ${_formatDate(widget.collecte.date)}',
-                  style: const TextStyle(
-                    color: Colors.white70,
+                  '📦 ${widget.collecte.site} • ${_formatDate(widget.collecte.date)}',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
                     fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '⚖️ ${widget.collecte.totalWeight?.toStringAsFixed(1) ?? 'N/A'} kg • 📦 ${widget.collecte.containersCount ?? 0} contenants',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.8),
+                    fontSize: 12,
                   ),
                 ),
               ],
             ),
           ),
-          IconButton(
-            onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.close, color: Colors.white),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close, color: Colors.white, size: 24),
+              tooltip: 'Fermer',
+            ),
           ),
         ],
       ),
     );
+  }
+
+  // Nouvelles méthodes helper pour les couleurs et icônes modernes
+  List<Color> _getTypeGradientColors() {
+    switch (widget.type) {
+      case AttributionType.extraction:
+        return [const Color(0xFF6D4C41), const Color(0xFF8D6E63)];
+      case AttributionType.filtration:
+        return [const Color(0xFF1E88E5), const Color(0xFF42A5F5)];
+      case AttributionType.traitementCire:
+        return [const Color(0xFFF57C00), const Color(0xFFFFB74D)];
+    }
+  }
+
+  Color _getTypeColor() {
+    switch (widget.type) {
+      case AttributionType.extraction:
+        return const Color(0xFF6D4C41);
+      case AttributionType.filtration:
+        return const Color(0xFF1E88E5);
+      case AttributionType.traitementCire:
+        return const Color(0xFFF57C00);
+    }
+  }
+
+  IconData _getTypeIcon() {
+    switch (widget.type) {
+      case AttributionType.extraction:
+        return Icons.science;
+      case AttributionType.filtration:
+        return Icons.filter_alt;
+      case AttributionType.traitementCire:
+        return Icons.cleaning_services;
+    }
+  }
+
+  String _getTypeEmoji() {
+    switch (widget.type) {
+      case AttributionType.extraction:
+        return '🧪';
+      case AttributionType.filtration:
+        return '💧';
+      case AttributionType.traitementCire:
+        return '🜂';
+    }
   }
 
   Widget _buildCollecteInfo() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        gradient: LinearGradient(
+          colors: [
+            Colors.white,
+            _getTypeColor().withOpacity(0.05),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _getTypeColor().withOpacity(0.2), width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: _getTypeColor().withOpacity(0.08),
+            spreadRadius: 1,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Informations de la collecte',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _getTypeColor().withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.info_outline,
+                  color: _getTypeColor(),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '📋 Détails de la collecte',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: _getTypeColor(),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Statistiques principales
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _getTypeColor().withOpacity(0.05),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    '⚖️',
+                    '${widget.collecte.totalWeight?.toStringAsFixed(1) ?? 'N/A'} kg',
+                    'Poids total',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildStatCard(
+                    '📦',
+                    '${widget.collecte.containersCount ?? 0}',
+                    'Contenants',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildStatCard(
+                    '💰',
+                    '${widget.collecte.totalAmount?.toStringAsFixed(0) ?? 'N/A'} F',
+                    'Montant',
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          _buildInfoRow('Site', widget.collecte.site),
-          _buildInfoRow('Date', _formatDate(widget.collecte.date)),
+          const SizedBox(height: 16),
+
+          // Informations détaillées
+          _buildModernInfoRow(Icons.location_on, 'Site', widget.collecte.site),
+          _buildModernInfoRow(
+              Icons.calendar_today, 'Date', _formatDate(widget.collecte.date)),
           if (widget.collecte.technicien != null)
-            _buildInfoRow('Technicien', widget.collecte.technicien!),
-          _buildInfoRow('Poids total',
-              '${widget.collecte.totalWeight?.toStringAsFixed(1) ?? 'N/A'} kg'),
-          _buildInfoRow('Montant total',
-              '${widget.collecte.totalAmount?.toStringAsFixed(0) ?? 'N/A'} FCFA'),
-          _buildInfoRow(
-              'Contenants', '${widget.collecte.containersCount ?? 0}'),
+            _buildModernInfoRow(
+                Icons.person, 'Technicien', widget.collecte.technicien!),
+
+          // Indicateur de qualité si disponible
+          if (widget.collecte.totalWeight != null &&
+              widget.collecte.totalWeight! > 0)
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle,
+                      color: Colors.green.shade600, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    '✅ Collecte prête pour attribution',
+                    style: TextStyle(
+                      color: Colors.green.shade700,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildInfoRow(String label, String value) {
+  Widget _buildStatCard(String emoji, String value, String label) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _getTypeColor().withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            emoji,
+            style: const TextStyle(fontSize: 20),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: _getTypeColor(),
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernInfoRow(IconData icon, String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: _getTypeColor().withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(
+              icon,
+              size: 16,
+              color: _getTypeColor(),
+            ),
+          ),
+          const SizedBox(width: 12),
           SizedBox(
-            width: 100,
+            width: 80,
             child: Text(
               '$label:',
               style: const TextStyle(
@@ -317,6 +568,7 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
               value,
               style: const TextStyle(
                 fontWeight: FontWeight.w600,
+                fontSize: 15,
               ),
             ),
           ),
@@ -673,76 +925,225 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
     if (_selectedContenants.isEmpty) return const SizedBox();
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            widget.type == AttributionType.extraction
-                ? Colors.blue.shade50
-                : Colors.purple.shade50,
+            _getTypeColor().withOpacity(0.08),
             Colors.white,
+            _getTypeColor().withOpacity(0.03),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: widget.type == AttributionType.extraction
-              ? Colors.blue.shade200
-              : Colors.purple.shade200,
+          color: _getTypeColor().withOpacity(0.3),
+          width: 2,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: _getTypeColor().withOpacity(0.1),
+            spreadRadius: 2,
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Résumé de l\'attribution',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: widget.type == AttributionType.extraction
-                  ? Colors.blue.shade800
-                  : Colors.purple.shade800,
+          // En-tête du résumé
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: _getTypeGradientColors(),
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.summarize,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '📋 Résumé de l\'attribution',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.white,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${_selectedContenants.length} produits',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
+          const SizedBox(height: 16),
+
+          // Statistiques visuelles
+          Row(
+            children: [
+              Expanded(
+                child: _buildSummaryCard(
+                  _getTypeIcon(),
+                  widget.type.label,
+                  'Type d\'attribution',
+                  _getTypeColor(),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildSummaryCard(
+                  Icons.inventory_2,
+                  '${_selectedContenants.length}',
+                  'Contenants',
+                  Colors.orange.shade600,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
-          _buildSummaryRow(Icons.assignment, 'Type', widget.type.label),
-          _buildSummaryRow(Icons.location_city, 'Site receveur',
-              _siteReceveur.isEmpty ? 'Non sélectionné' : _siteReceveur),
-          _buildSummaryRow(
-              Icons.inventory, 'Contenants', '${_selectedContenants.length}'),
-          _buildSummaryRow(Icons.person, 'Utilisateur', _utilisateur),
-          _buildSummaryRow(
-              Icons.access_time, 'Date', _formatDate(DateTime.now())),
+
+          // Informations détaillées
+          _buildModernSummaryRow(
+              Icons.location_city,
+              'Site receveur',
+              _siteReceveur.isEmpty ? 'Non sélectionné' : _siteReceveur,
+              _siteReceveur.isEmpty ? Colors.orange : Colors.green),
+          _buildModernSummaryRow(
+              Icons.person, 'Utilisateur', _utilisateur, Colors.blue),
+          _buildModernSummaryRow(Icons.access_time, 'Date d\'attribution',
+              _formatDate(DateTime.now()), Colors.purple),
+
+          // Indicateur de statut
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.green.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.green.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.check_circle,
+                    color: Colors.green.shade600, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '✅ Prêt pour l\'attribution ! Tous les champs sont remplis.',
+                    style: TextStyle(
+                      color: Colors.green.shade700,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSummaryRow(IconData icon, String label, String value) {
+  Widget _buildSummaryCard(
+      IconData icon, String value, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernSummaryRow(
+      IconData icon, String label, String value, Color color) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          Icon(
-            icon,
-            size: 18,
-            color: widget.type == AttributionType.extraction
-                ? Colors.blue.shade600
-                : Colors.purple.shade600,
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(icon, size: 16, color: color),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
           SizedBox(
-            width: 80,
+            width: 100,
             child: Text(
               '$label:',
-              style: const TextStyle(fontWeight: FontWeight.w500),
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Colors.grey,
+                fontSize: 13,
+              ),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
             ),
           ),
         ],
@@ -754,51 +1155,96 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        gradient: LinearGradient(
+          colors: [
+            Colors.white,
+            _getTypeColor().withOpacity(0.03),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
         borderRadius: const BorderRadius.only(
           bottomLeft: Radius.circular(20),
           bottomRight: Radius.circular(20),
+        ),
+        border: Border(
+          top: BorderSide(
+            color: Colors.grey.shade200,
+            width: 1,
+          ),
         ),
       ),
       child: Row(
         children: [
           Expanded(
-            child: OutlinedButton(
+            child: OutlinedButton.icon(
               onPressed: _isLoading ? null : () => Navigator.pop(context),
+              icon: const Icon(Icons.cancel_outlined, size: 18),
+              label: const Text('Annuler'),
               style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
+                side: BorderSide(color: Colors.grey.shade400),
+                foregroundColor: Colors.grey.shade700,
               ),
-              child: const Text('Annuler'),
             ),
           ),
           const SizedBox(width: 16),
           Expanded(
             flex: 2,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _validateAndSubmit,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: widget.type == AttributionType.extraction
-                    ? Colors.blue.shade600
-                    : Colors.purple.shade600,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: _getTypeGradientColors(),
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: _getTypeColor().withOpacity(0.3),
+                    spreadRadius: 1,
+                    blurRadius: 6,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: ElevatedButton.icon(
+                onPressed: _isLoading ? null : _validateAndSubmit,
+                icon: _isLoading
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Icon(_getTypeIcon(), size: 18),
+                label: Text(
+                  _isLoading
+                      ? 'Attribution en cours...'
+                      : '${_getTypeEmoji()} Confirmer Attribution',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                  : Text('Attribuer à ${widget.type.label}'),
             ),
           ),
         ],

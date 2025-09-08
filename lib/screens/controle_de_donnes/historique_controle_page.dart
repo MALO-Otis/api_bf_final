@@ -2,6 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'models/quality_control_models.dart';
 import 'services/quality_control_service.dart';
+import 'historique_attribution_page.dart';
+
+/// ⚠️ ANCIENNE PAGE HISTORIQUE - REMPLACÉE PAR HistoriqueAttributionPage
+///
+/// Cette page ne gère que les contrôles qualité.
+/// Pour une vue complète avec attributions + statistiques avancées,
+/// utilisez la nouvelle page: HistoriqueAttributionPage
+///
+/// TODO: À terme, cette page pourrait être supprimée ou intégrée
+/// dans la nouvelle page historique améliorée.
 
 class HistoriqueControlePage extends StatefulWidget {
   const HistoriqueControlePage({super.key});
@@ -302,16 +312,39 @@ class _HistoriqueControlePageState extends State<HistoriqueControlePage>
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Historique des Contrôles',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+            Row(
+              children: [
+                const Text(
+                  'Historique des Contrôles',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.orange,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'ANCIENNE',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
             ),
             Text(
-              _isGroupedView ? 'Groupé par Producteur' : 'Vue Liste',
+              _isGroupedView
+                  ? 'Groupé par Producteur • Contrôles uniquement'
+                  : 'Vue Liste • Contrôles uniquement',
               style: TextStyle(
                 fontWeight: FontWeight.w400,
                 fontSize: 12,
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
               ),
             ),
           ],
@@ -320,6 +353,30 @@ class _HistoriqueControlePageState extends State<HistoriqueControlePage>
         foregroundColor: Colors.white,
         elevation: 2,
         actions: [
+          // 🆕 NOUVEAU: Bouton vers la nouvelle page historique complète
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const HistoriqueAttributionPage(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.upgrade, size: 16),
+              label: const Text('Nouvelle Page'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                textStyle:
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
           IconButton(
             icon: Icon(_isGroupedView ? Icons.view_list : Icons.group_work),
             onPressed: () => setState(() => _isGroupedView = !_isGroupedView),
@@ -359,6 +416,8 @@ class _HistoriqueControlePageState extends State<HistoriqueControlePage>
               opacity: _fadeAnimation,
               child: Column(
                 children: [
+                  // 🆕 BANNIÈRE D'INFORMATION
+                  _buildUpgradeBanner(),
                   if (_showFilters) _buildFiltersSection(theme, isMobile),
                   if (!_showFilters)
                     Padding(
@@ -376,6 +435,86 @@ class _HistoriqueControlePageState extends State<HistoriqueControlePage>
                 ],
               ),
             ),
+    );
+  }
+
+  /// 🆕 Bannière d'information pour rediriger vers la nouvelle page
+  Widget _buildUpgradeBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.deepPurple.shade700, Colors.deepPurple.shade500],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.new_releases,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '🚀 Nouvelle Page Historique Disponible !',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Découvrez la nouvelle page avec attributions + statistiques avancées',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const HistoriqueAttributionPage(),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.deepPurple.shade700,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              textStyle:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+            child: const Text('Découvrir'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -407,7 +546,7 @@ class _HistoriqueControlePageState extends State<HistoriqueControlePage>
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -742,7 +881,7 @@ class _HistoriqueControlePageState extends State<HistoriqueControlePage>
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -756,7 +895,7 @@ class _HistoriqueControlePageState extends State<HistoriqueControlePage>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: color, size: 20),
@@ -990,7 +1129,7 @@ class _HistoriqueControlePageState extends State<HistoriqueControlePage>
                 decoration: BoxDecoration(
                   color: QualityControlUtils.getConformityStatusColor(
                           control.conformityStatus)
-                      .withOpacity(0.1),
+                      .withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -1111,7 +1250,7 @@ class _HistoriqueControlePageState extends State<HistoriqueControlePage>
               decoration: BoxDecoration(
                 color: QualityControlUtils.getConformityStatusColor(
                         control.conformityStatus)
-                    .withOpacity(0.1),
+                    .withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
@@ -1162,7 +1301,7 @@ class _HistoriqueControlePageState extends State<HistoriqueControlePage>
                     decoration: BoxDecoration(
                       color: QualityControlUtils.getConformityStatusColor(
                               control.conformityStatus)
-                          .withOpacity(0.1),
+                          .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
@@ -1374,7 +1513,7 @@ class _HistoriqueControlePageState extends State<HistoriqueControlePage>
               decoration: BoxDecoration(
                 color: QualityControlUtils.getConformityStatusColor(
                         control.conformityStatus)
-                    .withOpacity(0.1),
+                    .withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Row(
@@ -1535,12 +1674,12 @@ class _HistoriqueControlePageState extends State<HistoriqueControlePage>
           decoration: BoxDecoration(
             color: QualityControlUtils.getConformityStatusColor(
                     control.conformityStatus)
-                .withOpacity(0.1),
+                .withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: QualityControlUtils.getConformityStatusColor(
                       control.conformityStatus)
-                  .withOpacity(0.3),
+                  .withValues(alpha: 0.3),
             ),
           ),
           child: Row(

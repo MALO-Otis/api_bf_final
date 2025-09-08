@@ -5,6 +5,8 @@ import '../models/quality_control_models.dart';
 import '../models/collecte_models.dart';
 import '../utils/formatters.dart';
 import '../services/quality_control_service.dart';
+import '../../filtrage/widgets/visual_container_id_widget.dart';
+import '../../../services/universal_container_id_service.dart';
 
 class QualityControlForm extends StatefulWidget {
   final BaseCollecte collecteItem;
@@ -51,6 +53,15 @@ class _QualityControlFormState extends State<QualityControlForm> {
   DateTime? _collectionEndDate;
   HoneyNature _honeyNature = HoneyNature.brut;
   ConformityStatus _conformityStatus = ConformityStatus.conforme;
+
+  // Nouveau système d'ID universel
+  String _validatedContainerId = '';
+  List<ContainerMatchResult> _possibleMatches = [];
+
+  // Variables pour le widget avancé
+  String _containerNature = '';
+  String _numeroCode = '';
+  bool _isContainerValid = false;
 
   @override
   void initState() {
@@ -174,7 +185,7 @@ class _QualityControlFormState extends State<QualityControlForm> {
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: theme.colorScheme.outline.withOpacity(0.2),
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
           ),
         ),
       ),
@@ -186,7 +197,7 @@ class _QualityControlFormState extends State<QualityControlForm> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: theme.colorScheme.onSurfaceVariant.withOpacity(0.4),
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -231,7 +242,7 @@ class _QualityControlFormState extends State<QualityControlForm> {
                 onPressed: widget.onCancel,
                 icon: const Icon(Icons.close),
                 style: IconButton.styleFrom(
-                  backgroundColor: theme.colorScheme.surfaceVariant,
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
                   foregroundColor: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
@@ -267,6 +278,8 @@ class _QualityControlFormState extends State<QualityControlForm> {
                 'Nom du producteur',
                 isMobile,
                 isRequired: true,
+                isReadOnly:
+                    true, // 🔒 Verrouillé - auto-rempli depuis les données de collecte
               ),
               const SizedBox(height: 16),
               _buildTextField(
@@ -275,6 +288,8 @@ class _QualityControlFormState extends State<QualityControlForm> {
                 'Nom du village',
                 isMobile,
                 isRequired: true,
+                isReadOnly:
+                    true, // 🔒 Verrouillé - auto-rempli depuis les données de collecte
               ),
             ] else ...[
               Row(
@@ -286,6 +301,8 @@ class _QualityControlFormState extends State<QualityControlForm> {
                       'Nom du producteur',
                       isMobile,
                       isRequired: true,
+                      isReadOnly:
+                          true, // 🔒 Verrouillé - auto-rempli depuis les données de collecte
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -296,6 +313,8 @@ class _QualityControlFormState extends State<QualityControlForm> {
                       'Nom du village',
                       isMobile,
                       isRequired: true,
+                      isReadOnly:
+                          true, // 🔒 Verrouillé - auto-rempli depuis les données de collecte
                     ),
                   ),
                 ],
@@ -311,6 +330,28 @@ class _QualityControlFormState extends State<QualityControlForm> {
             ),
           ],
           isMobile,
+        ),
+
+        const SizedBox(height: 24),
+
+        // Section 1.5: Identification VISUELLE du contenant (AMÉLIORÉ)
+        VisualContainerIdWidget(
+          onContainerChanged:
+              (containerId, containerNature, numeroCode, isValid) {
+            setState(() {
+              _validatedContainerId = containerId;
+              _containerNature = containerNature;
+              _numeroCode = numeroCode;
+              _isContainerValid = isValid;
+
+              // Auto-remplir seulement le numéro code (synchronisé)
+              _containerNumberController.text = numeroCode;
+
+              // Le champ "Contenant du miel" reste libre à la saisie utilisateur
+            });
+          },
+          initialContainerId:
+              widget.containerCode.isNotEmpty ? widget.containerCode : null,
         ),
 
         const SizedBox(height: 24),
@@ -376,6 +417,53 @@ class _QualityControlFormState extends State<QualityControlForm> {
           [
             _buildHoneyNatureSelector(theme, isMobile),
             const SizedBox(height: 16),
+            // ⚠️ MISE À JOUR: Champs synchronisés automatiquement avec l'ID ci-dessus
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline,
+                      color: Colors.orange.shade600, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Seul le champ "Numéro (code)" est automatiquement synchronisé avec '
+                      'l\'identifiant du contenant. Le champ "Contenant du miel" est libre à votre saisie.',
+                      style: TextStyle(
+                        color: Colors.orange.shade700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Affichage informatif des valeurs extraites (utilise les variables)
+            if (_containerNature.isNotEmpty || _numeroCode.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Text(
+                  'Valeurs extraites: ${_containerNature.isNotEmpty ? "Nature: $_containerNature" : ""}'
+                  '${_numeroCode.isNotEmpty ? " | Code: $_numeroCode" : ""}',
+                  style: TextStyle(
+                    color: Colors.green.shade700,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             if (isMobile && isVerySmall) ...[
               _buildTextField(
                 'Contenant du miel',
@@ -383,14 +471,17 @@ class _QualityControlFormState extends State<QualityControlForm> {
                 'Type de contenant',
                 isMobile,
                 isRequired: true,
+                isReadOnly:
+                    false, // ✏️ Modifiable à la demande de l'utilisateur
               ),
               const SizedBox(height: 16),
               _buildTextField(
-                'Numéro (code)',
+                'Numéro (code) *',
                 _containerNumberController,
-                'Code du contenant',
+                'Code du contenant (synchronisé)',
                 isMobile,
                 isRequired: true,
+                isReadOnly: true, // 🔒 Verrouillé - synchronisé avec l'ID
               ),
             ] else ...[
               Row(
@@ -402,16 +493,19 @@ class _QualityControlFormState extends State<QualityControlForm> {
                       'Type de contenant',
                       isMobile,
                       isRequired: true,
+                      isReadOnly:
+                          false, // ✏️ Modifiable à la demande de l'utilisateur
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: _buildTextField(
-                      'Numéro (code)',
+                      'Numéro (code) *',
                       _containerNumberController,
-                      'Code du contenant',
+                      'Code du contenant (synchronisé)',
                       isMobile,
                       isRequired: true,
+                      isReadOnly: true, // 🔒 Verrouillé - synchronisé avec l'ID
                     ),
                   ),
                 ],
@@ -576,10 +670,10 @@ class _QualityControlFormState extends State<QualityControlForm> {
       width: double.infinity,
       padding: EdgeInsets.all(isMobile ? 16 : 20),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.2),
+          color: theme.colorScheme.outline.withValues(alpha: 0.2),
         ),
       ),
       child: Column(
@@ -617,6 +711,7 @@ class _QualityControlFormState extends State<QualityControlForm> {
     bool isRequired = false,
     bool isOptional = false,
     int maxLines = 1,
+    bool isReadOnly = false, // 🆕 Nouveau paramètre pour verrouiller les champs
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -651,9 +746,17 @@ class _QualityControlFormState extends State<QualityControlForm> {
         TextFormField(
           controller: controller,
           maxLines: maxLines,
-          style: TextStyle(fontSize: isMobile ? 14 : 16),
+          readOnly: isReadOnly, // 🆕 Mode lecture seule
+          style: TextStyle(
+            fontSize: isMobile ? 14 : 16,
+            color: isReadOnly
+                ? Colors.grey[600]
+                : null, // 🆕 Couleur grisée si verrouillé
+          ),
           decoration: InputDecoration(
-            hintText: hint,
+            hintText: isReadOnly
+                ? 'Champ auto-rempli (verrouillé)'
+                : hint, // 🆕 Hint adapté
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
             ),
@@ -662,6 +765,12 @@ class _QualityControlFormState extends State<QualityControlForm> {
               vertical: isMobile ? 12 : 16,
             ),
             isDense: isMobile,
+            filled: isReadOnly, // 🆕 Fond coloré si verrouillé
+            fillColor:
+                isReadOnly ? Colors.grey[100] : null, // 🆕 Couleur de fond
+            prefixIcon: isReadOnly
+                ? Icon(Icons.lock_outline, size: 16, color: Colors.grey[600])
+                : null, // 🆕 Icône cadenas
           ),
           validator: isRequired
               ? (value) {
@@ -933,7 +1042,7 @@ class _QualityControlFormState extends State<QualityControlForm> {
         color: theme.colorScheme.surface,
         border: Border(
           top: BorderSide(
-            color: theme.colorScheme.outline.withOpacity(0.2),
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
           ),
         ),
       ),
@@ -977,6 +1086,67 @@ class _QualityControlFormState extends State<QualityControlForm> {
 
   Future<void> _saveForm() async {
     if (_formKey.currentState!.validate()) {
+      // Validation de l'ID de contenant
+      if (_validatedContainerId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Veuillez identifier un contenant valide avant de sauvegarder'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // 🆕 Validation obligatoire de l'existence du contenant
+      if (!_isContainerValid) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Le contenant doit être recherché et validé avant l\'enregistrement. '
+                    'Cliquez sur "Rechercher le contenant" pour vérifier son existence.',
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 6),
+          ),
+        );
+        return;
+      }
+
+      // ✅ Si on vient d'un autre widget qui fournit des correspondances possibles,
+      // vérifier qu'au moins une correspondance est trouvée. Sinon, si la validation
+      // visuelle a déjà confirmé le contenant, ne pas bloquer sur une liste vide.
+      if (_possibleMatches.isNotEmpty &&
+          !_possibleMatches.any((m) => m.found)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Le contenant identifié n\'a pas été trouvé dans les collectes'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      if (_possibleMatches.length > 1) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Plusieurs contenants correspondent. Veuillez en sélectionner un spécifiquement.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
       // Validation supplémentaire
       if (_conformityStatus == ConformityStatus.nonConforme &&
           _nonConformityCauseController.text.trim().isEmpty) {
@@ -999,9 +1169,9 @@ class _QualityControlFormState extends State<QualityControlForm> {
       );
 
       try {
-        // Créer l'objet de données
+        // Créer l'objet de données avec l'ID validé
         final qualityData = QualityControlData(
-          containerCode: widget.containerCode,
+          containerCode: _validatedContainerId, // 🆕 Utiliser l'ID validé
           receptionDate: _receptionDate,
           producer: _producerController.text.trim(),
           apiaryVillage: _villageController.text.trim(),
@@ -1029,9 +1199,11 @@ class _QualityControlFormState extends State<QualityControlForm> {
           controllerName: _controllerNameController.text.trim(),
         );
 
-        // Sauvegarder avec le service
-        final success =
-            await QualityControlService().saveQualityControl(qualityData);
+        // Sauvegarder avec le service en incluant l'ID de la collecte
+        final success = await QualityControlService().saveQualityControl(
+          qualityData,
+          collecteId: widget.collecteItem.id,
+        );
 
         // Fermer le dialog de chargement
         if (mounted) Navigator.of(context).pop();

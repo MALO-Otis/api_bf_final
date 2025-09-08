@@ -218,6 +218,7 @@ class _EditCollecteIndividuellePageState
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'fab-edit-collecte-individuelle-add',
         onPressed: _saving ? null : _addContenant,
         backgroundColor: Colors.orange[600],
         icon: const Icon(Icons.add),

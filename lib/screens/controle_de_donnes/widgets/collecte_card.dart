@@ -2,7 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/collecte_models.dart';
-import '../models/attribution_models.dart';
+import '../models/attribution_models_v2.dart';
+
 import '../utils/formatters.dart';
 import 'quality_control_indicator.dart';
 
@@ -501,7 +502,7 @@ class CollecteCard extends StatelessWidget {
         textColor = Colors.blue.shade800;
         break;
       default:
-        backgroundColor = theme.colorScheme.surfaceVariant;
+        backgroundColor = theme.colorScheme.surfaceContainerHighest;
         textColor = theme.colorScheme.onSurfaceVariant;
     }
 
@@ -596,7 +597,7 @@ class CollecteCard extends StatelessWidget {
     return Container(
       width: 1,
       margin: const EdgeInsets.symmetric(horizontal: 12),
-      color: theme.colorScheme.outline.withOpacity(0.2),
+      color: theme.colorScheme.outline.withValues(alpha: 0.2),
     );
   }
 
@@ -723,7 +724,7 @@ class CollecteCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Column(
@@ -774,7 +775,7 @@ class CollecteCard extends StatelessWidget {
               color: Theme.of(context)
                   .colorScheme
                   .primaryContainer
-                  .withOpacity(0.7),
+                  .withValues(alpha: 0.7),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
@@ -831,7 +832,7 @@ class CollecteCardSkeleton extends StatelessWidget {
                   width: 60,
                   height: 20,
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceVariant,
+                    color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
@@ -840,7 +841,7 @@ class CollecteCardSkeleton extends StatelessWidget {
                   width: 80,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceVariant,
+                    color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
@@ -854,7 +855,7 @@ class CollecteCardSkeleton extends StatelessWidget {
               width: double.infinity,
               height: 20,
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceVariant,
+                color: theme.colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
@@ -866,7 +867,7 @@ class CollecteCardSkeleton extends StatelessWidget {
               width: 200,
               height: 16,
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceVariant,
+                color: theme.colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
@@ -887,7 +888,7 @@ class CollecteCardSkeleton extends StatelessWidget {
                           width: double.infinity,
                           height: 12,
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceVariant,
+                            color: theme.colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -896,7 +897,7 @@ class CollecteCardSkeleton extends StatelessWidget {
                           width: 40,
                           height: 16,
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceVariant,
+                            color: theme.colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),

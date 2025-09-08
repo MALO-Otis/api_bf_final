@@ -6,13 +6,13 @@ import 'package:get/get.dart';
 import 'package:flutter/services.dart';
 import '../../authentication/user_session.dart';
 import 'models/collecte_models.dart';
-import 'models/attribution_models.dart';
+import 'models/attribution_models_v2.dart';
 // import 'services/mock_data_service.dart'; // SERVICE SUPPRIMÉ - Générait des données fictives
 import 'services/firestore_data_service.dart';
 import 'services/pdf_statistics_service.dart';
 import 'services/quality_control_service.dart';
 import 'package:share_plus/share_plus.dart';
-import 'services/control_attribution_service.dart';
+// Import supprimé car non utilisé
 import 'services/global_refresh_service.dart';
 import 'utils/formatters.dart';
 import 'widgets/stat_card.dart';
@@ -20,9 +20,10 @@ import 'widgets/multi_select_popover.dart';
 import 'widgets/collecte_card.dart';
 import 'widgets/details_dialog.dart';
 import 'widgets/control_attribution_modal.dart';
-import '../extraction/extraction_page.dart';
+import '../extraction/pages/main_extraction_page.dart';
+import '../attribution/attribution_page_complete.dart';
 import 'historique_controle_page.dart';
-import 'attribution_intelligente_page.dart';
+import 'historique_attribution_page.dart';
 
 class ControlePageDashboard extends StatefulWidget {
   const ControlePageDashboard({super.key});
@@ -37,8 +38,8 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final ControlAttributionService _attributionService =
-      ControlAttributionService();
+  // final ControlAttributionService _attributionService =
+  //     ControlAttributionService(); // Non utilisé
 
   // Données
   Map<Section, List<BaseCollecte>> _allData = {};
@@ -68,6 +69,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
   // Subscriptions pour les notifications globales
   late StreamSubscription _qualityControlUpdateSubscription;
   late StreamSubscription _collecteUpdateSubscription;
+  late StreamSubscription _interfaceSyncSubscription;
 
   @override
   void initState() {
@@ -92,6 +94,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
     _scrollController.dispose();
     _qualityControlUpdateSubscription.cancel();
     _collecteUpdateSubscription.cancel();
+    _interfaceSyncSubscription.cancel();
     super.dispose();
   }
 
@@ -201,11 +204,66 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
         _refreshData();
       }
     });
+
+    // 🆕 Écouter les synchronisations spécifiques entre interfaces
+    _interfaceSyncSubscription =
+        globalRefreshService.interfaceSyncStream.listen((syncData) {
+      if (mounted) {
+        final action = syncData['action'] as String?;
+        final collecteId = syncData['collecteId'] as String?;
+        final containerCode = syncData['containerCode'] as String?;
+
+        print('🔄 Page principale: Synchronisation interface - $action');
+        print('   CollecteId: $collecteId, ContainerCode: $containerCode');
+
+        switch (action) {
+          case 'quality_control_updated':
+            _refreshDataForCollecte(collecteId);
+            break;
+          case 'collecte_details_opened':
+            // Interface de détails ouverte, préparer les données
+            _preloadCollecteData(collecteId);
+            break;
+          default:
+            _refreshData();
+        }
+      }
+    });
   }
 
   /// Rafraîchit les données depuis Firestore
   Future<void> _refreshData() async {
     _loadData();
+  }
+
+  /// Rafraîchit les données pour une collecte spécifique
+  Future<void> _refreshDataForCollecte(String? collecteId) async {
+    if (collecteId == null) {
+      _refreshData();
+      return;
+    }
+
+    print('🔄 Rafraîchissement spécifique pour collecte: $collecteId');
+
+    // Pour l'instant, on fait un refresh complet mais optimisé
+    // TODO: Implémenter un refresh plus granulaire par collecte
+    _refreshData();
+  }
+
+  /// Précharge les données d'une collecte pour optimiser l'affichage des détails
+  Future<void> _preloadCollecteData(String? collecteId) async {
+    if (collecteId == null) return;
+
+    print('📋 Préchargement données pour collecte: $collecteId');
+
+    // Précharger les contrôles qualité pour cette collecte
+    try {
+      final qualityService = QualityControlService();
+      await qualityService.getOptimizedControlStatusForCollecte(collecteId);
+      print('✅ Données préchargées pour $collecteId');
+    } catch (e) {
+      print('❌ Erreur préchargement: $e');
+    }
   }
 
   /// Génère et télécharge le rapport PDF des statistiques
@@ -245,7 +303,8 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                           ? 'Fichier sauvé dans Téléchargements'
                           : 'Fichier sauvé dans Documents',
                       style: TextStyle(
-                          fontSize: 12, color: Colors.white.withOpacity(0.8)),
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.8)),
                     ),
                   ],
                 ),
@@ -376,7 +435,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceVariant,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Column(
@@ -719,10 +778,11 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
           children: [
             // Bouton Attribution Intelligente
             FloatingActionButton.extended(
+              heroTag: 'fab-advanced-attribution',
               onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (context) => const AttributionIntelligentePage(),
+                    builder: (context) => const AttributionPageComplete(),
                   ),
                 );
               },
@@ -732,20 +792,151 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                   style: TextStyle(color: Colors.white)),
             ),
             const SizedBox(height: 12),
-            // Bouton Historique
+            // Bouton Historique (Menu avec 2 options)
             FloatingActionButton.extended(
+              heroTag: 'fab-advanced-historique',
               onPressed: () {
-                Navigator.of(context).push(
+                _showHistoriqueMenu(context);
+              },
+              backgroundColor: Colors.deepPurple.shade700,
+              icon: const Icon(Icons.history, color: Colors.white),
+              label: const Text('Historique',
+                  style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 🆕 Affiche le menu de choix entre les deux pages historiques
+  void _showHistoriqueMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.history,
+                    color: Colors.deepPurple.shade700, size: 24),
+                const SizedBox(width: 8),
+                Text(
+                  'Choisir la page historique',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.deepPurple.shade700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Option 1: Nouvelle page (recommandée)
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.deepPurple.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.dashboard, color: Colors.deepPurple.shade700),
+              ),
+              title: Row(
+                children: [
+                  const Text(
+                    'Historique Complet',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'RECOMMANDÉ',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              subtitle: const Text(
+                  'Attributions + Contrôles + Statistiques avancées'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const HistoriqueAttributionPage(),
+                  ),
+                );
+              },
+            ),
+
+            const Divider(),
+
+            // Option 2: Ancienne page (contrôles seulement)
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.science, color: Colors.blue.shade700),
+              ),
+              title: Row(
+                children: [
+                  const Text(
+                    'Historique des Contrôles',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.orange,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'ANCIENNE',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              subtitle: const Text('Contrôles qualité uniquement'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
                   MaterialPageRoute(
                     builder: (context) => const HistoriqueControlePage(),
                   ),
                 );
               },
-              backgroundColor: Colors.blue.shade700,
-              icon: const Icon(Icons.history, color: Colors.white),
-              label: const Text('Historique',
-                  style: TextStyle(color: Colors.white)),
             ),
+
+            const SizedBox(height: 10),
           ],
         ),
       ),
@@ -851,7 +1042,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
         color: theme.colorScheme.surface,
         border: Border(
           bottom: BorderSide(
-            color: theme.colorScheme.outline.withOpacity(0.2),
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
           ),
         ),
       ),
@@ -923,7 +1114,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                   const BorderRadius.vertical(bottom: Radius.circular(16)),
               boxShadow: [
                 BoxShadow(
-                  color: theme.colorScheme.shadow.withOpacity(0.1),
+                  color: theme.colorScheme.shadow.withValues(alpha: 0.1),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -935,10 +1126,11 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                 // Barre de recherche moderne avec design amélioré
                 Container(
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+                    color: theme.colorScheme.surfaceContainerHighest
+                        .withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: theme.colorScheme.outline.withOpacity(0.2),
+                      color: theme.colorScheme.outline.withValues(alpha: 0.2),
                     ),
                   ),
                   child: TextField(
@@ -947,8 +1139,8 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                     decoration: InputDecoration(
                       hintText: 'Rechercher une collecte...',
                       hintStyle: theme.textTheme.bodyMedium?.copyWith(
-                        color:
-                            theme.colorScheme.onSurfaceVariant.withOpacity(0.6),
+                        color: theme.colorScheme.onSurfaceVariant
+                            .withValues(alpha: 0.6),
                       ),
                       prefixIcon: Icon(
                         Icons.search_rounded,
@@ -997,7 +1189,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                       child: Material(
                         color: _showFilters || _filters.hasActiveFilters
                             ? theme.colorScheme.primaryContainer
-                            : theme.colorScheme.surfaceVariant,
+                            : theme.colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(10),
                         child: InkWell(
                           onTap: () =>
@@ -1060,7 +1252,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
 
                     // Bouton rafraîchir
                     Material(
-                      color: theme.colorScheme.surfaceVariant,
+                      color: theme.colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(10),
                       child: InkWell(
                         onTap: _isLoading ? null : _refreshData,
@@ -1228,8 +1420,8 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: _userRole == Role.admin
-                        ? theme.colorScheme.primary.withOpacity(0.1)
-                        : theme.colorScheme.secondary.withOpacity(0.1),
+                        ? theme.colorScheme.primary.withValues(alpha: 0.1)
+                        : theme.colorScheme.secondary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: _userRole == Role.admin
@@ -1338,8 +1530,8 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: _userRole == Role.admin
-                      ? theme.colorScheme.primary.withOpacity(0.1)
-                      : theme.colorScheme.secondary.withOpacity(0.1),
+                      ? theme.colorScheme.primary.withValues(alpha: 0.1)
+                      : theme.colorScheme.secondary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: _userRole == Role.admin
@@ -1384,10 +1576,10 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         border: Border(
           bottom: BorderSide(
-            color: theme.colorScheme.outline.withOpacity(0.2),
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
           ),
         ),
       ),
@@ -1516,7 +1708,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: theme.colorScheme.shadow.withOpacity(0.08),
+            color: theme.colorScheme.shadow.withValues(alpha: 0.08),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -1529,7 +1721,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(16)),
             ),
@@ -2359,10 +2551,10 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.1),
+          color: theme.colorScheme.outline.withValues(alpha: 0.1),
         ),
       ),
       child: Column(
@@ -2410,7 +2602,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.2),
+          color: theme.colorScheme.outline.withValues(alpha: 0.2),
         ),
       ),
       child: DropdownButton<String>(
@@ -2418,7 +2610,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
         hint: Text(
           hint,
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant.withOpacity(0.6),
+            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
           ),
         ),
         isExpanded: true,
@@ -2436,7 +2628,8 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                   option.isEmpty ? hint : option,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: option.isEmpty
-                        ? theme.colorScheme.onSurfaceVariant.withOpacity(0.6)
+                        ? theme.colorScheme.onSurfaceVariant
+                            .withValues(alpha: 0.6)
                         : theme.colorScheme.onSurface,
                   ),
                 ),
@@ -2503,7 +2696,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
           color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: theme.colorScheme.outline.withOpacity(0.2),
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
           ),
         ),
         child: Row(
@@ -2520,7 +2713,8 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: value != null
                       ? theme.colorScheme.onSurface
-                      : theme.colorScheme.onSurfaceVariant.withOpacity(0.6),
+                      : theme.colorScheme.onSurfaceVariant
+                          .withValues(alpha: 0.6),
                 ),
               ),
             ),
@@ -2670,7 +2864,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.2),
+          color: theme.colorScheme.outline.withValues(alpha: 0.2),
         ),
       ),
       child: TextField(
@@ -2682,7 +2876,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
         decoration: InputDecoration(
           labelText: label,
           labelStyle: theme.textTheme.labelMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant.withOpacity(0.6),
+            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
           ),
           border: InputBorder.none,
           isDense: true,
@@ -2697,6 +2891,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
   /// FloatingActionButton pour l'attribution de produits
   Widget _buildProductAttributionFAB(ThemeData theme) {
     return FloatingActionButton.extended(
+      heroTag: 'fab-advanced-product-attribution',
       onPressed: () => _showProductAttributionMenu(theme),
       backgroundColor: theme.colorScheme.primary,
       foregroundColor: theme.colorScheme.onPrimary,
@@ -2722,7 +2917,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha: 0.1),
                 blurRadius: 10,
                 offset: const Offset(0, -2),
               ),
@@ -2736,7 +2931,8 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.onSurfaceVariant.withOpacity(0.3),
+                  color:
+                      theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -2791,10 +2987,11 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: theme.colorScheme.primaryContainer
-                              .withOpacity(0.3),
+                              .withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: theme.colorScheme.primary.withOpacity(0.2),
+                            color: theme.colorScheme.primary
+                                .withValues(alpha: 0.2),
                           ),
                         ),
                         child: Row(
@@ -2857,8 +3054,8 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color:
-                              theme.colorScheme.surfaceVariant.withOpacity(0.5),
+                          color: theme.colorScheme.surfaceContainerHighest
+                              .withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Column(
@@ -2923,7 +3120,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
     VoidCallback onTap,
   ) {
     return Material(
-      color: color.withOpacity(0.1),
+      color: color.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -2953,7 +3150,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                       title,
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: color.withOpacity(0.9),
+                        color: color.withValues(alpha: 0.9),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -2968,7 +3165,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
               ),
               Icon(
                 Icons.arrow_forward_ios,
-                color: color.withOpacity(0.7),
+                color: color.withValues(alpha: 0.7),
                 size: 16,
               ),
             ],
@@ -2984,7 +3181,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
 
     // Navigation vers la page d'extraction si c'est pour extraction
     if (type == 'extraction') {
-      Get.to(() => const ExtractionPage());
+      Get.to(() => const MainExtractionPage());
     } else {
       // Pour les autres types, afficher un message pour l'instant
       ScaffoldMessenger.of(context).showSnackBar(

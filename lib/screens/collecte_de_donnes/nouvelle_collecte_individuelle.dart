@@ -18,6 +18,7 @@ import 'widget_individuel/section_progression_formulaire.dart';
 import 'widget_individuel/section_message_erreur.dart';
 import 'widget_individuel/dialogue_confirmation_collecte.dart';
 import 'historiques_collectes.dart';
+import '../../services/universal_container_id_service.dart';
 
 // Page principale
 class NouvelleCollecteIndividuellePage extends StatefulWidget {
@@ -884,16 +885,20 @@ class _NouvelleCollecteIndividuellePageState
         }
       })();
 
+      // Générer les IDs universels pour les contenants
+      final contenantsAvecIds =
+          await _genererIdsUniversels(_contenants, selectedDate);
+
       final collecte = CollecteIndividuelleModel(
         idCollecte: idCollecte,
         dateAchat: Timestamp.fromDate(selectedDate),
         periodeCollecte: _periodeCollecte,
         poidsTotal: _poidsTotal,
         montantTotal: _montantTotal,
-        nombreContenants: _contenants.length,
+        nombreContenants: contenantsAvecIds.length,
         idProducteur: _producteurSelectionne!.id,
         nomProducteur: _producteurSelectionne!.nomPrenom,
-        contenants: _contenants,
+        contenants: contenantsAvecIds,
         originesFlorales: _originesFlorales,
         collecteurId: _userSession.uid ?? '',
         collecteurNom: _userSession.nom ?? '',
@@ -2106,5 +2111,71 @@ class _NouvelleCollecteIndividuellePageState
         ),
       ),
     );
+  }
+
+  /// Génère les IDs universels pour les contenants individuels
+  Future<List<ContenantModel>> _genererIdsUniversels(
+      List<ContenantModel> contenants, DateTime dateCollecte) async {
+    try {
+      final universalService = UniversalContainerIdService();
+
+      // Récupérer les informations nécessaires
+      final producteur = _producteurSelectionne!.nomPrenom;
+      final technicien = _userSession.nom ?? 'TECHNICIEN_INCONNU';
+      final village =
+          _producteurSelectionne!.localisation['village'] ?? 'VILLAGE_INCONNU';
+
+      // Générer les IDs universels
+      final containerIds = await universalService.generateCollecteContainerIds(
+        type: CollecteType.individuel,
+        village: village,
+        technicien: technicien,
+        producteur: producteur,
+        dateCollecte: dateCollecte,
+        nombreContenants: contenants.length,
+      );
+
+      // Créer la liste des contenants avec les nouveaux IDs
+      final List<ContenantModel> contenantsAvecIds = [];
+
+      for (int i = 0; i < contenants.length; i++) {
+        final contenant = contenants[i];
+        final nouvelId = containerIds[i];
+
+        // Créer un nouveau contenant avec l'ID universel
+        final nouveauContenant = contenant.copyWith(id: nouvelId);
+        contenantsAvecIds.add(nouveauContenant);
+      }
+
+      print(
+          '✅ INDIVIDUEL: IDs universels générés pour ${contenants.length} contenants');
+      print('   📍 Village: $village');
+      print('   👨‍💼 Technicien: $technicien');
+      print('   👨‍🌾 Producteur: $producteur');
+      print(
+          '   📅 Date: ${dateCollecte.day}/${dateCollecte.month}/${dateCollecte.year}');
+
+      for (final id in containerIds) {
+        print('   📦 $id');
+      }
+
+      return contenantsAvecIds;
+    } catch (e) {
+      print('❌ INDIVIDUEL: Erreur génération IDs universels: $e');
+
+      // Fallback vers l'ancien système en cas d'erreur
+      final List<ContenantModel> contenantsFallback = [];
+
+      for (int i = 0; i < contenants.length; i++) {
+        final contenant = contenants[i];
+        final fallbackId =
+            'C${(i + 1).toString().padLeft(4, '0')}_individuel_fallback_${DateTime.now().millisecondsSinceEpoch}';
+
+        final nouveauContenant = contenant.copyWith(id: fallbackId);
+        contenantsFallback.add(nouveauContenant);
+      }
+
+      return contenantsFallback;
+    }
   }
 }

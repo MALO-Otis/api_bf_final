@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import '../models/attributed_product_models.dart';
 import '../../controle_de_donnes/models/attribution_models_v2.dart';
-import '../../controle_de_donnes/services/attribution_service.dart';
 
 class AttributedProductsService {
   static final AttributedProductsService _instance =
@@ -13,13 +12,12 @@ class AttributedProductsService {
 
   // Stockage en mémoire des produits attribués
   final Map<String, AttributedProduct> _attributedProducts = {};
-  final AttributionService _attributionService = AttributionService();
   bool _isInitialized = false;
 
   /// Initialise le service si nécessaire
   Future<void> _ensureInitialized() async {
     if (!_isInitialized) {
-      await _syncWithAttributionService();
+      await _generateMockData();
       _isInitialized = true;
     }
   }
@@ -52,101 +50,109 @@ class AttributedProductsService {
   }
 
   /// Synchronise avec le service d'attribution
-  Future<void> _syncWithAttributionService() async {
+  /// Génère des données de test pour les produits attribués
+  Future<void> _generateMockData() async {
     try {
-      // Initialiser le service d'attribution si nécessaire
-      await _attributionService.initialiserDonnees();
+      // Créer quelques produits attribués pour les tests
+      final mockProducts = [
+        AttributedProduct(
+          id: 'attr_001',
+          attributionId: 'attribution_001',
+          codeContenant: 'ATTR_KDG_001',
+          typeCollecte: 'recoltes',
+          collecteId: 'rec_001',
+          producteur: 'OUEDRAOGO Jean',
+          village: 'Sakoinsé',
+          siteOrigine: 'Koudougou',
+          nature: ProductNature.brut,
+          typeContenant: 'Bidon 25L',
+          poidsOriginal: 24.5,
+          poidsDisponible: 24.5,
+          teneurEau: 18.2,
+          predominanceFlorale: 'Karité',
+          qualite: 'Excellent',
+          dateReception: DateTime.now().subtract(const Duration(days: 2)),
+          dateCollecte: DateTime.now().subtract(const Duration(days: 5)),
+          dateAttribution: DateTime.now().subtract(const Duration(days: 1)),
+          collecteur: 'Marie KONE',
+          attributeur: 'Admin System',
+          estConforme: true,
+          instructions: 'Extraction prioritaire - produit de qualité',
+          prelevements: [],
+          statut: PrelevementStatus.enAttente,
+        ),
+        AttributedProduct(
+          id: 'attr_002',
+          attributionId: 'attribution_002',
+          codeContenant: 'ATTR_BOB_002',
+          typeCollecte: 'individuel',
+          collecteId: 'ind_002',
+          producteur: 'TRAORE Fatou',
+          village: 'Bobo-Dioulasso',
+          siteOrigine: 'Bobo-Dioulasso',
+          nature: ProductNature.brut,
+          typeContenant: 'Bidon 20L',
+          poidsOriginal: 18.0,
+          poidsDisponible: 18.0,
+          teneurEau: 17.8,
+          predominanceFlorale: 'Acacia',
+          qualite: 'Très Bon',
+          dateReception: DateTime.now().subtract(const Duration(days: 3)),
+          dateCollecte: DateTime.now().subtract(const Duration(days: 7)),
+          dateAttribution: DateTime.now().subtract(const Duration(hours: 18)),
+          collecteur: 'Ibrahim SAWADOGO',
+          attributeur: 'Admin System',
+          estConforme: true,
+          instructions: 'Traitement standard',
+          prelevements: [],
+          statut: PrelevementStatus.enAttente,
+        ),
+      ];
 
-      // Récupérer toutes les attributions
-      final allAttributions = _attributionService.getAttributions();
-
-      // Filtrer celles pour extraction seulement
-      final extractionAttributions = allAttributions
-          .where((attr) => attr.type == AttributionType.extraction)
-          .toList();
+      for (final product in mockProducts) {
+        _attributedProducts[product.id] = product;
+      }
 
       if (kDebugMode) {
         print(
-            '🔄 Synchronisation avec ${extractionAttributions.length} attributions pour extraction');
-      }
-
-      for (final attribution in extractionAttributions) {
-        // Récupérer les produits de cette attribution
-        final produitsIds = attribution.produitsIds;
-
-        for (final produitId in produitsIds) {
-          // Récupérer le produit du service d'attribution
-          final produitControle =
-              await _attributionService.getProduit(produitId);
-
-          if (produitControle != null) {
-            // FILTRE CRITIQUE: Ne prendre que les produits BRUTE pour l'extraction
-            if (produitControle.nature != ProductNature.brut) {
-              if (kDebugMode) {
-                print(
-                    '⚠️ Produit ${produitControle.id} ignoré - Nature: ${produitControle.nature.label} (seuls les produits BRUTE sont acceptés en extraction)');
-              }
-              continue;
-            }
-
-            // Convertir en AttributedProduct si pas encore fait
-            if (!_attributedProducts.containsKey(produitControle.id)) {
-              final attributedProduct =
-                  _convertProductControleToAttributedProduct(
-                produitControle,
-                attribution,
-              );
-              _attributedProducts[produitControle.id] = attributedProduct;
-            }
-          }
-        }
-      }
-
-      if (kDebugMode) {
-        print(
-            '✅ Synchronisation terminée: ${_attributedProducts.length} produits attribués pour extraction');
+            '🧪 Données de test générées pour ${mockProducts.length} produits attribués');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('❌ Erreur synchronisation avec attribution service: $e');
+        print('❌ Erreur génération données de test: $e');
       }
-      // En cas d'erreur, générer des données de test
-      await _generateTestData();
     }
   }
 
-  /// Convertit un ProductControle en AttributedProduct
-  AttributedProduct _convertProductControleToAttributedProduct(
-    ProductControle produit,
-    AttributionProduits attribution,
-  ) {
+  /// Méthode simplifiée pour créer un produit attribué depuis les données de base
+  AttributedProduct _createAttributedProduct(Map<String, dynamic> data) {
     return AttributedProduct(
-      id: produit.id,
-      attributionId: attribution.id,
-      codeContenant: produit.codeContenant,
-      typeCollecte: produit.typeCollecte,
-      collecteId: produit.collecteId,
-      producteur: produit.producteur,
-      village: produit.village,
-      siteOrigine: produit.siteOrigine,
-      nature: produit.nature, // Utilise directement ProductNature
-      typeContenant: produit.typeContenant,
-      poidsOriginal: produit.poids,
-      poidsDisponible: produit.poids, // Au début, tout est disponible
-      teneurEau: produit.teneurEau,
-      predominanceFlorale: produit.predominanceFlorale,
-      qualite: produit.qualite,
-      dateReception: produit.dateReception,
-      dateCollecte: produit.dateCollecte,
-      dateAttribution: attribution.dateAttribution,
-      collecteur: produit.collecteur,
-      attributeur: attribution.attributeurNom,
-      estConforme: produit.estConforme,
-      causeNonConformite: produit.causeNonConformite,
-      instructions: attribution.instructions,
-      observations: produit.observations,
-      prelevements: [], // Pas de prélèvements au début
-      statut: PrelevementStatus.enAttente, // Utilise PrelevementStatus
+      id: data['id'] ?? '',
+      attributionId: data['attributionId'] ?? '',
+      codeContenant: data['codeContenant'] ?? '',
+      typeCollecte: data['typeCollecte'] ?? '',
+      collecteId: data['collecteId'] ?? '',
+      producteur: data['producteur'] ?? '',
+      village: data['village'] ?? '',
+      siteOrigine: data['siteOrigine'] ?? '',
+      nature: ProductNature.brut, // Par défaut brut pour extraction
+      typeContenant: data['typeContenant'] ?? '',
+      poidsOriginal: (data['poidsOriginal'] as num?)?.toDouble() ?? 0.0,
+      poidsDisponible: (data['poidsDisponible'] as num?)?.toDouble() ?? 0.0,
+      teneurEau: (data['teneurEau'] as num?)?.toDouble(),
+      predominanceFlorale: data['predominanceFlorale'] ?? '',
+      qualite: data['qualite'] ?? '',
+      dateReception: data['dateReception'] ?? DateTime.now(),
+      dateCollecte: data['dateCollecte'] ?? DateTime.now(),
+      dateAttribution: data['dateAttribution'] ?? DateTime.now(),
+      collecteur: data['collecteur'] ?? 'Contrôleur Inconnu',
+      attributeur: data['attributeur'] ?? 'System',
+      estConforme: data['estConforme'] ?? true,
+      causeNonConformite: data['causeNonConformite'],
+      instructions: data['instructions'],
+      observations: data['observations'],
+      prelevements: [],
+      statut: PrelevementStatus.enAttente,
     );
   }
 
@@ -616,7 +622,7 @@ class AttributedProductsService {
 
   /// Obtient les options de filtres
   Future<Map<String, List<String>>> getFilterOptions() async {
-    await _syncWithAttributionService();
+    await _ensureInitialized();
 
     final products = _attributedProducts.values.toList();
 
@@ -632,7 +638,7 @@ class AttributedProductsService {
 
   /// Obtient un produit par ID
   Future<AttributedProduct?> getProductById(String productId) async {
-    await _syncWithAttributionService();
+    await _ensureInitialized();
     return _attributedProducts[productId];
   }
 }

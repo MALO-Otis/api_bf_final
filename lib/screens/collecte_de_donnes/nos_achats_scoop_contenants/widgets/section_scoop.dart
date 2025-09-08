@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../../data/models/scoop_models.dart';
-import '../../../../data/services/stats_scoop_contenants_service.dart';
+
 import '../../../../authentication/user_session.dart';
 import 'modal_nouveau_scoop.dart';
 import 'modal_selection_scoop.dart';

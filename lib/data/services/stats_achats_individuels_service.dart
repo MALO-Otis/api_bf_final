@@ -110,7 +110,7 @@ class StatsAchatsIndividuelsService {
                   'nombre': 0,
                   'contenues': <String, Map<String, dynamic>>{},
                   'prixTotal': 0.0,
-                }) as Map<String, dynamic>;
+                });
         cb['nombre'] = (cb['nombre'] as int) + 1;
         cb['prixTotal'] = (cb['prixTotal'] as double) + montant;
 
@@ -122,7 +122,7 @@ class StatsAchatsIndividuelsService {
                   'nombre': 0,
                   'poidsTotal': 0.0,
                   'prixTotal': 0.0,
-                }) as Map<String, dynamic>;
+                });
         cc['nombre'] = (cc['nombre'] as int) + 1;
         cc['poidsTotal'] = (cc['poidsTotal'] as double) + quantite;
         cc['prixTotal'] = (cc['prixTotal'] as double) + montant;

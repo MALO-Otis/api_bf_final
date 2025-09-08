@@ -68,15 +68,22 @@ class QualityControlService {
   QualityStats? _lastStats;
 
   /// Sauvegarde un contrôle qualité
-  Future<bool> saveQualityControl(QualityControlData data) async {
+  Future<bool> saveQualityControl(QualityControlData data,
+      {String? collecteId}) async {
     try {
       // Récupérer le site de l'utilisateur connecté
       final userSession = Get.find<UserSession>();
       final siteUtilisateur = userSession.site ?? 'SiteInconnu';
 
-      // Créer un ID unique pour le document
-      final docId =
-          '${data.containerCode}_${data.receptionDate.millisecondsSinceEpoch}';
+      // 🆕 Créer un ID unique pour le document qui inclut l'ID de la collecte si disponible
+      // Nettoyer le code de contenant pour éviter les caractères spéciaux
+      final cleanContainerCode = _cleanContainerCode(data.containerCode);
+      final cleanCollecteId =
+          collecteId != null ? _cleanComponent(collecteId) : null;
+
+      final docId = cleanCollecteId != null
+          ? '${cleanContainerCode}_${cleanCollecteId}_${data.receptionDate.millisecondsSinceEpoch}'
+          : '${cleanContainerCode}_${data.receptionDate.millisecondsSinceEpoch}';
 
       // Préparer les données pour Firestore
       final firestoreData = {
@@ -109,7 +116,8 @@ class QualityControlService {
         'dateCreation': FieldValue.serverTimestamp(),
         'derniereMiseAJour': FieldValue.serverTimestamp(),
         // 🆕 Champs pour optimisation interface
-        'collecteId': null, // Sera mis à jour après avoir trouvé la collecte
+        'collecteId':
+            collecteId, // 🔧 CORRECTION: Utiliser le collecteId passé en paramètre
         'collectionPath': null, // Chemin vers la collection d'origine
       };
 
@@ -128,8 +136,12 @@ class QualityControlService {
         print(
             '✅ Contrôle qualité sauvegardé en Firestore: controles_qualite/$siteUtilisateur/controles/$docId');
         print('📊 Contenant: ${data.containerCode}');
+        print(
+            '🆔 CollecteId: $collecteId ${collecteId != null ? "(✅ LIEN ÉTABLI)" : "(❌ MANQUANT)"}');
         print('👤 Contrôleur: ${data.controllerName}');
         print('✅ Conformité: ${data.conformityStatus.name}');
+        print('⚖️ Poids total: ${data.totalWeight} kg');
+        print('🍯 Poids miel: ${data.honeyWeight} kg');
       }
 
       // Mettre à jour le cache local
@@ -149,6 +161,17 @@ class QualityControlService {
       GlobalRefreshService().notifyQualityControlUpdate(data.containerCode);
       GlobalRefreshService().notifyCollecteUpdate(data.containerCode);
 
+      // 🆕 Notification spécifique pour synchronisation interface
+      GlobalRefreshService().notifyInterfaceSync(
+        action: 'quality_control_updated',
+        collecteId: collecteId ?? data.containerCode,
+        containerCode: data.containerCode,
+        additionalData: {
+          'conformityStatus': data.conformityStatus.name,
+          'controllerName': data.controllerName,
+        },
+      );
+
       if (kDebugMode) {
         print('✅ Contrôle qualité sauvegardé avec succès: $docId');
         print('📝 Collecte mise à jour avec l\'information de contrôle');
@@ -166,17 +189,28 @@ class QualityControlService {
 
   /// Récupère un contrôle qualité par code de contenant
   Future<QualityControlData?> getQualityControl(
-      String containerCode, DateTime receptionDate) async {
+      String containerCode, DateTime receptionDate,
+      {String? collecteId}) async {
     try {
       final userSession = Get.find<UserSession>();
       final siteUtilisateur = userSession.site ?? 'SiteInconnu';
-      final docId = '${containerCode}_${receptionDate.millisecondsSinceEpoch}';
+
+      // 🆕 Générer un docId unique qui inclut l'ID de la collecte si disponible
+      // Nettoyer les composants pour éviter les caractères spéciaux
+      final cleanContainerCode = _cleanContainerCode(containerCode);
+      final cleanCollecteId =
+          collecteId != null ? _cleanComponent(collecteId) : null;
+
+      final docId = cleanCollecteId != null
+          ? '${cleanContainerCode}_${cleanCollecteId}_${receptionDate.millisecondsSinceEpoch}'
+          : '${cleanContainerCode}_${receptionDate.millisecondsSinceEpoch}';
 
       if (kDebugMode) {
         print('🔍 QUALITY: Recherche contrôle pour $containerCode');
         print('   - Site: $siteUtilisateur');
         print('   - DocId: $docId');
         print('   - Date: $receptionDate');
+        print('   - CollecteId: $collecteId');
       }
 
       // Vérifier d'abord le cache
@@ -203,7 +237,8 @@ class QualityControlService {
 
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
-        final qualityControl = QualityControlData.fromFirestore(data);
+        final qualityControl = QualityControlData.fromFirestore(data,
+            documentId: docId); // 🆕 Passer le documentId
 
         // Mettre en cache
         _qualityControlsCache[docId] = qualityControl;
@@ -241,7 +276,8 @@ class QualityControlService {
       if (querySnapshot.docs.isNotEmpty) {
         final doc = querySnapshot.docs.first;
         final data = doc.data();
-        final qualityControl = QualityControlData.fromFirestore(data);
+        final qualityControl = QualityControlData.fromFirestore(data,
+            documentId: doc.id); // 🆕 Passer le documentId réel
 
         // Mettre en cache avec la clé originale
         _qualityControlsCache[docId] = qualityControl;
@@ -272,8 +308,10 @@ class QualityControlService {
 
   /// Vérifie si un contenant spécifique est contrôlé (alias pour simplicité)
   Future<bool> isContainerControlled(
-      String containerCode, DateTime receptionDate) async {
-    final control = await getQualityControl(containerCode, receptionDate);
+      String containerCode, DateTime receptionDate,
+      {String? collecteId}) async {
+    final control = await getQualityControl(containerCode, receptionDate,
+        collecteId: collecteId);
     return control != null;
   }
 
@@ -768,8 +806,20 @@ class QualityControlService {
   /// Récupère tous les contrôles qualité depuis Firestore
   Future<List<QualityControlData>> getAllQualityControlsFromFirestore() async {
     try {
+      // 🚀 LOGS DE TRAÇAGE SERVICE QUALITÉ
+      debugPrint('🔍 ===== SERVICE QUALITÉ APPELÉ POUR RÉCUPÉRATION =====');
+      debugPrint('   📁 Service: QualityControlService');
+      debugPrint('   🔧 Méthode: getAllQualityControlsFromFirestore()');
+      debugPrint(
+          '   🎯 Cette méthode fonctionne parfaitement pour l\'affichage');
+      debugPrint(
+          '   ✅ CONFIRMATION: Elle est utilisée par le système d\'attribution');
+      debugPrint('   📅 Timestamp: ${DateTime.now()}');
+      debugPrint('==========================================================');
+
       final userSession = Get.find<UserSession>();
       final siteUtilisateur = userSession.site ?? 'SiteInconnu';
+      debugPrint('🏭 Site utilisateur: $siteUtilisateur');
 
       final querySnapshot = await _firestore
           .collection('controles_qualite')
@@ -779,10 +829,22 @@ class QualityControlService {
           .get();
 
       final controls = <QualityControlData>[];
-      for (final doc in querySnapshot.docs) {
+      debugPrint(
+          '📊 Traitement de ${querySnapshot.docs.length} documents trouvés...');
+
+      for (int i = 0; i < querySnapshot.docs.length; i++) {
+        final doc = querySnapshot.docs[i];
         final data = doc.data();
-        final control = QualityControlData.fromFirestore(data);
+
+        debugPrint('   📄 Document ${i + 1}: ${doc.id}');
+        debugPrint('   📦 ContainerCode: ${data['containerCode']}');
+
+        final control = QualityControlData.fromFirestore(data,
+            documentId: doc.id); // 🆕 Passer le documentId réel
         controls.add(control);
+
+        debugPrint(
+            '   ✅ Contrôle ajouté avec documentId: ${control.documentId}');
 
         // Mettre en cache
         final key =
@@ -790,10 +852,14 @@ class QualityControlService {
         _qualityControlsCache[key] = control;
       }
 
-      if (kDebugMode) {
-        print(
-            '✅ Récupéré ${controls.length} contrôles qualité depuis Firestore');
-      }
+      debugPrint('🎊 ===== RÉSULTAT FINAL RÉCUPÉRATION =====');
+      debugPrint(
+          '   ✅ SUCCÈS: ${controls.length} contrôles qualité récupérés depuis Firestore');
+      debugPrint('   🎯 Tous les contrôles ont leur documentId réel !');
+      debugPrint(
+          '   📊 Cette liste sera utilisée pour filtrer par containerCode');
+      debugPrint('   🚀 Exactement comme pour l\'affichage des produits !');
+      debugPrint('=============================================');
 
       return controls;
     } catch (e) {
@@ -829,7 +895,7 @@ class QualityControlService {
         'controlDate': Timestamp.fromDate(controlData.createdAt),
         'controllerName': controlData.controllerName,
         'controlId':
-            '${controlData.containerCode}_${controlData.receptionDate.millisecondsSinceEpoch}',
+            '${_cleanContainerCode(controlData.containerCode)}_${controlData.receptionDate.millisecondsSinceEpoch}',
       };
 
       if (kDebugMode) {
@@ -1586,7 +1652,7 @@ class QualityControlService {
       final userSession = Get.find<UserSession>();
       final siteUtilisateur = userSession.site ?? 'SiteInconnu';
       final docId =
-          '${controlData.containerCode}_${controlData.receptionDate.millisecondsSinceEpoch}';
+          '${_cleanContainerCode(controlData.containerCode)}_${controlData.receptionDate.millisecondsSinceEpoch}';
 
       await _firestore
           .collection('controles_qualite')
@@ -1646,6 +1712,175 @@ class QualityControlService {
             '❌ Erreur lors de la récupération des contrôles pour collecte $collecteId: $e');
       }
       return [];
+    }
+  }
+
+  /// Met à jour les champs d'attribution d'un contrôle qualité
+  Future<void> updateQualityControlAttribution(
+    String containerCode,
+    DateTime receptionDate,
+    String attributionId,
+    String typeAttribution,
+    DateTime dateAttribution,
+  ) async {
+    try {
+      final userSession = Get.find<UserSession>();
+      final siteUtilisateur = userSession.site ?? 'SiteInconnu';
+      final docId =
+          '${_cleanContainerCode(containerCode)}_${receptionDate.millisecondsSinceEpoch}';
+
+      debugPrint('🔄 ===== DÉBUT MISE À JOUR CONTRÔLE QUALITÉ =====');
+      debugPrint('   📦 Container Code: $containerCode');
+      debugPrint(
+          '   📦 Container Code nettoyé: ${_cleanContainerCode(containerCode)}');
+      debugPrint('   📅 Reception Date: $receptionDate');
+      debugPrint(
+          '   📅 Reception Date milliseconds: ${receptionDate.millisecondsSinceEpoch}');
+      debugPrint('   🆔 Doc ID: $docId');
+      debugPrint('   🏭 Site Utilisateur: $siteUtilisateur');
+      debugPrint('   🎯 Attribution ID: $attributionId');
+      debugPrint('   🏭 Type Attribution: $typeAttribution');
+      debugPrint('   📅 Date Attribution: $dateAttribution');
+
+      final docPath = 'controles_qualite/$siteUtilisateur/controles/$docId';
+      debugPrint('   📂 Document Path: $docPath');
+
+      // Vérifier si le document existe avant de le mettre à jour
+      final docRef = _firestore
+          .collection('controles_qualite')
+          .doc(siteUtilisateur)
+          .collection('controles')
+          .doc(docId);
+
+      final docSnapshot = await docRef.get();
+      debugPrint('   📄 Document existe: ${docSnapshot.exists}');
+
+      if (!docSnapshot.exists) {
+        debugPrint('   ❌ ERREUR: Document n\'existe pas! Chemin: $docPath');
+        throw Exception('Document de contrôle qualité non trouvé: $docPath');
+      }
+
+      final updateData = {
+        'estAttribue': true,
+        'attributionId': attributionId,
+        'typeAttribution': typeAttribution,
+        'dateAttribution': Timestamp.fromDate(dateAttribution),
+        'derniereMiseAJour': FieldValue.serverTimestamp(),
+      };
+
+      debugPrint('   📝 Données de mise à jour: $updateData');
+      debugPrint('   🚀 Lancement de la mise à jour Firestore...');
+
+      await docRef.update(updateData);
+
+      debugPrint('   ✅ Mise à jour Firestore RÉUSSIE');
+
+      // Mettre à jour le cache local si disponible
+      if (_qualityControlsCache.containsKey(docId)) {
+        debugPrint('   🔄 Mise à jour du cache local...');
+        final cachedControl = _qualityControlsCache[docId]!;
+        _qualityControlsCache[docId] = cachedControl.copyWith(
+          estAttribue: true,
+          attributionId: attributionId,
+          typeAttribution: typeAttribution,
+          dateAttribution: dateAttribution,
+        );
+        debugPrint('   ✅ Cache local mis à jour');
+      } else {
+        debugPrint('   ⚠️ Pas de cache local pour ce document');
+      }
+
+      debugPrint('✅ ===== CONTRÔLE QUALITÉ ATTRIBUÉ AVEC SUCCÈS =====');
+      debugPrint('   📦 Container: $containerCode');
+      debugPrint('   🆔 Attribution: $attributionId');
+      debugPrint('   🏭 Type: $typeAttribution');
+    } catch (e, stackTrace) {
+      debugPrint('❌ ===== ERREUR MISE À JOUR CONTRÔLE QUALITÉ =====');
+      debugPrint('   📦 Container: $containerCode');
+      debugPrint('   ❌ Erreur: $e');
+      debugPrint('   ❌ Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
+
+  /// 🆕 VERSION CORRIGÉE : Met à jour l'attribution avec le controlId existant
+  Future<void> updateQualityControlAttributionByControlId(
+    String controlId,
+    String attributionId,
+    String typeAttribution,
+    DateTime dateAttribution,
+  ) async {
+    try {
+      final userSession = Get.find<UserSession>();
+      final siteUtilisateur = userSession.site ?? 'SiteInconnu';
+
+      debugPrint('🔄 ===== DÉBUT MISE À JOUR CONTRÔLE (PAR CONTROL ID) =====');
+      debugPrint('   🆔 Control ID: $controlId');
+      debugPrint('   🏭 Site Utilisateur: $siteUtilisateur');
+      debugPrint('   🎯 Attribution ID: $attributionId');
+      debugPrint('   🏭 Type Attribution: $typeAttribution');
+      debugPrint('   📅 Date Attribution: $dateAttribution');
+
+      final docPath = 'controles_qualite/$siteUtilisateur/controles/$controlId';
+      debugPrint('   📂 Document Path: $docPath');
+
+      // Référence directe au document avec le controlId
+      final docRef = _firestore
+          .collection('controles_qualite')
+          .doc(siteUtilisateur)
+          .collection('controles')
+          .doc(controlId);
+
+      final docSnapshot = await docRef.get();
+      debugPrint('   📄 Document existe: ${docSnapshot.exists}');
+
+      if (!docSnapshot.exists) {
+        debugPrint('   ❌ ERREUR: Document n\'existe pas! Chemin: $docPath');
+        throw Exception('Document de contrôle qualité non trouvé: $docPath');
+      }
+
+      final updateData = {
+        'estAttribue': true,
+        'attributionId': attributionId,
+        'typeAttribution': typeAttribution,
+        'dateAttribution': Timestamp.fromDate(dateAttribution),
+        'derniereMiseAJour': FieldValue.serverTimestamp(),
+      };
+
+      debugPrint('   📝 Données de mise à jour: $updateData');
+      debugPrint('   🚀 Lancement de la mise à jour Firestore...');
+
+      await docRef.update(updateData);
+
+      debugPrint('   ✅ Mise à jour Firestore RÉUSSIE');
+
+      // Mettre à jour le cache local si disponible
+      if (_qualityControlsCache.containsKey(controlId)) {
+        debugPrint('   🔄 Mise à jour du cache local...');
+        final cachedControl = _qualityControlsCache[controlId]!;
+        _qualityControlsCache[controlId] = cachedControl.copyWith(
+          estAttribue: true,
+          attributionId: attributionId,
+          typeAttribution: typeAttribution,
+          dateAttribution: dateAttribution,
+        );
+        debugPrint('   ✅ Cache local mis à jour');
+      } else {
+        debugPrint('   ⚠️ Pas de cache local pour ce document');
+      }
+
+      debugPrint(
+          '✅ ===== CONTRÔLE QUALITÉ ATTRIBUÉ AVEC SUCCÈS (CONTROL ID) =====');
+      debugPrint('   🆔 Control ID: $controlId');
+      debugPrint('   🎯 Attribution: $attributionId');
+      debugPrint('   🏭 Type: $typeAttribution');
+    } catch (e, stackTrace) {
+      debugPrint(
+          '❌ ===== ERREUR MISE À JOUR CONTRÔLE QUALITÉ (CONTROL ID) =====');
+      debugPrint('   🆔 Control ID: $controlId');
+      debugPrint('   ❌ Erreur: $e');
+      debugPrint('   ❌ Stack trace: $stackTrace');
+      rethrow;
     }
   }
 
@@ -1836,7 +2071,7 @@ class QualityControlService {
       _qualityControlsCache.clear();
       for (final control in controls) {
         final key =
-            '${control.containerCode}_${control.receptionDate.millisecondsSinceEpoch}';
+            '${_cleanContainerCode(control.containerCode)}_${control.receptionDate.millisecondsSinceEpoch}';
         _qualityControlsCache[key] = control;
       }
 
@@ -1899,6 +2134,45 @@ class QualityControlService {
     } catch (e) {
       print('❌ DEBUG: Erreur lors de la vérification: $e');
     }
+  }
+
+  /// Nettoie et formate un composant d'ID (même logique que UniversalContainerIdService)
+  String _cleanComponent(String component) {
+    // Nettoyer et normaliser le composant
+    String cleaned = component
+        .trim() // Enlever espaces début/fin
+        .toUpperCase() // Mettre en majuscules
+        .replaceAll(
+            RegExp(r'[^A-Z0-9]'), ''); // Garder seulement lettres et chiffres
+
+    // Augmenter significativement la limite à 20 caractères pour éviter la troncature
+    if (cleaned.length > 20) {
+      cleaned = cleaned.substring(0, 20);
+    }
+
+    // S'assurer qu'il y a au moins un caractère
+    if (cleaned.isEmpty) {
+      cleaned = 'INCONNU';
+    }
+
+    return cleaned;
+  }
+
+  /// Nettoie spécifiquement un code de contenant
+  String _cleanContainerCode(String containerCode) {
+    // Pour les codes de contenants, on garde une logique similaire mais adaptée
+    String cleaned = containerCode
+        .trim() // Enlever espaces début/fin
+        .toUpperCase() // Mettre en majuscules
+        .replaceAll(RegExp(r'[^A-Z0-9_]'),
+            ''); // Garder lettres, chiffres et underscore
+
+    // S'assurer qu'il y a au moins un caractère
+    if (cleaned.isEmpty) {
+      cleaned = 'CONTAINER_INCONNU';
+    }
+
+    return cleaned;
   }
 }
 

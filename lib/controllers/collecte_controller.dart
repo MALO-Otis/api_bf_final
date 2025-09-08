@@ -990,19 +990,9 @@ class CollecteController extends GetxController {
         .addAll(snapshot.docs.map((doc) => doc['nomPrenom'] as String));
   }
 
-  String _getUniteForProduct(String produit) {
-    if (produit.toLowerCase().contains('miel')) return 'kg';
-    if (produit.toLowerCase().contains('cire')) return 'kg';
-    return 'unité';
-  }
-
-  List<String> _processSelection(dynamic selectedItems) {
-    if (selectedItems is List<String>) return selectedItems;
-    if (selectedItems is String) return [selectedItems];
-    if (selectedItems is Iterable)
-      return selectedItems.map((e) => e.toString()).toList();
-    return [];
-  }
+  // Méthodes utilitaires supprimées car non utilisées
+  // String _getUniteForProduct(String produit) { ... }
+  // List<String> _processSelection(dynamic selectedItems) { ... }
 
 // Réinitialise tout le formulaire
 

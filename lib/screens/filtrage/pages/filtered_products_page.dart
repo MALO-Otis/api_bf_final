@@ -509,14 +509,38 @@ class _FilteredProductsPageState extends State<FilteredProductsPage> {
 
   /// Affiche le modal de filtrage
   void _showFiltrageModal(FilteredProduct product) {
+    // Convertir FilteredProduct en ProductControle pour le modal
+    final productControle = ProductControle(
+      id: product.id,
+      codeContenant: product.codeContenant,
+      collecteId: product.collecteId,
+      producteur: product.producteur,
+      village: product.village,
+      commune: product.village, // Utiliser village comme commune par défaut
+      quartier: 'Centre', // Valeur par défaut
+      siteOrigine: product.siteOrigine,
+      nature: product.nature,
+      typeContenant: product.typeContenant,
+      numeroContenant: product.codeContenant,
+      qualite: product.qualite,
+      poidsTotal: product.poidsOriginal,
+      poidsMiel: product.poidsOriginal,
+      predominanceFlorale: product.predominanceFlorale,
+      dateCollecte: product.dateReception.subtract(const Duration(days: 1)),
+      dateReception: product.dateReception,
+      dateControle: product.dateReception,
+      estAttribue: product.estOrigineDuControle,
+      estConforme: true,
+      typeCollecte: product.typeCollecte,
+    );
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => FiltrageModal(
-        product: product,
+        product: productControle,
         onCompleted: _loadData,
       ),
     );
   }
 }
-

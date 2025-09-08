@@ -440,32 +440,6 @@ class _LoginPageState extends State<LoginPage> {
                                 ),
                         ),
                       ),
-                      SizedBox(height: 14),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: isLoading
-                              ? null
-                              : () => Navigator.of(context)
-                                  .pushReplacementNamed('/signup'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Color(0xFF2D0C0D),
-                            side: BorderSide(
-                                color: Color(0xFFF49101), width: 1.5),
-                            padding: EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          child: Text(
-                            "Créer un compte",
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),

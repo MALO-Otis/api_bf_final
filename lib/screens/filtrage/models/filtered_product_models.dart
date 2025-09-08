@@ -92,8 +92,8 @@ class FilteredProduct {
       siteOrigine: produit.siteOrigine,
       nature: produit.nature,
       typeContenant: produit.typeContenant,
-      poidsOriginal: produit.poids,
-      poidsDisponible: produit.poids,
+      poidsOriginal: produit.poidsTotal,
+      poidsDisponible: produit.poidsTotal,
       teneurEau: produit.teneurEau,
       predominanceFlorale: produit.predominanceFlorale,
       qualite: produit.qualite,
@@ -121,7 +121,8 @@ class FilteredProduct {
       producteur: produitExtrait['producteur'],
       village: produitExtrait['village'],
       siteOrigine: produitExtrait['siteOrigine'],
-      nature: ProductNature.filtre, // Produit extrait = liquide non filtré
+      nature:
+          ProductNature.liquide, // Produit extrait = liquide prêt pour filtrage
       typeContenant: produitExtrait['typeContenant'],
       poidsOriginal: produitExtrait['poidsExtrait'],
       poidsDisponible: produitExtrait['poidsExtrait'],
@@ -226,6 +227,48 @@ class FilteredProduct {
       'est_origine_du_controle': estOrigineDuControle,
       'est_origine_de_lextraction': estOrigineDeLExtraction,
     };
+  }
+
+  /// ✅ NOUVEAU: Création depuis Map Firestore
+  factory FilteredProduct.fromMap(Map<String, dynamic> map) {
+    return FilteredProduct(
+      id: map['id'] ?? '',
+      attributionId: map['attribution_id'] ?? '',
+      codeContenant: map['code_contenant'] ?? '',
+      typeCollecte: map['type_collecte'] ?? '',
+      collecteId: map['collecte_id'] ?? '',
+      producteur: map['producteur'] ?? '',
+      village: map['village'] ?? '',
+      siteOrigine: map['site_origine'] ?? '',
+      nature: ProductNature.values.firstWhere(
+        (e) => e.name == map['nature'],
+        orElse: () => ProductNature.liquide,
+      ),
+      typeContenant: map['type_contenant'] ?? '',
+      poidsOriginal: (map['poids_original'] ?? 0).toDouble(),
+      poidsDisponible: (map['poids_disponible'] ?? 0).toDouble(),
+      teneurEau: map['teneur_eau']?.toDouble(),
+      predominanceFlorale: map['predominance_florale'] ?? '',
+      qualite: map['qualite'] ?? '',
+      dateAttribution: DateTime.parse(map['date_attribution']),
+      dateReception: DateTime.parse(map['date_reception']),
+      attributeur: map['attributeur'] ?? '',
+      instructions: map['instructions'],
+      statut: FilteredProductStatus.values.firstWhere(
+        (e) => e.value == map['statut'],
+        orElse: () => FilteredProductStatus.enAttente,
+      ),
+      dateDebutFiltrage: map['date_debut_filtrage'] != null
+          ? DateTime.parse(map['date_debut_filtrage'])
+          : null,
+      dateFinFiltrage: map['date_fin_filtrage'] != null
+          ? DateTime.parse(map['date_fin_filtrage'])
+          : null,
+      poidsFiltre: map['poids_filtre']?.toDouble(),
+      observations: map['observations'],
+      estOrigineDuControle: map['est_origine_du_controle'] ?? false,
+      estOrigineDeLExtraction: map['est_origine_de_lextraction'] ?? false,
+    );
   }
 
   /// Origine du produit en format lisible

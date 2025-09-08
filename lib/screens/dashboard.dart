@@ -239,7 +239,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -288,7 +288,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         border: const Border(bottom: BorderSide(color: Color(0xFFE0E0E0))),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -361,7 +361,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         border: const Border(left: BorderSide(color: Color(0xFFE0E0E0))),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(-2, 2),
           ),

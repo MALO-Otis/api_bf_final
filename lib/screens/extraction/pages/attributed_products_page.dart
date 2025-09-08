@@ -2,12 +2,20 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 
-import '../models/attributed_product_models.dart';
-import '../services/attributed_products_service.dart';
-import '../widgets/attributed_product_card.dart';
-import '../widgets/attributed_product_filters_widget.dart';
-import '../widgets/attributed_product_stats_widget.dart';
-import '../widgets/prelevement_modal.dart';
+// ANCIEN SYSTÈME COMMENTÉ - Utilise maintenant attribution_reçu
+// import '../models/attributed_product_models.dart';
+// import '../services/attributed_products_service.dart';
+// import '../widgets/attributed_product_card.dart';
+// import '../widgets/attributed_product_filters_widget.dart';
+// import '../widgets/attributed_product_stats_widget.dart';
+// import '../widgets/prelevement_modal.dart';
+
+// NOUVEAU SYSTÈME - Utilise attribution_reçu
+import '../../controle_de_donnes/models/attribution_models_v2.dart';
+import '../services/extraction_attribution_service.dart';
+import '../widgets/extraction_form_modal.dart';
+import '../../../authentication/user_session.dart';
+import 'package:get/get.dart';
 
 class AttributedProductsPage extends StatefulWidget {
   const AttributedProductsPage({super.key});
@@ -18,24 +26,27 @@ class AttributedProductsPage extends StatefulWidget {
 
 class _AttributedProductsPageState extends State<AttributedProductsPage>
     with TickerProviderStateMixin {
-  final AttributedProductsService _service = AttributedProductsService();
+  final ExtractionAttributionService _service = ExtractionAttributionService();
 
-  // État de l'application
-  List<AttributedProduct> _allProducts = [];
-  List<AttributedProduct> _filteredProducts = [];
-  AttributedProductFilters _filters = const AttributedProductFilters();
-  AttributedProductStats? _stats;
+  // État de l'application - NOUVEAU SYSTÈME
+  List<ProductControle> _allProducts = [];
+  List<ProductControle> _filteredProducts = [];
+  Map<String, dynamic>? _stats;
+  Map<String, dynamic>? _statsControle;
   bool _isLoading = true;
   String _sortBy =
-      'dateAttribution'; // 'dateAttribution', 'dateReception', 'poids', 'provenance'
+      'dateReception'; // 'dateReception', 'poids', 'provenance', 'nature'
   bool _sortAscending = false;
+  String _searchQuery = '';
 
   // Contrôleurs d'animation
   late AnimationController _headerGlowController;
   late AnimationController _refreshController;
+  late AnimationController _scrollButtonController;
 
-  // Contrôleurs de texte
+  // Contrôleurs de texte et scroll
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
 
   // Timer pour l'horloge temps réel
   Timer? _clockTimer;
@@ -44,6 +55,14 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
   // Options de groupe
   String _groupBy =
       'provenance'; // 'provenance', 'nature', 'attributeur', 'statut'
+
+  // ✅ NOUVEAU: Sélection pour extraction
+  final Set<String> _selectedProductIds = {};
+  bool get _hasSelection => _selectedProductIds.isNotEmpty;
+
+  // État du scroll pour les boutons de navigation
+  bool _showScrollButtons = false;
+  bool _isNearTop = true;
 
   @override
   void initState() {
@@ -57,7 +76,9 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
   void dispose() {
     _headerGlowController.dispose();
     _refreshController.dispose();
+    _scrollButtonController.dispose();
     _searchController.dispose();
+    _scrollController.dispose();
     _clockTimer?.cancel();
     super.dispose();
   }
@@ -73,6 +94,55 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
       duration: const Duration(milliseconds: 1000),
       vsync: this,
     );
+
+    _scrollButtonController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    // Écouter le scroll pour les boutons de navigation
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (!mounted)
+      return; // ✅ CORRECTION: Vérifier si le widget est encore monté
+
+    final offset = _scrollController.offset;
+
+    // Afficher les boutons après 150px de scroll
+    final shouldShow = offset > 150;
+    // Détecter si on est près du haut (dans les premiers 250px)
+    final nearTop = offset < 250;
+
+    if (shouldShow != _showScrollButtons || nearTop != _isNearTop) {
+      setState(() {
+        _showScrollButtons = shouldShow;
+        _isNearTop = nearTop;
+      });
+
+      if (shouldShow) {
+        _scrollButtonController.forward();
+      } else {
+        _scrollButtonController.reverse();
+      }
+    }
+  }
+
+  void _scrollToTop() {
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 800),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _scrollToBottom() {
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 800),
+      curve: Curves.easeInOut,
+    );
   }
 
   /// Démarre l'horloge temps réel
@@ -82,32 +152,54 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
         setState(() {
           _currentTime = DateTime.now();
         });
+      } else {
+        // ✅ CORRECTION: Annuler le timer si le widget est détruit
+        timer.cancel();
       }
     });
   }
 
-  /// Charge les données
+  /// Charge les données depuis attribution_reçu
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
     try {
-      final products = await _service.getAttributedProducts(filters: _filters);
-      final stats = await _service.getStats(filters: _filters);
+      debugPrint('🔄 [Extraction] Chargement des produits d\'extraction...');
+
+      // Récupérer les produits et statistiques depuis attribution_reçu
+      final userSession = Get.find<UserSession>();
+      final isAdmin =
+          userSession.role == 'admin' || userSession.role == 'coordinateur';
+      final userSite = userSession.site;
+
+      final products =
+          await _service.getProduitsExtraction(searchQuery: _searchQuery);
+      final stats = await _service.getStatistiquesExtraction();
+
+      // ✅ NOUVEAU: Récupérer les statistiques de contrôle par site
+      final statsControle = await _service.getStatistiquesControleParSite(
+        siteSpecifique: isAdmin ? null : userSite,
+      );
+
+      debugPrint('✅ [Extraction] ${products.length} produits chargés');
 
       if (mounted) {
         setState(() {
           _allProducts = products;
           _filteredProducts = _applySortAndGroup(products);
           _stats = stats;
+          _statsControle = statsControle;
           _isLoading = false;
         });
       }
     } catch (e) {
+      debugPrint('❌ [Extraction] Erreur chargement: $e');
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur de chargement: $e'),
+            content:
+                Text('Erreur de chargement des produits d\'extraction: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -115,26 +207,26 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
     }
   }
 
-  /// Applique le tri et le groupement
-  List<AttributedProduct> _applySortAndGroup(List<AttributedProduct> products) {
-    // Tri
+  /// Applique le tri et le groupement - NOUVEAU SYSTÈME
+  List<ProductControle> _applySortAndGroup(List<ProductControle> products) {
+    // Tri avec nouveaux champs ProductControle
     products.sort((a, b) {
       int result;
       switch (_sortBy) {
-        case 'dateAttribution':
-          result = a.dateAttribution.compareTo(b.dateAttribution);
-          break;
         case 'dateReception':
           result = a.dateReception.compareTo(b.dateReception);
           break;
         case 'poids':
-          result = a.poidsDisponible.compareTo(b.poidsDisponible);
+          result = a.poidsTotal.compareTo(b.poidsTotal);
           break;
         case 'provenance':
-          result = a.codeLocalisation.compareTo(b.codeLocalisation);
+          result = a.village.compareTo(b.village);
+          break;
+        case 'nature':
+          result = a.nature.name.compareTo(b.nature.name);
           break;
         default:
-          result = a.dateAttribution.compareTo(b.dateAttribution);
+          result = a.dateReception.compareTo(b.dateReception);
       }
       return _sortAscending ? result : -result;
     });
@@ -142,19 +234,12 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
     return products;
   }
 
-  /// Applique les filtres
-  void _applyFilters(AttributedProductFilters newFilters) {
-    setState(() {
-      _filters = newFilters;
-      _searchController.text = _filters.searchQuery;
-    });
-    _loadData();
-  }
-
-  /// Applique la recherche
+  /// Applique la recherche - NOUVEAU SYSTÈME SIMPLIFIÉ
   void _applySearch(String query) {
-    final newFilters = _filters.copyWith(searchQuery: query);
-    _applyFilters(newFilters);
+    setState(() {
+      _searchQuery = query;
+    });
+    _loadData(); // Recharger avec nouveau critère de recherche
   }
 
   /// Change le tri
@@ -177,53 +262,67 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
     });
   }
 
-  /// Rafraîchit les données
+  /// Rafraîchit les données - NOUVEAU SYSTÈME
   Future<void> _refresh() async {
     _refreshController.forward();
-    await _service.refresh();
     await _loadData();
     _refreshController.reset();
   }
 
-  /// Affiche la modal de prélèvement
-  void _showPrelevementModal(AttributedProduct product) {
-    showDialog(
-      context: context,
-      builder: (context) => PrelevementModal(
-        product: product,
-        onPrelevementCreated: () {
-          _loadData(); // Recharger les données
-        },
-      ),
-    );
-  }
-
-  /// Affiche les détails du produit
-  void _showProductDetails(AttributedProduct product) {
+  /// Affiche les détails du produit - NOUVEAU SYSTÈME
+  void _showProductDetails(ProductControle product) {
     showDialog(
       context: context,
       builder: (context) => _ProductDetailsDialog(product: product),
     );
   }
 
-  /// Groupe les produits selon le critère sélectionné
-  Map<String, List<AttributedProduct>> _groupProducts() {
-    final Map<String, List<AttributedProduct>> grouped = {};
+  /// Affiche une modal simplifiée pour le prélèvement
+  void _showPrelevementModal(ProductControle product) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Prélèvement - ${product.codeContenant}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Producteur: ${product.producteur}'),
+            Text('Village: ${product.village}'),
+            Text('Poids total: ${product.poidsTotal.toStringAsFixed(2)} kg'),
+            Text('Poids miel: ${product.poidsMiel.toStringAsFixed(2)} kg'),
+            const SizedBox(height: 16),
+            const Text('Fonctionnalité de prélèvement en développement...'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Groupe les produits selon le critère sélectionné - NOUVEAU SYSTÈME
+  Map<String, List<ProductControle>> _groupProducts() {
+    final Map<String, List<ProductControle>> grouped = {};
 
     for (final product in _filteredProducts) {
       String groupKey;
       switch (_groupBy) {
         case 'provenance':
-          groupKey = product.codeLocalisation;
+          groupKey = '${product.village} (${product.siteOrigine})';
           break;
         case 'nature':
           groupKey = product.nature.label;
           break;
         case 'attributeur':
-          groupKey = product.attributeur;
+          groupKey = 'Attribution'; // Groupement par attribution
           break;
         case 'statut':
-          groupKey = product.statut.label;
+          groupKey = product.estAttribue ? 'Attribué' : 'Disponible';
           break;
         default:
           groupKey = 'Tous';
@@ -243,47 +342,93 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      body: Column(
-        children: [
-          // En-tête
-          _buildHeader(theme, isMobile),
-
-          // Contenu principal avec scroll flexible
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  // Statistiques - compactes sur mobile
-                  if (_stats != null)
-                    Padding(
-                      padding: EdgeInsets.all(isMobile ? 8 : 16),
-                      child: AttributedProductStatsWidget(stats: _stats!),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  controller: _scrollController,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
                     ),
+                    child: Column(
+                      children: [
+                        // ✅ En-tête maintenant scrollable
+                        _buildHeader(theme, isMobile),
 
-                  // Barre de recherche et filtres
-                  _buildSearchAndFilters(theme, isMobile),
+                        // Statistiques - NOUVEAU SYSTÈME SIMPLIFIÉ
+                        if (_stats != null)
+                          Padding(
+                            padding: EdgeInsets.all(isMobile ? 8 : 16),
+                            child: _buildStatsWidget(theme, isMobile),
+                          ),
 
-                  // Liste des produits avec hauteur adaptative
-                  SizedBox(
-                    height: MediaQuery.of(context).size.height *
-                        0.4, // 40% de la hauteur d'écran
-                    child: _isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : _buildProductsList(theme, isMobile),
+                        // ✅ NOUVEAU: Bande d'informations de contrôle par site
+                        if (_statsControle != null)
+                          _buildBandeControleInfo(theme, isMobile),
+
+                        // Barre de recherche et filtres
+                        _buildSearchAndFilters(theme, isMobile),
+
+                        // Liste des produits
+                        _buildProductsList(theme, isMobile),
+
+                        // Espacement final pour éviter que le FAB cache le contenu
+                        const SizedBox(height: 80),
+                      ],
+                    ),
                   ),
-                ],
+                );
+              },
+            ),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          // Boutons de navigation (haut/bas) - apparaissent lors du scroll
+          if (_showScrollButtons) ...[
+            ScaleTransition(
+              scale: _scrollButtonController,
+              child: FloatingActionButton(
+                heroTag: 'fab-scroll-navigation-products',
+                mini: true,
+                onPressed: _isNearTop ? _scrollToBottom : _scrollToTop,
+                backgroundColor:
+                    theme.colorScheme.secondary.withValues(alpha: 0.9),
+                child: Icon(
+                  _isNearTop
+                      ? Icons.keyboard_arrow_down
+                      : Icons.keyboard_arrow_up,
+                  color: Colors.white,
+                ),
               ),
             ),
-          ),
+            const SizedBox(height: 8),
+          ],
+
+          // Bouton principal (extraction ou refresh)
+          _hasSelection
+              ? FloatingActionButton.extended(
+                  heroTag: 'fab-extraction',
+                  onPressed: _lancerExtraction,
+                  backgroundColor: Colors.blue.shade600,
+                  icon: const Icon(Icons.science, color: Colors.white),
+                  label: Text(
+                    'Extraire (${_selectedProductIds.length})',
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                )
+              : FloatingActionButton(
+                  heroTag: 'fab-refresh-attributed-products',
+                  onPressed: _refresh,
+                  backgroundColor: theme.colorScheme.primary,
+                  child: RotationTransition(
+                    turns: _refreshController,
+                    child: const Icon(Icons.refresh, color: Colors.white),
+                  ),
+                ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _refresh,
-        backgroundColor: theme.colorScheme.primary,
-        child: RotationTransition(
-          turns: _refreshController,
-          child: const Icon(Icons.refresh, color: Colors.white),
-        ),
       ),
     );
   }
@@ -299,7 +444,7 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
         ),
         boxShadow: [
           BoxShadow(
-            color: theme.colorScheme.primary.withOpacity(0.3),
+            color: theme.colorScheme.primary.withValues(alpha: 0.3),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -337,7 +482,7 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
                           Text(
                             'Gestion des prélèvements et extractions',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
+                              color: Colors.white.withValues(alpha: 0.9),
                               fontSize: 14,
                             ),
                           ),
@@ -353,11 +498,11 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: Colors.white.withOpacity(
-                            0.3 + _headerGlowController.value * 0.4,
+                          color: Colors.white.withValues(
+                            alpha: 0.3 + _headerGlowController.value * 0.4,
                           ),
                         ),
                       ),
@@ -380,6 +525,255 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
     );
   }
 
+  /// ✅ NOUVEAU: Construit la bande d'informations de contrôle par site
+  Widget _buildBandeControleInfo(ThemeData theme, bool isMobile) {
+    if (_statsControle == null) return const SizedBox.shrink();
+
+    final userSession = Get.find<UserSession>();
+    final isAdmin =
+        userSession.role == 'admin' || userSession.role == 'coordinateur';
+    final sites = _statsControle!['sites'] as Map<String, dynamic>;
+    final global = _statsControle!['global'] as Map<String, dynamic>;
+
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 16, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.teal.shade50, Colors.blue.shade50],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.teal.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // En-tête
+          Row(
+            children: [
+              Icon(Icons.verified_user, color: Colors.teal.shade600, size: 24),
+              const SizedBox(width: 8),
+              Text(
+                isAdmin
+                    ? 'Contrôles par Site'
+                    : 'Contrôles - ${userSession.site}',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.teal.shade700,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.teal.shade600,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'LIVE',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          if (isAdmin) ...[
+            // Vue Admin: Tous les sites
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: sites.entries.map((entry) {
+                final site = entry.key;
+                final stats = entry.value as Map<String, dynamic>;
+                return _buildSiteControlCard(theme, site, stats, isMobile);
+              }).toList(),
+            ),
+
+            const SizedBox(height: 12),
+
+            // Résumé global
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.teal.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildGlobalStat('Total', '${global['totalControles']}',
+                      Icons.inventory_2),
+                  _buildGlobalStat(
+                      'Extraits', '${global['extraits']}', Icons.check_circle),
+                  _buildGlobalStat('En attente', '${global['enAttente']}',
+                      Icons.hourglass_empty),
+                ],
+              ),
+            ),
+          ] else ...[
+            // Vue Extracteur: Site spécifique
+            if (sites.containsKey(userSession.site))
+              _buildSiteControlCard(
+                  theme, userSession.site!, sites[userSession.site!], isMobile,
+                  isExpanded: true),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSiteControlCard(
+      ThemeData theme, String site, Map<String, dynamic> stats, bool isMobile,
+      {bool isExpanded = false}) {
+    final total = stats['totalControles'] ?? 0;
+    final extraits = stats['extraits'] ?? 0;
+    final enAttente = stats['enAttente'] ?? 0;
+    final pourcentageExtrait = total > 0 ? (extraits / total * 100) : 0.0;
+
+    return Container(
+      width: isExpanded ? double.infinity : (isMobile ? 140 : 160),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.teal.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.location_city, color: Colors.teal.shade600, size: 16),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  site,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.teal.shade700,
+                    fontSize: 12,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$total',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal.shade600,
+                      ),
+                    ),
+                    Text(
+                      'Pour Extraction',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isExpanded) ...[
+                Column(
+                  children: [
+                    Text(
+                      '$extraits',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green.shade600,
+                      ),
+                    ),
+                    Text(
+                      'Extraits',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  children: [
+                    Text(
+                      '$enAttente',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange.shade600,
+                      ),
+                    ),
+                    Text(
+                      'En attente',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+          if (!isExpanded) ...[
+            const SizedBox(height: 4),
+            Text(
+              '${pourcentageExtrait.toStringAsFixed(0)}% extraits',
+              style: TextStyle(
+                fontSize: 10,
+                color: pourcentageExtrait > 70 ? Colors.green : Colors.orange,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGlobalStat(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, color: Colors.teal.shade600, size: 20),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.teal.shade700,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey.shade600,
+          ),
+        ),
+      ],
+    );
+  }
+
   /// Construit la barre de recherche et les filtres
   Widget _buildSearchAndFilters(ThemeData theme, bool isMobile) {
     return Container(
@@ -388,7 +782,7 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
         color: theme.colorScheme.surface,
         border: Border(
           bottom: BorderSide(
-            color: theme.dividerColor.withOpacity(0.1),
+            color: theme.dividerColor.withValues(alpha: 0.1),
           ),
         ),
       ),
@@ -413,15 +807,11 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
                 ),
               ),
               const SizedBox(width: 12),
-              // Bouton filtres
+              // Bouton filtres - SIMPLIFIÉ
               IconButton(
-                onPressed: () => _showFiltersDialog(theme),
-                icon: Badge(
-                  isLabelVisible: _filters.hasActiveFilters,
-                  label: Text(_filters.getActiveFiltersCount().toString()),
-                  child: const Icon(Icons.filter_list),
-                ),
-                tooltip: 'Filtres',
+                onPressed: () => _refresh(),
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Actualiser',
               ),
             ],
           ),
@@ -447,20 +837,20 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
                   ),
                   items: const [
                     DropdownMenuItem(
-                      value: 'dateAttribution',
-                      child: Text('Date d\'attribution'),
-                    ),
-                    DropdownMenuItem(
                       value: 'dateReception',
                       child: Text('Date de réception'),
                     ),
                     DropdownMenuItem(
                       value: 'poids',
-                      child: Text('Poids disponible'),
+                      child: Text('Poids total'),
                     ),
                     DropdownMenuItem(
                       value: 'provenance',
                       child: Text('Provenance'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'nature',
+                      child: Text('Nature du produit'),
                     ),
                   ],
                   onChanged: (value) => _changeSorting(value!),
@@ -525,89 +915,91 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
   /// Construit la liste des produits
   Widget _buildProductsList(ThemeData theme, bool isMobile) {
     if (_filteredProducts.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.inbox_outlined,
-              size: 64,
-              color: theme.colorScheme.outline,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Aucun produit attribué',
-              style: theme.textTheme.headlineSmall?.copyWith(
+      return Container(
+        height: 300, // Hauteur fixe pour l'état vide
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.inbox_outlined,
+                size: 64,
                 color: theme.colorScheme.outline,
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Les produits attribués pour extraction apparaîtront ici',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.outline,
+              const SizedBox(height: 16),
+              Text(
+                'Aucun produit attribué',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  color: theme.colorScheme.outline,
+                ),
               ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                'Les produits attribués pour extraction apparaîtront ici',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.outline,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       );
     }
 
     final groupedProducts = _groupProducts();
 
-    return ListView.builder(
+    // ✅ CORRECTION CRITIQUE: Remplacer ListView par Column pour éviter viewport infini
+    return Padding(
       padding: const EdgeInsets.all(16),
-      itemCount: groupedProducts.length,
-      itemBuilder: (context, index) {
-        final groupKey = groupedProducts.keys.elementAt(index);
-        final products = groupedProducts[groupKey]!;
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: groupedProducts.entries.map((entry) {
+          final groupKey = entry.key;
+          final products = entry.value;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // En-tête du groupe
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                children: [
-                  Icon(
-                    _getGroupIcon(_groupBy),
-                    color: theme.colorScheme.primary,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '$groupKey (${products.length})',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // En-tête du groupe
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      _getGroupIcon(_groupBy),
                       color: theme.colorScheme.primary,
+                      size: 20,
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Divider(
-                      color: theme.colorScheme.primary.withOpacity(0.3),
+                    const SizedBox(width: 8),
+                    Text(
+                      '$groupKey (${products.length})',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Divider(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            // Produits du groupe
-            ...products.map((product) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: AttributedProductCard(
-                    product: product,
-                    onPrelevementTap: () => _showPrelevementModal(product),
-                    onDetailsTap: () => _showProductDetails(product),
-                  ),
-                )),
+              // Produits du groupe - NOUVEAU SYSTÈME
+              ...products.map((product) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _buildProductCard(theme, product),
+                  )),
 
-            const SizedBox(height: 16),
-          ],
-        );
-      },
+              const SizedBox(height: 16),
+            ],
+          );
+        }).toList(),
+      ),
     );
   }
 
@@ -627,21 +1019,292 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
     }
   }
 
-  /// Affiche la dialog des filtres
-  void _showFiltersDialog(ThemeData theme) {
+  /// Construit le widget de statistiques - NOUVEAU SYSTÈME
+  Widget _buildStatsWidget(ThemeData theme, bool isMobile) {
+    if (_stats == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            theme.colorScheme.primary.withValues(alpha: 0.1),
+            theme.colorScheme.secondary.withValues(alpha: 0.1)
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildStatItem(
+              theme,
+              '${_stats!['totalProduits']}',
+              'Produits',
+              Icons.inventory_2,
+            ),
+          ),
+          Expanded(
+            child: _buildStatItem(
+              theme,
+              '${(_stats!['poidsTotal'] as double).toStringAsFixed(1)} kg',
+              'Poids Total',
+              Icons.scale,
+            ),
+          ),
+          Expanded(
+            child: _buildStatItem(
+              theme,
+              '${(_stats!['poidsMielTotal'] as double).toStringAsFixed(1)} kg',
+              'Poids Miel',
+              Icons.water_drop,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem(
+      ThemeData theme, String value, String label, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, color: theme.colorScheme.primary, size: 24),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.primary,
+          ),
+        ),
+        Text(
+          label,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Construit la carte d'un produit - NOUVEAU SYSTÈME
+  Widget _buildProductCard(ThemeData theme, ProductControle product) {
+    final isSelected = _selectedProductIds.contains(product.id);
+
+    return Card(
+      elevation: 2,
+      color: isSelected ? Colors.blue.shade50 : null,
+      child: InkWell(
+        onTap: () => _toggleProductSelection(product.id),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // En-tête avec checkbox
+              Row(
+                children: [
+                  // ✅ NOUVEAU: Checkbox de sélection
+                  Checkbox(
+                    value: isSelected,
+                    onChanged: (_) => _toggleProductSelection(product.id),
+                    activeColor: Colors.blue.shade600,
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _getNatureColor(product.nature)
+                          .withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      product.nature.label,
+                      style: TextStyle(
+                        color: _getNatureColor(product.nature),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    product.codeContenant,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              // Informations principales
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          product.producteur,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(Icons.location_on,
+                                size: 16, color: theme.colorScheme.outline),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                '${product.village} (${product.siteOrigine})',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.outline,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${product.poidsTotal.toStringAsFixed(1)} kg',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                      Text(
+                        'Miel: ${product.poidsMiel.toStringAsFixed(1)} kg',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              // Actions
+              Row(
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: product.estConforme
+                          ? Colors.green.withValues(alpha: 0.1)
+                          : Colors.orange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      product.estConforme ? 'Conforme' : 'Non conforme',
+                      style: TextStyle(
+                        color:
+                            product.estConforme ? Colors.green : Colors.orange,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _getNatureColor(ProductNature nature) {
+    switch (nature) {
+      case ProductNature.brut:
+        return Colors.amber;
+      case ProductNature.liquide:
+        return Colors.blue;
+      case ProductNature.cire:
+        return Colors.yellow;
+      case ProductNature.filtre:
+        return Colors.purple;
+    }
+  }
+
+  /// ✅ NOUVEAU: Basculer la sélection d'un produit
+  void _toggleProductSelection(String productId) {
+    setState(() {
+      if (_selectedProductIds.contains(productId)) {
+        _selectedProductIds.remove(productId);
+      } else {
+        _selectedProductIds.add(productId);
+      }
+    });
+  }
+
+  /// ✅ NOUVEAU: Sélectionner tous les produits
+  void _selectAllProducts() {
+    setState(() {
+      _selectedProductIds.addAll(_filteredProducts.map((p) => p.id));
+    });
+  }
+
+  /// ✅ NOUVEAU: Désélectionner tous les produits
+  void _deselectAllProducts() {
+    setState(() {
+      _selectedProductIds.clear();
+    });
+  }
+
+  /// ✅ NOUVEAU: Lancer l'extraction des produits sélectionnés
+  void _lancerExtraction() {
+    if (_selectedProductIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Veuillez sélectionner au moins un produit pour l\'extraction.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Récupérer les produits sélectionnés
+    final produitsSelectionnes = _filteredProducts
+        .where((p) => _selectedProductIds.contains(p.id))
+        .toList();
+
+    // Ouvrir le formulaire d'extraction
     showDialog(
       context: context,
-      builder: (context) => AttributedProductFiltersWidget(
-        currentFilters: _filters,
-        onFiltersApplied: _applyFilters,
+      builder: (context) => ExtractionFormModal(
+        produitsSelectionnes: produitsSelectionnes,
+        onExtractionComplete: () {
+          // Recharger les données et vider la sélection
+          _deselectAllProducts();
+          _refresh();
+        },
       ),
     );
   }
 }
 
-/// Dialog pour afficher les détails d'un produit
+/// Dialog pour afficher les détails d'un produit - NOUVEAU SYSTÈME
 class _ProductDetailsDialog extends StatelessWidget {
-  final AttributedProduct product;
+  final ProductControle product;
 
   const _ProductDetailsDialog({required this.product});
 
@@ -690,7 +1353,7 @@ class _ProductDetailsDialog extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Informations générales
+                    // Informations générales - NOUVEAU SYSTÈME
                     _buildSection(
                       theme,
                       'Informations Générales',
@@ -702,36 +1365,25 @@ class _ProductDetailsDialog extends StatelessWidget {
                         _buildDetailRow('Village', product.village),
                         _buildDetailRow('Site d\'origine', product.siteOrigine),
                         _buildDetailRow('Nature', product.nature.label),
-                        _buildDetailRow(
-                            'Type contenant', product.typeContenant),
+                        // _buildDetailRow('Collecteur', product.collecteur), // Propriété non disponible
                         _buildDetailRow('Qualité', product.qualite),
+                        _buildDetailRow(
+                            'Conforme', product.estConforme ? 'Oui' : 'Non'),
                       ],
                     ),
 
                     const SizedBox(height: 24),
 
-                    // Poids et prélèvements
+                    // Poids et mesures
                     _buildSection(
                       theme,
-                      'Poids et Prélèvements',
+                      'Poids et Mesures',
                       Icons.scale,
                       [
-                        _buildDetailRow(
-                          'Poids original',
-                          '${product.poidsOriginal.toStringAsFixed(2)} kg',
-                        ),
-                        _buildDetailRow(
-                          'Poids disponible',
-                          '${product.poidsDisponible.toStringAsFixed(2)} kg',
-                        ),
-                        _buildDetailRow(
-                          'Poids prélevé',
-                          '${product.poidsResidus.toStringAsFixed(2)} kg',
-                        ),
-                        _buildDetailRow(
-                          'Pourcentage prélevé',
-                          '${product.pourcentagePrelevementTotal.toStringAsFixed(1)}%',
-                        ),
+                        _buildDetailRow('Poids total',
+                            '${product.poidsTotal.toStringAsFixed(2)} kg'),
+                        _buildDetailRow('Poids miel',
+                            '${product.poidsMiel.toStringAsFixed(2)} kg'),
                       ],
                     ),
 
@@ -743,35 +1395,24 @@ class _ProductDetailsDialog extends StatelessWidget {
                       'Dates',
                       Icons.calendar_today,
                       [
-                        _buildDetailRow(
-                          'Date de collecte',
-                          _formatDate(product.dateCollecte),
-                        ),
-                        _buildDetailRow(
-                          'Date de réception',
-                          _formatDate(product.dateReception),
-                        ),
-                        _buildDetailRow(
-                          'Date d\'attribution',
-                          _formatDate(product.dateAttribution),
-                        ),
+                        _buildDetailRow('Date de réception',
+                            _formatDate(product.dateReception)),
                       ],
                     ),
 
                     const SizedBox(height: 24),
 
-                    // Historique des prélèvements
-                    if (product.prelevements.isNotEmpty) ...[
-                      _buildSection(
-                        theme,
-                        'Historique des Prélèvements',
-                        Icons.history,
-                        product.prelevements
-                            .map((prelevement) =>
-                                _buildPrelevementItem(theme, prelevement))
-                            .toList(),
-                      ),
-                    ],
+                    // Attribution
+                    _buildSection(
+                      theme,
+                      'Attribution',
+                      Icons.assignment,
+                      [
+                        _buildDetailRow('Collecte ID', product.collecteId),
+                        _buildDetailRow('Statut',
+                            product.estAttribue ? 'Attribué' : 'Disponible'),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -831,90 +1472,7 @@ class _ProductDetailsDialog extends StatelessWidget {
     );
   }
 
-  Widget _buildPrelevementItem(ThemeData theme, Prelevement prelevement) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        border: Border.all(color: theme.dividerColor),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                _getPrelevementIcon(prelevement.statut),
-                color: _getPrelevementColor(prelevement.statut),
-                size: 16,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${prelevement.poidsPreleve.toStringAsFixed(2)} kg - ${prelevement.type.label}',
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color:
-                      _getPrelevementColor(prelevement.statut).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  prelevement.statut.label,
-                  style: TextStyle(
-                    color: _getPrelevementColor(prelevement.statut),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Date: ${_formatDate(prelevement.datePrelevement)}',
-            style: theme.textTheme.bodySmall,
-          ),
-          if (prelevement.observations != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Observations: ${prelevement.observations}',
-              style: theme.textTheme.bodySmall,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  IconData _getPrelevementIcon(PrelevementStatus statut) {
-    switch (statut) {
-      case PrelevementStatus.enAttente:
-        return Icons.schedule;
-      case PrelevementStatus.enCours:
-        return Icons.play_circle;
-      case PrelevementStatus.termine:
-        return Icons.check_circle;
-      case PrelevementStatus.suspendu:
-        return Icons.pause_circle;
-    }
-  }
-
-  Color _getPrelevementColor(PrelevementStatus statut) {
-    switch (statut) {
-      case PrelevementStatus.enAttente:
-        return Colors.orange;
-      case PrelevementStatus.enCours:
-        return Colors.blue;
-      case PrelevementStatus.termine:
-        return Colors.green;
-      case PrelevementStatus.suspendu:
-        return Colors.red;
-    }
-  }
+  // Méthodes de prélèvement supprimées - utilise maintenant le nouveau système
 
   String _formatDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} à ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';

@@ -254,15 +254,16 @@ class AttributedProduct {
       siteOrigine: produit.siteOrigine,
       nature: produit.nature,
       typeContenant: produit.typeContenant,
-      poidsOriginal: produit.poids,
-      poidsDisponible: produit.poids, // Initialement égal au poids original
+      poidsOriginal: produit.poidsTotal,
+      poidsDisponible:
+          produit.poidsTotal, // Initialement égal au poids original
       teneurEau: produit.teneurEau,
       predominanceFlorale: produit.predominanceFlorale,
       qualite: produit.qualite,
       dateReception: produit.dateReception,
       dateCollecte: produit.dateCollecte,
       dateAttribution: dateAttribution,
-      collecteur: produit.collecteur,
+      collecteur: produit.controleur ?? 'Contrôleur Inconnu',
       attributeur: attributeur,
       estConforme: produit.estConforme,
       causeNonConformite: produit.causeNonConformite,

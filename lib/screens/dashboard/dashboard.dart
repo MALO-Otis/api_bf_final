@@ -14,8 +14,12 @@ import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_achats_scoop_co
 
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_mielleurie/nouvelle_collecte_miellerie.dart';
 import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
-import 'package:apisavana_gestion/screens/extraction/extraction.dart';
-import 'package:apisavana_gestion/screens/filtrage/filtrage.dart';
+import 'package:apisavana_gestion/screens/extraction/pages/main_extraction_page.dart';
+import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
+import 'package:apisavana_gestion/screens/conditionnement/conditionnement_main_page.dart';
+import 'package:apisavana_gestion/screens/conditionnement/condionnement_home.dart';
+import 'package:apisavana_gestion/screens/conditionnement/pages/stock_conditionne_page.dart';
+import 'package:apisavana_gestion/screens/vente/vente_main_page.dart';
 
 // Color palette
 const Color kHighlightColor = Color(0xFFF49101);
@@ -100,8 +104,34 @@ class DashboardController extends GetxController {
           (subModule == 'Nouveau filtrage' ||
               subModule == 'En cours de filtrage' ||
               subModule == 'Filtrage terminé')) {
-        print('✅ Navigation vers ${subModule} -> FiltragePageModerne');
-        currentPage.value = const FiltragePageModerne();
+        print('✅ Navigation vers ${subModule} -> FiltrageMainPage');
+        currentPage.value = const FiltrageMainPage();
+        return;
+      }
+
+      // NOUVEAU : Module de conditionnement avec navigation spécifique
+      if (moduleName == 'CONDITIONNEMENT') {
+        if (subModule == 'Nouveau conditionnement') {
+          print('✅ Navigation vers Nouveau conditionnement');
+          currentPage.value = const ConditionnementMainPage();
+          return;
+        }
+        if (subModule == 'Lots disponibles') {
+          print('✅ Navigation vers Lots disponibles');
+          currentPage.value = const ConditionnementHomePage();
+          return;
+        }
+        if (subModule == 'Stock conditionné') {
+          print('✅ Navigation vers Stock conditionné');
+          currentPage.value = const StockConditionnePage();
+          return;
+        }
+      }
+
+      // NOUVEAU : Module de gestion de ventes avec navigation spécifique
+      if (moduleName == 'GESTION DE VENTES') {
+        print('✅ Navigation vers GESTION DE VENTES');
+        currentPage.value = const VenteMainPage();
         return;
       }
 
@@ -122,7 +152,12 @@ class DashboardController extends GetxController {
         case 'FILTRAGE':
           print('✅ Navigation par défaut vers FILTRAGE');
           currentPage.value =
-              const FiltragePageModerne(); // 🆕 NOUVELLE PAGE DE FILTRAGE MODERNE
+              const FiltrageMainPage(); // 🆕 NOUVELLE PAGE DE FILTRAGE MODERNE
+          break;
+        case 'CONDITIONNEMENT':
+          print('✅ Navigation par défaut vers CONDITIONNEMENT');
+          currentPage.value =
+              const ConditionnementMainPage(); // 🆕 PAGE PRINCIPALE DU CONDITIONNEMENT
           break;
         default:
           print('❌ Module non géré: $moduleName');
@@ -270,7 +305,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   child: GestureDetector(
                     onTap: _dashboardController.toggleSlider,
                     child: Container(
-                      color: Colors.black.withOpacity(0.4),
+                      color: Colors.black.withValues(alpha: 0.4),
                       child: SizedBox.expand(),
                     ),
                   ),
@@ -327,14 +362,11 @@ class DashboardHeader extends StatelessWidget {
                 icon: Icon(Icons.menu, color: kHighlightColor, size: 28),
                 onPressed: onMenuToggle,
               ),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.asset(
-                'assets/logo/logo.jpeg', // Correct path
-                height: isMobile ? 30 : 44,
-                width: isMobile ? 30 : 44,
-                fit: BoxFit.cover,
-              ),
+            Image.asset(
+              'assets/logo/logo.jpeg', // Correct path
+              height: isMobile ? 40 : 60,
+              width: isMobile ? 40 : 60,
+              fit: BoxFit.contain,
             ),
             SizedBox(width: 8),
             Expanded(
@@ -775,11 +807,11 @@ class KPICard extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           gradient: LinearGradient(
-            colors: [color.withOpacity(0.08), Colors.white],
+            colors: [color.withValues(alpha: 0.08), Colors.white],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          border: Border.all(color: color.withOpacity(0.18)),
+          border: Border.all(color: color.withValues(alpha: 0.18)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1118,7 +1150,7 @@ class BarChartSample extends StatelessWidget {
                       BarChartRodData(
                         toY: (data[i]['ventes'] as double),
                         color: isTouched && visibleSeries[0]
-                            ? kHighlightColor.withOpacity(0.7)
+                            ? kHighlightColor.withValues(alpha: 0.7)
                             : kHighlightColor,
                         width: 12,
                         borderRadius: BorderRadius.circular(4),
@@ -1128,7 +1160,7 @@ class BarChartSample extends StatelessWidget {
                       BarChartRodData(
                         toY: (data[i]['collecte'] as double),
                         color: isTouched && visibleSeries[1]
-                            ? Colors.green.withOpacity(0.7)
+                            ? Colors.green.withValues(alpha: 0.7)
                             : Colors.green,
                         width: 12,
                         borderRadius: BorderRadius.circular(4),
@@ -1547,8 +1579,8 @@ class AlertsSection extends StatelessWidget {
               return Container(
                 margin: EdgeInsets.only(bottom: 9),
                 decoration: BoxDecoration(
-                  color: c!.withOpacity(0.09),
-                  border: Border.all(color: c.withOpacity(0.18)),
+                  color: c!.withValues(alpha: 0.09),
+                  border: Border.all(color: c.withValues(alpha: 0.18)),
                   borderRadius: BorderRadius.circular(9),
                 ),
                 child: ListTile(
@@ -1565,7 +1597,7 @@ class AlertsSection extends StatelessWidget {
                       ? ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             elevation: 0,
-                            backgroundColor: c.withOpacity(0.13),
+                            backgroundColor: c.withValues(alpha: 0.13),
                             foregroundColor: c,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(7)),
@@ -1712,7 +1744,7 @@ class ActivityTimeline extends StatelessWidget {
                     ],
                   ),
                   trailing: Chip(
-                    backgroundColor: c!.withOpacity(0.15),
+                    backgroundColor: c!.withValues(alpha: 0.15),
                     label: Text(
                       activity["status"] == "success"
                           ? "Terminé"
@@ -1978,7 +2010,8 @@ class NavigationSlider extends StatelessWidget {
                           Row(
                             children: [
                               CircleAvatar(
-                                backgroundColor: Colors.white.withOpacity(0.2),
+                                backgroundColor:
+                                    Colors.white.withValues(alpha: 0.2),
                                 child:
                                     Icon(Icons.dashboard, color: Colors.white),
                               ),
@@ -1998,7 +2031,8 @@ class NavigationSlider extends StatelessWidget {
                                     Text(
                                       'Apisavana Dashboard',
                                       style: TextStyle(
-                                        color: Colors.white.withOpacity(0.8),
+                                        color:
+                                            Colors.white.withValues(alpha: 0.8),
                                         fontSize: 12,
                                       ),
                                     ),
@@ -2151,12 +2185,12 @@ class NavigationSlider extends StatelessWidget {
               collapsedShape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(15),
               ),
-              backgroundColor: Colors.white.withOpacity(0.7),
-              collapsedBackgroundColor: Colors.white.withOpacity(0.5),
+              backgroundColor: Colors.white.withValues(alpha: 0.7),
+              collapsedBackgroundColor: Colors.white.withValues(alpha: 0.5),
               leading: Container(
                 padding: EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: kHighlightColor.withOpacity(0.1),
+                  color: kHighlightColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(

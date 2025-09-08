@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import '../models/attribution_models.dart';
+import '../models/attribution_models_v2.dart';
 
 /// Service Firestore pour la gestion des attributions
 /// Structure: Collection [TypeReceveur] > Sous-collection [SiteDuReceveur]
@@ -19,9 +19,38 @@ class FirestoreAttributionService {
         return 'Extraction';
       case AttributionType.filtration:
         return 'Filtrage';
-      // case AttributionType.traitementCire:
-      //   return 'Cire';
+      case AttributionType.traitementCire:
+        return 'Cire';
     }
+  }
+
+  /// Crée une attribution depuis le contrôle qualité
+  Future<String> creerAttributionDepuisControle({
+    required AttributionType type,
+    required ProductNature natureProduitsAttribues,
+    required String utilisateur,
+    required List<String> listeContenants,
+    required String sourceCollecteId,
+    required String sourceType,
+    required String siteOrigine,
+    required String siteReceveur,
+    required DateTime dateCollecte,
+    String? commentaires,
+    Map<String, dynamic>? metadata,
+  }) async {
+    return await sauvegarderAttribution(
+      type: type,
+      siteReceveur: siteReceveur,
+      sourceCollecteId: sourceCollecteId,
+      sourceType: sourceType,
+      siteOrigine: siteOrigine,
+      dateCollecte: dateCollecte,
+      listeContenants: listeContenants,
+      natureProduitsAttribues: natureProduitsAttribues,
+      utilisateur: utilisateur,
+      commentaires: commentaires,
+      metadata: metadata,
+    );
   }
 
   /// Sauvegarde une attribution dans Firestore
@@ -46,12 +75,12 @@ class FirestoreAttributionService {
       // Données de l'attribution
       final attributionData = {
         'id': attributionId,
-        'type': type.name,
+        'type': type.value,
         'typeLabel': type.label,
         'dateAttribution': FieldValue.serverTimestamp(),
         'utilisateur': utilisateur,
         'listeContenants': listeContenants,
-        'statut': AttributionStatus.attribueExtraction.name, // Statut initial
+        'statut': 'attribue', // Statut initial
         'commentaires': commentaires,
         'metadata': metadata ?? {},
 
@@ -266,7 +295,7 @@ class FirestoreAttributionService {
     required AttributionType type,
     required String siteReceveur,
     required String attributionId,
-    required AttributionStatus nouveauStatut,
+    required String nouveauStatut,
     required String utilisateur,
     String? commentaire,
   }) async {
@@ -279,7 +308,7 @@ class FirestoreAttributionService {
           .collection('attributions')
           .doc(attributionId)
           .update({
-        'statut': nouveauStatut.name,
+        'statut': nouveauStatut,
         'dateModification': FieldValue.serverTimestamp(),
         'utilisateurModification': utilisateur,
         'derniereMiseAJour': FieldValue.serverTimestamp(),
@@ -287,7 +316,7 @@ class FirestoreAttributionService {
       });
 
       if (kDebugMode) {
-        print('✅ Statut mis à jour: $attributionId -> ${nouveauStatut.name}');
+        print('✅ Statut mis à jour: $attributionId -> $nouveauStatut');
       }
     } catch (e) {
       if (kDebugMode) {

@@ -1,3 +1,9 @@
+/* 
+🚫 ANCIEN FICHIER D'EXTRACTION - DÉSACTIVÉ
+Ce fichier utilise l'ancien système et n'est plus utilisé.
+La nouvelle interface est dans pages/attributed_products_page.dart
+qui récupère les données depuis attribution_reçu
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -9,7 +15,7 @@ import 'services/extraction_service.dart';
 import 'widgets/extraction_card.dart';
 import 'widgets/extraction_modals.dart';
 import 'widgets/control_attribution_stats_widget.dart';
-import 'pages/attribution_page.dart';
+import '../attribution/attribution_page_complete.dart';
 
 /// Page principale d'extraction de données
 class ExtractionPage extends StatefulWidget {
@@ -178,7 +184,7 @@ class _ExtractionPageState extends State<ExtractionPage>
 
   /// Ouvre la page d'attribution
   void _openAttributionPage() {
-    Get.to(() => const AttributionPage());
+    Get.to(() => const AttributionPageComplete());
   }
 
   @override
@@ -197,6 +203,7 @@ class _ExtractionPageState extends State<ExtractionPage>
               : _buildDesktopLayout(theme, isTablet),
       floatingActionButton: isMobile
           ? FloatingActionButton.extended(
+              heroTag: 'fab-extraction-open-attribution',
               onPressed: _openAttributionPage,
               icon: const Icon(Icons.assignment),
               label: const Text('Attributions'),
@@ -307,14 +314,14 @@ class _ExtractionPageState extends State<ExtractionPage>
         return Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border:
-                Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
+            border: Border.all(
+                color: theme.colorScheme.outline.withValues(alpha: 0.2)),
             gradient: RadialGradient(
               center: Alignment.topLeft,
               radius: 2.0,
               colors: [
                 theme.colorScheme.primary
-                    .withOpacity(0.1 * _headerGlowController.value),
+                    .withValues(alpha: 0.1 * _headerGlowController.value),
                 Colors.transparent,
               ],
             ),
@@ -345,7 +352,7 @@ class _ExtractionPageState extends State<ExtractionPage>
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withOpacity(0.1),
+                color: theme.colorScheme.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -387,7 +394,8 @@ class _ExtractionPageState extends State<ExtractionPage>
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+                  color: theme.colorScheme.surfaceContainerHighest
+                      .withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -543,7 +551,8 @@ class _ExtractionPageState extends State<ExtractionPage>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+                color: theme.colorScheme.surfaceContainerHighest
+                    .withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -826,7 +835,7 @@ class _ExtractionPageState extends State<ExtractionPage>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              color.withOpacity(0.1),
+              color.withValues(alpha: 0.1),
               Colors.transparent,
             ],
           ),
@@ -840,7 +849,7 @@ class _ExtractionPageState extends State<ExtractionPage>
                 Container(
                   padding: EdgeInsets.all(isMobile ? 6 : 8),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.2),
+                    color: color.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
@@ -944,7 +953,7 @@ class _ExtractionPageState extends State<ExtractionPage>
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withOpacity(0.1),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -1353,7 +1362,7 @@ class _ExtractionPageState extends State<ExtractionPage>
             Icon(
               Icons.search_off,
               size: 64,
-              color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5),
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 16),
             Text(
@@ -1496,7 +1505,7 @@ class _CircularProgressPainter extends CustomPainter {
 
     // Background circle
     final backgroundPaint = Paint()
-      ..color = color.withOpacity(0.2)
+      ..color = color.withValues(alpha: 0.2)
       ..strokeWidth = strokeWidth
       ..style = PaintingStyle.stroke;
 
@@ -1524,3 +1533,5 @@ class _CircularProgressPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
+
+*/ // Fin du commentaire - ancien fichier désactivé

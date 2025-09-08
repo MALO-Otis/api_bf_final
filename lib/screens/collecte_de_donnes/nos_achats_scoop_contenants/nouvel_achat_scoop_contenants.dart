@@ -5,6 +5,7 @@ import '../../../data/models/scoop_models.dart';
 import '../../../data/services/stats_scoop_contenants_service.dart';
 import '../../../authentication/user_session.dart';
 import '../historiques_collectes.dart';
+import '../../../services/universal_container_id_service.dart';
 import 'widgets/section_scoop.dart';
 import 'widgets/section_periode.dart';
 import 'widgets/section_contenants.dart';
@@ -169,13 +170,16 @@ class _NouvelAchatScoopContenantsPageState
     setState(() => _isLoading = true);
 
     try {
+      // Générer les IDs universels pour les contenants
+      final contenantsAvecIds = await _genererIdsUniversels(_contenants);
+
       final collecte = CollecteScoopModel(
         id: '', // Sera généré par Firestore
         dateAchat: DateTime.now(),
         periodeCollecte: _selectedPeriode,
         scoopId: _selectedScoop!.id,
         scoopNom: _selectedScoop!.nom,
-        contenants: _contenants,
+        contenants: contenantsAvecIds,
         poidsTotal: _totals['poids']!,
         montantTotal: _totals['montant']!,
         observations: _observations,
@@ -855,5 +859,77 @@ class _NouvelAchatScoopContenantsPageState
       onSave: _saveCollecte,
       onPrevious: _previousStep,
     );
+  }
+
+  /// Génère les IDs universels pour les contenants Scoop
+  Future<List<ContenantScoopModel>> _genererIdsUniversels(
+    List<ContenantScoopModel> contenants,
+  ) async {
+    try {
+      final universalService = UniversalContainerIdService();
+
+      // Récupérer les informations nécessaires pour les Scoop
+      final scoopNom = _selectedScoop?.nom ?? 'SCOOP_INCONNU';
+      final technicien = _userSession.nom ?? 'TECHNICIEN_INCONNU';
+      final village = _selectedScoop?.village ?? 'VILLAGE_INCONNU';
+
+      // Pour les Scoop, on utilise le nom du Scoop comme "producteur"
+      final producteur = scoopNom;
+
+      // Date de la collecte (date actuelle)
+      final dateCollecte = DateTime.now();
+
+      // Générer les IDs universels
+      final containerIds = await universalService.generateCollecteContainerIds(
+        type: CollecteType.scoop,
+        village: village,
+        technicien: technicien,
+        producteur: producteur,
+        dateCollecte: dateCollecte,
+        nombreContenants: contenants.length,
+      );
+
+      // Créer la liste des contenants avec les nouveaux IDs
+      final List<ContenantScoopModel> contenantsAvecIds = [];
+
+      for (int i = 0; i < contenants.length; i++) {
+        final contenant = contenants[i];
+        final nouvelId = containerIds[i];
+
+        // Créer un nouveau contenant avec l'ID universel
+        final nouveauContenant = contenant.copyWith(id: nouvelId);
+        contenantsAvecIds.add(nouveauContenant);
+      }
+
+      print(
+          '✅ SCOOP: IDs universels générés pour ${contenants.length} contenants');
+      print('   🏢 Scoop: $scoopNom');
+      print('   📍 Village: $village');
+      print('   👨‍💼 Technicien: $technicien');
+      print(
+          '   📅 Date: ${dateCollecte.day}/${dateCollecte.month}/${dateCollecte.year}');
+
+      for (final id in containerIds) {
+        print('   📦 $id');
+      }
+
+      return contenantsAvecIds;
+    } catch (e) {
+      print('❌ SCOOP: Erreur génération IDs universels: $e');
+
+      // Fallback vers l'ancien système en cas d'erreur
+      final List<ContenantScoopModel> contenantsFallback = [];
+
+      for (int i = 0; i < contenants.length; i++) {
+        final contenant = contenants[i];
+        final fallbackId =
+            'C${(i + 1).toString().padLeft(4, '0')}_scoop_fallback_${DateTime.now().millisecondsSinceEpoch}';
+
+        final nouveauContenant = contenant.copyWith(id: fallbackId);
+        contenantsFallback.add(nouveauContenant);
+      }
+
+      return contenantsFallback;
+    }
   }
 }

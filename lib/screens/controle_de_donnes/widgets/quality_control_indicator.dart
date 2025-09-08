@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/collecte_models.dart';
-import '../models/quality_control_models.dart';
+
 import '../services/quality_control_service.dart';
 import '../services/global_refresh_service.dart';
 
@@ -85,7 +85,7 @@ class _QualityControlIndicatorState extends State<QualityControlIndicator> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant,
+        color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
@@ -135,7 +135,7 @@ class _QualityControlIndicatorState extends State<QualityControlIndicator> {
       textColor = Colors.red.shade700;
       icon = Icons.error;
     } else {
-      backgroundColor = theme.colorScheme.surfaceVariant;
+      backgroundColor = theme.colorScheme.surfaceContainerHighest;
       textColor = theme.colorScheme.onSurfaceVariant;
       icon = Icons.pending;
     }
@@ -170,7 +170,7 @@ class _QualityControlIndicatorState extends State<QualityControlIndicator> {
                 '(${percentage.toStringAsFixed(0)}%)',
                 style: TextStyle(
                   fontSize: 10,
-                  color: textColor.withOpacity(0.8),
+                  color: textColor.withValues(alpha: 0.8),
                 ),
               ),
             ],
@@ -186,7 +186,7 @@ class _QualityControlIndicatorState extends State<QualityControlIndicator> {
           color: backgroundColor,
           shape: BoxShape.circle,
           border: Border.all(
-            color: textColor.withOpacity(0.3),
+            color: textColor.withValues(alpha: 0.3),
             width: 1,
           ),
         ),

@@ -99,12 +99,10 @@ class FiltrageController extends GetxController {
             .toDate()
             .add(const Duration(minutes: 30));
       }
+      
+      // ✅ CORRECTION: Les produits totalement filtrés ne doivent plus apparaître dans la liste
       bool isFiltrageTotal = statutFiltrage == "Filtrage total";
-      bool isFiltrageEncoreValide = true;
-      if (isFiltrageTotal && expirationFiltrage != null) {
-        isFiltrageEncoreValide = DateTime.now().isBefore(expirationFiltrage);
-      }
-      if (isFiltrageTotal && !isFiltrageEncoreValide) continue;
+      if (isFiltrageTotal) continue; // Exclure tous les produits totalement filtrés
 
       // 2. Calcul cumuls filtrage
       double quantiteEntree = filtrage?['quantiteEntree'] != null
@@ -330,11 +328,7 @@ class FiltrageController extends GetxController {
   }
 }
 
-extension<T> on Iterable<T> {
-  T? firstWhereOrNull(bool Function(T) test) {
-    for (var element in this) {
-      if (test(element)) return element;
-    }
-    return null;
-  }
-}
+// Extension supprimée car non utilisée
+// extension<T> on Iterable<T> {
+//   T? firstWhereOrNull(bool Function(T) test) { ... }
+// }

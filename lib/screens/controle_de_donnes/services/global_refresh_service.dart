@@ -17,10 +17,16 @@ class GlobalRefreshService {
   final StreamController<String> _qualityControlUpdateController =
       StreamController<String>.broadcast();
 
+  // Stream controller pour notifier les changements de synchronisation interface
+  final StreamController<Map<String, dynamic>> _interfaceSyncController =
+      StreamController<Map<String, dynamic>>.broadcast();
+
   // Streams publics pour écouter les changements
   Stream<String> get collecteUpdatesStream => _collecteUpdateController.stream;
   Stream<String> get qualityControlUpdatesStream =>
       _qualityControlUpdateController.stream;
+  Stream<Map<String, dynamic>> get interfaceSyncStream =>
+      _interfaceSyncController.stream;
 
   /// Notifie qu'une collecte a été mise à jour
   void notifyCollecteUpdate(String collecteId) {
@@ -49,6 +55,30 @@ class GlobalRefreshService {
     _qualityControlUpdateController.add('GLOBAL_UPDATE');
   }
 
+  /// Notifie une synchronisation spécifique entre interfaces
+  void notifyInterfaceSync({
+    required String action,
+    required String collecteId,
+    String? containerCode,
+    Map<String, dynamic>? additionalData,
+  }) {
+    if (kDebugMode) {
+      print('🔄 GlobalRefreshService: Synchronisation interface - $action');
+      print('   CollecteId: $collecteId');
+      if (containerCode != null) print('   ContainerCode: $containerCode');
+    }
+
+    final syncData = {
+      'action': action,
+      'collecteId': collecteId,
+      'containerCode': containerCode,
+      'timestamp': DateTime.now().toIso8601String(),
+      ...?additionalData,
+    };
+
+    _interfaceSyncController.add(syncData);
+  }
+
   /// MÉTHODE DE DEBUG : Force une mise à jour pour tester le système
   void debugForceRefresh() {
     if (kDebugMode) {
@@ -61,5 +91,6 @@ class GlobalRefreshService {
   void dispose() {
     _collecteUpdateController.close();
     _qualityControlUpdateController.close();
+    _interfaceSyncController.close();
   }
 }

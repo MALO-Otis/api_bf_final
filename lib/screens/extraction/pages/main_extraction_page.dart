@@ -1,7 +1,8 @@
 /// Page principale d'extraction avec onglets
 import 'package:flutter/material.dart';
-import '../extraction_page.dart';
+// import '../extraction_page.dart'; // ANCIEN - Fichier désactivé
 import 'attributed_products_page.dart';
+import 'extraction_history_page.dart';
 
 class MainExtractionPage extends StatefulWidget {
   const MainExtractionPage({super.key});
@@ -58,9 +59,57 @@ class _MainExtractionPageState extends State<MainExtractionPage>
           // Nouvelle interface des produits attribués
           AttributedProductsPage(),
 
-          // Ancienne interface (historique)
-          ExtractionPage(),
+          // ✅ NOUVEAU: Page d'historique des extractions avec statistiques
+          ExtractionHistoryPage(),
         ],
+      ),
+    );
+  }
+}
+
+/// Page placeholder pour l'ancien historique d'extraction
+class _PlaceholderHistoriquePage extends StatelessWidget {
+  const _PlaceholderHistoriquePage();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.construction,
+              size: 64,
+              color: theme.colorScheme.outline,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Historique Extraction',
+              style: theme.textTheme.headlineSmall?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Interface en cours de migration',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Utilisez l\'onglet "Produits Attribués" pour\naccéder aux fonctionnalités d\'extraction.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }

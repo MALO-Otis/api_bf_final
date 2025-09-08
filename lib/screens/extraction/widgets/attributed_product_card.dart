@@ -40,7 +40,8 @@ class AttributedProductCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: _getNatureColor(product.nature).withOpacity(0.1),
+                      color: _getNatureColor(product.nature)
+                          .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
@@ -81,10 +82,12 @@ class AttributedProductCard extends StatelessWidget {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: _getStatusColor(product.statut).withOpacity(0.1),
+                      color: _getStatusColor(product.statut)
+                          .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: _getStatusColor(product.statut).withOpacity(0.3),
+                        color: _getStatusColor(product.statut)
+                            .withValues(alpha: 0.3),
                       ),
                     ),
                     child: Row(
@@ -312,7 +315,7 @@ class AttributedProductCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -377,7 +380,7 @@ class AttributedProductCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(4),
           child: LinearProgressIndicator(
             value: progression,
-            backgroundColor: theme.colorScheme.surfaceVariant,
+            backgroundColor: theme.colorScheme.surfaceContainerHighest,
             valueColor: AlwaysStoppedAnimation<Color>(
               progression >= 1.0 ? Colors.green : theme.colorScheme.primary,
             ),
@@ -428,7 +431,7 @@ class AttributedProductCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: theme.colorScheme.secondary.withOpacity(0.1),
+              color: theme.colorScheme.secondary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -478,10 +481,10 @@ class AttributedProductCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
+              color: Colors.blue.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: Colors.blue.withOpacity(0.3),
+                color: Colors.blue.withValues(alpha: 0.3),
               ),
             ),
             child: Row(
@@ -514,10 +517,10 @@ class AttributedProductCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.1),
+              color: Colors.green.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: Colors.green.withOpacity(0.3),
+                color: Colors.green.withValues(alpha: 0.3),
               ),
             ),
             child: Row(
@@ -550,6 +553,8 @@ class AttributedProductCard extends StatelessWidget {
     switch (nature) {
       case ProductNature.brut:
         return Colors.amber;
+      case ProductNature.liquide:
+        return Colors.lightBlue;
       case ProductNature.filtre:
         return Colors.blue;
       case ProductNature.cire:
@@ -562,6 +567,8 @@ class AttributedProductCard extends StatelessWidget {
     switch (nature) {
       case ProductNature.brut:
         return Icons.water_drop;
+      case ProductNature.liquide:
+        return Icons.opacity;
       case ProductNature.filtre:
         return Icons.filter_alt;
       case ProductNature.cire:

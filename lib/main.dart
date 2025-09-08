@@ -6,7 +6,7 @@ import 'package:apisavana_gestion/screens/conditionnement/condionnement_home.dar
 import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
 import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
 import 'package:apisavana_gestion/screens/extraction_page/extraction.dart';
-import 'package:apisavana_gestion/screens/filtrage/filtrage.dart';
+import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
