@@ -11,7 +11,7 @@ class _NotificationsPageState extends State<NotificationsPage>
     with TickerProviderStateMixin {
   late TabController _tabController;
   String selectedFilter = 'Toutes';
-  
+
   @override
   void initState() {
     super.initState();
@@ -30,7 +30,8 @@ class _NotificationsPageState extends State<NotificationsPage>
       'id': '1',
       'type': 'success',
       'title': 'Nouvelle vente réalisée',
-      'message': 'Vente #2024-157 pour 25kg miel toutes fleurs - Client: Épicerie Bio Nature',
+      'message':
+          'Vente #2024-157 pour 25kg miel toutes fleurs - Client: Épicerie Bio Nature',
       'amount': '412,500 FCFA',
       'timestamp': DateTime.now().subtract(const Duration(minutes: 15)),
       'isRead': false,
@@ -55,7 +56,8 @@ class _NotificationsPageState extends State<NotificationsPage>
       'id': '3',
       'type': 'info',
       'title': 'Nouvelle collecte enregistrée',
-      'message': 'Apiculteur Marie TRAORE: 38kg miel toutes fleurs collectés - Site: Koudougou',
+      'message':
+          'Apiculteur Marie TRAORE: 38kg miel toutes fleurs collectés - Site: Koudougou',
       'amount': '190,000 FCFA',
       'timestamp': DateTime.now().subtract(const Duration(hours: 2)),
       'isRead': true,
@@ -68,7 +70,8 @@ class _NotificationsPageState extends State<NotificationsPage>
       'id': '4',
       'type': 'error',
       'title': 'Crédit en retard',
-      'message': 'Client Boulangerie SANKARA: 2,850,000 FCFA depuis 52 jours - Action requise',
+      'message':
+          'Client Boulangerie SANKARA: 2,850,000 FCFA depuis 52 jours - Action requise',
       'amount': '2,850,000 FCFA',
       'timestamp': DateTime.now().subtract(const Duration(hours: 3)),
       'isRead': false,
@@ -81,7 +84,8 @@ class _NotificationsPageState extends State<NotificationsPage>
       'id': '5',
       'type': 'success',
       'title': 'Extraction terminée',
-      'message': 'Lot EXT-2024-089: 45kg de miel extrait avec succès - Technicien: Ousmane KONE',
+      'message':
+          'Lot EXT-2024-089: 45kg de miel extrait avec succès - Technicien: Ousmane KONE',
       'timestamp': DateTime.now().subtract(const Duration(hours: 4)),
       'isRead': true,
       'priority': 'normal',
@@ -93,7 +97,8 @@ class _NotificationsPageState extends State<NotificationsPage>
       'id': '6',
       'type': 'info',
       'title': 'Nouveau contrôle qualité',
-      'message': 'Échantillon #CQ-2024-156 en attente de validation - Prélèvement site Bobo-Dioulasso',
+      'message':
+          'Échantillon #CQ-2024-156 en attente de validation - Prélèvement site Bobo-Dioulasso',
       'timestamp': DateTime.now().subtract(const Duration(hours: 6)),
       'isRead': false,
       'priority': 'normal',
@@ -105,7 +110,8 @@ class _NotificationsPageState extends State<NotificationsPage>
       'id': '7',
       'type': 'warning',
       'title': 'Maintenance programmée',
-      'message': 'Maintenance des extracteurs prévue demain à 14h00 - Durée estimée: 2h',
+      'message':
+          'Maintenance des extracteurs prévue demain à 14h00 - Durée estimée: 2h',
       'timestamp': DateTime.now().subtract(const Duration(hours: 8)),
       'isRead': true,
       'priority': 'normal',
@@ -117,7 +123,8 @@ class _NotificationsPageState extends State<NotificationsPage>
       'id': '8',
       'type': 'success',
       'title': 'Filtrage complété',
-      'message': 'Lot FIL-2024-078: 32kg de miel filtré - Prêt pour conditionnement',
+      'message':
+          'Lot FIL-2024-078: 32kg de miel filtré - Prêt pour conditionnement',
       'timestamp': DateTime.now().subtract(const Duration(hours: 10)),
       'isRead': true,
       'priority': 'normal',
@@ -129,7 +136,8 @@ class _NotificationsPageState extends State<NotificationsPage>
       'id': '9',
       'type': 'info',
       'title': 'Rapport mensuel disponible',
-      'message': 'Le rapport de production de novembre 2024 est maintenant disponible',
+      'message':
+          'Le rapport de production de novembre 2024 est maintenant disponible',
       'timestamp': DateTime.now().subtract(const Duration(days: 1)),
       'isRead': false,
       'priority': 'low',
@@ -141,7 +149,8 @@ class _NotificationsPageState extends State<NotificationsPage>
       'id': '10',
       'type': 'error',
       'title': 'Erreur système détectée',
-      'message': 'Problème de synchronisation avec la base de données - Support technique contacté',
+      'message':
+          'Problème de synchronisation avec la base de données - Support technique contacté',
       'timestamp': DateTime.now().subtract(const Duration(days: 1, hours: 2)),
       'isRead': true,
       'priority': 'urgent',
@@ -156,14 +165,16 @@ class _NotificationsPageState extends State<NotificationsPage>
       case 'Non lues':
         return notifications.where((n) => !n['isRead']).toList();
       case 'Urgentes':
-        return notifications.where((n) => n['priority'] == 'urgent' || n['priority'] == 'high').toList();
+        return notifications
+            .where((n) => n['priority'] == 'urgent' || n['priority'] == 'high')
+            .toList();
       case 'Aujourd\'hui':
         final today = DateTime.now();
         return notifications.where((n) {
           final notifDate = n['timestamp'] as DateTime;
           return notifDate.day == today.day &&
-                 notifDate.month == today.month &&
-                 notifDate.year == today.year;
+              notifDate.month == today.month &&
+              notifDate.year == today.year;
         }).toList();
       default:
         return notifications;
@@ -174,7 +185,6 @@ class _NotificationsPageState extends State<NotificationsPage>
 
   @override
   Widget build(BuildContext context) {
-    
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
@@ -219,7 +229,7 @@ class _NotificationsPageState extends State<NotificationsPage>
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(100),
+          preferredSize: const Size.fromHeight(140),
           child: Container(
             color: Colors.white,
             padding: const EdgeInsets.all(16),
@@ -234,20 +244,23 @@ class _NotificationsPageState extends State<NotificationsPage>
                       'Non lues',
                       'Urgentes',
                       'Aujourd\'hui',
-                    ].map((filter) => Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilterChip(
-                        selected: selectedFilter == filter,
-                        label: Text(filter),
-                        onSelected: (selected) {
-                          setState(() {
-                            selectedFilter = filter;
-                          });
-                        },
-                        selectedColor: const Color(0xFFF49101).withOpacity(0.2),
-                        checkmarkColor: const Color(0xFFF49101),
-                      ),
-                    )).toList(),
+                    ]
+                        .map((filter) => Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: FilterChip(
+                                selected: selectedFilter == filter,
+                                label: Text(filter),
+                                onSelected: (selected) {
+                                  setState(() {
+                                    selectedFilter = filter;
+                                  });
+                                },
+                                selectedColor:
+                                    const Color(0xFFF49101).withOpacity(0.2),
+                                checkmarkColor: const Color(0xFFF49101),
+                              ),
+                            ))
+                        .toList(),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -274,13 +287,20 @@ class _NotificationsPageState extends State<NotificationsPage>
         controller: _tabController,
         children: [
           _buildNotificationsList(filteredNotifications),
-          _buildNotificationsList(notifications.where((n) => 
-            n['category'] == 'vente' || n['category'] == 'finance').toList()),
-          _buildNotificationsList(notifications.where((n) => 
-            n['category'] == 'production' || n['category'] == 'collecte' || 
-            n['category'] == 'qualite').toList()),
-          _buildNotificationsList(notifications.where((n) => 
-            n['category'] == 'systeme' || n['category'] == 'maintenance').toList()),
+          _buildNotificationsList(notifications
+              .where(
+                  (n) => n['category'] == 'vente' || n['category'] == 'finance')
+              .toList()),
+          _buildNotificationsList(notifications
+              .where((n) =>
+                  n['category'] == 'production' ||
+                  n['category'] == 'collecte' ||
+                  n['category'] == 'qualite')
+              .toList()),
+          _buildNotificationsList(notifications
+              .where((n) =>
+                  n['category'] == 'systeme' || n['category'] == 'maintenance')
+              .toList()),
         ],
       ),
     );
@@ -333,16 +353,18 @@ class _NotificationsPageState extends State<NotificationsPage>
     final isUrgent = notification['priority'] == 'urgent';
     final isHigh = notification['priority'] == 'high';
     final isRead = notification['isRead'] as bool;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isUrgent ? Colors.red.shade200 : 
-                 isHigh ? Colors.orange.shade200 : 
-                 Colors.grey.shade200,
+          color: isUrgent
+              ? Colors.red.shade200
+              : isHigh
+                  ? Colors.orange.shade200
+                  : Colors.grey.shade200,
           width: isUrgent ? 2 : 1,
         ),
         boxShadow: [
@@ -399,7 +421,8 @@ class _NotificationsPageState extends State<NotificationsPage>
                             notification['title'],
                             style: TextStyle(
                               fontSize: 16,
-                              fontWeight: isRead ? FontWeight.w500 : FontWeight.bold,
+                              fontWeight:
+                                  isRead ? FontWeight.w500 : FontWeight.bold,
                               color: const Color(0xFF2D0C0D),
                             ),
                           ),
@@ -407,7 +430,8 @@ class _NotificationsPageState extends State<NotificationsPage>
                         // Badge de priorité
                         if (isUrgent)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: Colors.red.shade100,
                               borderRadius: BorderRadius.circular(4),
@@ -437,7 +461,8 @@ class _NotificationsPageState extends State<NotificationsPage>
                     if (notification['amount'] != null) ...[
                       const SizedBox(height: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: const Color(0xFFF49101).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(6),
@@ -466,13 +491,16 @@ class _NotificationsPageState extends State<NotificationsPage>
               ),
               // Actions
               PopupMenuButton<String>(
-                onSelected: (action) => _handleNotificationAction(action, notification),
+                onSelected: (action) =>
+                    _handleNotificationAction(action, notification),
                 itemBuilder: (context) => [
                   PopupMenuItem(
                     value: 'mark_read',
                     child: Row(
                       children: [
-                        Icon(isRead ? Icons.mark_email_unread : Icons.mark_email_read),
+                        Icon(isRead
+                            ? Icons.mark_email_unread
+                            : Icons.mark_email_read),
                         const SizedBox(width: 8),
                         Text(isRead ? 'Marquer non lu' : 'Marquer comme lu'),
                       ],
@@ -530,7 +558,7 @@ class _NotificationsPageState extends State<NotificationsPage>
         notification['isRead'] = true;
       }
     });
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Toutes les notifications ont été marquées comme lues'),
@@ -539,7 +567,8 @@ class _NotificationsPageState extends State<NotificationsPage>
     );
   }
 
-  void _handleNotificationAction(String action, Map<String, dynamic> notification) {
+  void _handleNotificationAction(
+      String action, Map<String, dynamic> notification) {
     switch (action) {
       case 'mark_read':
         setState(() {
@@ -652,7 +681,8 @@ class _NotificationsPageState extends State<NotificationsPage>
     );
   }
 
-  Widget _buildSettingsTile(String title, String subtitle, IconData icon, bool value) {
+  Widget _buildSettingsTile(
+      String title, String subtitle, IconData icon, bool value) {
     return ListTile(
       leading: Icon(icon, color: const Color(0xFFF49101)),
       title: Text(title),

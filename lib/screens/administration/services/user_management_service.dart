@@ -52,7 +52,7 @@ class UserManagementService extends GetxService {
           descending: !filters.sortAscending,
         );
       } else {
-        query = query.orderBy('dateCreation', descending: true);
+        query = query.orderBy('createdAt', descending: true);
       }
 
       final snapshot = await query.get();
@@ -89,6 +89,7 @@ class UserManagementService extends GetxService {
       return [];
     }
   }
+
 
   /// Récupérer un utilisateur par ID
   Future<AppUser?> getUserById(String userId) async {

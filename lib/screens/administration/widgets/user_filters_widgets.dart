@@ -61,11 +61,14 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
           // Barre de recherche principale
           Padding(
             padding: EdgeInsets.all(widget.isMobile ? 12 : 16),
-            child: Row(
+            child: Column(
               children: [
-                // Champ de recherche
-                Expanded(
-                  child: TextField(
+                // Première ligne : Champ de recherche et boutons
+                Row(
+                  children: [
+                    // Champ de recherche
+                    Expanded(
+                      child: TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
                       hintText: 'Rechercher par nom, email, téléphone...',
@@ -105,43 +108,55 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
                   ),
                 ),
                 
-                const SizedBox(width: 8),
-                
-                // Bouton filtres avancés
-                IconButton(
-                  icon: Icon(
-                    _isExpanded ? Icons.filter_list_off : Icons.filter_list,
-                    color: _currentFilters.hasActiveFilters ? const Color(0xFF2196F3) : Colors.grey,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _isExpanded = !_isExpanded;
-                    });
-                  },
-                  tooltip: 'Filtres avancés',
-                ),
-                
-                // Bouton rechercher
-                ElevatedButton(
-                  onPressed: _updateFilters,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2196F3),
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: widget.isMobile ? 12 : 16,
-                      vertical: 12,
+                    SizedBox(width: widget.isMobile ? 4 : 8),
+                    
+                    // Bouton filtres avancés
+                    IconButton(
+                      icon: Icon(
+                        _isExpanded ? Icons.filter_list_off : Icons.filter_list,
+                        color: _currentFilters.hasActiveFilters ? const Color(0xFF2196F3) : Colors.grey,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isExpanded = !_isExpanded;
+                        });
+                      },
+                      tooltip: 'Filtres avancés',
+                      constraints: const BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 40,
+                      ),
+                      padding: EdgeInsets.all(widget.isMobile ? 6 : 8),
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: widget.isMobile 
-                      ? const Icon(Icons.search)
-                      : const Text('Rechercher'),
-                ),
-              ],
-            ),
+                    
+                    // Bouton rechercher (conditionnel selon l'espace)
+                    if (!widget.isMobile || MediaQuery.of(context).size.width > 400)
+                      Container(
+                        margin: const EdgeInsets.only(left: 4),
+                        child: ElevatedButton(
+                          onPressed: _updateFilters,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2196F3),
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: widget.isMobile ? 8 : 16,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            minimumSize: Size(widget.isMobile ? 40 : 100, 44),
+                          ),
+                          child: widget.isMobile 
+                              ? const Icon(Icons.search, size: 18)
+                              : const Text('Rechercher'),
+                        ),
+                      ),
+                ],
+              ),
+            ],
           ),
+        ),
           
           // Filtres avancés (collapsible)
           if (_isExpanded) _buildAdvancedFilters(),

@@ -258,7 +258,7 @@ extension UserSortFieldExtension on UserSortField {
       case UserSortField.site:
         return 'site';
       case UserSortField.dateCreation:
-        return 'dateCreation';
+        return 'createdAt';
       case UserSortField.dateLastLogin:
         return 'dateLastLogin';
     }

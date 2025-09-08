@@ -191,14 +191,16 @@ class UserListWidget extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
+                    flex: 2,
                     child: _buildInfoChip(
                       Icons.work,
                       user.role,
                       _getRoleColor(user.role),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Expanded(
+                    flex: 1,
                     child: _buildInfoChip(
                       Icons.location_on,
                       user.site,
@@ -236,23 +238,31 @@ class UserListWidget extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _buildActionButton(
-                    Icons.edit,
-                    'Modifier',
-                    Colors.blue,
-                    () => onUserEdit(user),
+                  Expanded(
+                    child: _buildActionButton(
+                      Icons.edit,
+                      'Modifier',
+                      Colors.blue,
+                      () => onUserEdit(user),
+                    ),
                   ),
-                  _buildActionButton(
-                    user.isActive ? Icons.block : Icons.check_circle,
-                    user.isActive ? 'Désactiver' : 'Activer',
-                    user.isActive ? Colors.orange : Colors.green,
-                    () => onUserToggleStatus(user),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: _buildActionButton(
+                      user.isActive ? Icons.block : Icons.check_circle,
+                      user.isActive ? 'Désactiver' : 'Activer',
+                      user.isActive ? Colors.orange : Colors.green,
+                      () => onUserToggleStatus(user),
+                    ),
                   ),
-                  _buildActionButton(
-                    Icons.more_vert,
-                    'Plus',
-                    Colors.grey,
-                    () => _showMobileActionsModal(user),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: _buildActionButton(
+                      Icons.more_vert,
+                      'Plus',
+                      Colors.grey,
+                      () => _showMobileActionsModal(user),
+                    ),
                   ),
                 ],
               ),
@@ -297,18 +307,22 @@ class UserListWidget extends StatelessWidget {
       onTap: onPressed,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 20, color: color),
+            Icon(icon, size: 18, color: color),
             const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 9,
                 color: color,
                 fontWeight: FontWeight.w500,
               ),
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           ],
         ),
@@ -402,9 +416,12 @@ class UserListWidget extends StatelessWidget {
   Widget _buildDesktopTable() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: Container(
-        width: MediaQuery.of(Get.context!).size.width,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minWidth: MediaQuery.of(Get.context!).size.width,
+        ),
         child: DataTable(
+          columnSpacing: 16,
           headingRowColor: MaterialStateProperty.all(Colors.grey[50]),
           columns: const [
             DataColumn(label: Text('Utilisateur', style: TextStyle(fontWeight: FontWeight.bold))),
@@ -464,22 +481,28 @@ class UserListWidget extends StatelessWidget {
                 ],
               ),
               const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    user.nomComplet,
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  Text(
-                    user.telephone,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      user.nomComplet,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
-                  ),
-                ],
+                    Text(
+                      user.telephone,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -502,6 +525,8 @@ class UserListWidget extends StatelessWidget {
                 color: _getRoleColor(user.role),
                 fontWeight: FontWeight.w500,
               ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           ),
         ),
@@ -509,10 +534,17 @@ class UserListWidget extends StatelessWidget {
         // Site
         DataCell(
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.location_on, size: 16, color: Colors.blue),
               const SizedBox(width: 4),
-              Text(user.site),
+              Expanded(
+                child: Text(
+                  user.site,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
             ],
           ),
         ),
@@ -547,9 +579,13 @@ class UserListWidget extends StatelessWidget {
         
         // Email
         DataCell(
-          Text(
-            user.email,
-            overflow: TextOverflow.ellipsis,
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 200),
+            child: Text(
+              user.email,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
           ),
         ),
         

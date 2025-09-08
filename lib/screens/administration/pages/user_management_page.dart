@@ -19,13 +19,15 @@ class _UserManagementPageState extends State<UserManagementPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final UserManagementService _userService = Get.put(UserManagementService());
-  
+
   final RxList<AppUser> _users = <AppUser>[].obs;
   final Rx<UserStatistics> _statistics = UserStatistics.empty().obs;
   final RxList<UserAction> _recentActions = <UserAction>[].obs;
   final Rx<UserFilters> _filters = UserFilters().obs;
-  final RxBool _isLoading = false.obs;
-  final RxBool _isLoadingStats = false.obs;
+  final RxBool _isLoading = true.obs; // Commencer en mode loading
+  final RxBool _isLoadingStats = true.obs; // Commencer en mode loading
+  final RxBool _hasInitialized =
+      false.obs; // Nouveau flag pour savoir si on a initialisé
 
   @override
   void initState() {
@@ -41,8 +43,10 @@ class _UserManagementPageState extends State<UserManagementPage>
   }
 
   Future<void> _loadData() async {
-    _isLoading.value = true;
-    _isLoadingStats.value = true;
+    if (!_hasInitialized.value) {
+      _isLoading.value = true;
+      _isLoadingStats.value = true;
+    }
 
     try {
       // Charger les utilisateurs et statistiques en parallèle
@@ -55,14 +59,23 @@ class _UserManagementPageState extends State<UserManagementPage>
       _users.value = futures[0] as List<AppUser>;
       _statistics.value = futures[1] as UserStatistics;
       _recentActions.value = futures[2] as List<UserAction>;
+
+      if (!_hasInitialized.value) {
+        _hasInitialized.value = true;
+      }
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les données: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      // Seulement afficher l'erreur si on a déjà initialisé (pour éviter l'erreur rouge au début)
+      if (_hasInitialized.value) {
+        Get.snackbar(
+          'Erreur',
+          'Impossible de charger les données: $e',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+      } else {
+        print('Erreur de chargement initial: $e');
+      }
     } finally {
       _isLoading.value = false;
       _isLoadingStats.value = false;
@@ -72,7 +85,7 @@ class _UserManagementPageState extends State<UserManagementPage>
   Future<void> _applyFilters(UserFilters newFilters) async {
     _filters.value = newFilters;
     _isLoading.value = true;
-    
+
     try {
       final users = await _userService.getUsers(filters: newFilters);
       _users.value = users;
@@ -105,14 +118,13 @@ class _UserManagementPageState extends State<UserManagementPage>
         actions: [
           // Bouton refresh
           IconButton(
-            icon: Obx(() => _isLoading.value 
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.refresh)
-            ),
+            icon: Obx(() => _isLoading.value
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh)),
             onPressed: _isLoading.value ? null : _refreshData,
             tooltip: 'Actualiser',
           ),
@@ -145,11 +157,11 @@ class _UserManagementPageState extends State<UserManagementPage>
         children: [
           // Statistiques en haut
           Obx(() => UserStatisticsHeader(
-            statistics: _statistics.value,
-            isLoading: _isLoadingStats.value,
-            isMobile: isMobile,
-          )),
-          
+                statistics: _statistics.value,
+                isLoading: _isLoadingStats.value,
+                isMobile: isMobile,
+              )),
+
           // Onglets
           Container(
             color: Colors.white,
@@ -178,7 +190,7 @@ class _UserManagementPageState extends State<UserManagementPage>
               ],
             ),
           ),
-          
+
           // Contenu des onglets
           Expanded(
             child: TabBarView(
@@ -186,13 +198,13 @@ class _UserManagementPageState extends State<UserManagementPage>
               children: [
                 // Onglet Utilisateurs
                 _buildUsersTab(isMobile, isTablet),
-                
+
                 // Onglet Statistiques
                 _buildStatisticsTab(isMobile, isTablet),
-                
+
                 // Onglet Historique
                 _buildHistoryTab(isMobile, isTablet),
-                
+
                 // Onglet Utilisateurs en ligne
                 _buildOnlineUsersTab(isMobile, isTablet),
               ],
@@ -214,21 +226,21 @@ class _UserManagementPageState extends State<UserManagementPage>
           availableSites: _userService.availableSites,
           isMobile: isMobile,
         ),
-        
+
         // Liste des utilisateurs
         Expanded(
           child: Obx(() => UserListWidget(
-            users: _users,
-            isLoading: _isLoading.value,
-            isMobile: isMobile,
-            onUserTap: _showUserDetails,
-            onUserEdit: _showEditUserModal,
-            onUserToggleStatus: _toggleUserStatus,
-            onUserChangeRole: _showChangeRoleModal,
-            onUserChangeSite: _showChangeSiteModal,
-            onUserResetPassword: _resetUserPassword,
-            onUserDelete: _deleteUser,
-          )),
+                users: _users,
+                isLoading: _isLoading.value,
+                isMobile: isMobile,
+                onUserTap: _showUserDetails,
+                onUserEdit: _showEditUserModal,
+                onUserToggleStatus: _toggleUserStatus,
+                onUserChangeRole: _showChangeRoleModal,
+                onUserChangeSite: _showChangeSiteModal,
+                onUserResetPassword: _resetUserPassword,
+                onUserDelete: _deleteUser,
+              )),
         ),
       ],
     );
@@ -236,18 +248,18 @@ class _UserManagementPageState extends State<UserManagementPage>
 
   Widget _buildStatisticsTab(bool isMobile, bool isTablet) {
     return Obx(() => UserStatisticsDetailWidget(
-      statistics: _statistics.value,
-      isLoading: _isLoadingStats.value,
-      isMobile: isMobile,
-    ));
+          statistics: _statistics.value,
+          isLoading: _isLoadingStats.value,
+          isMobile: isMobile,
+        ));
   }
 
   Widget _buildHistoryTab(bool isMobile, bool isTablet) {
     return Obx(() => UserActionsWidget(
-      actions: _recentActions,
-      isLoading: _isLoading.value,
-      isMobile: isMobile,
-    ));
+          actions: _recentActions,
+          isLoading: _isLoading.value,
+          isMobile: isMobile,
+        ));
   }
 
   Widget _buildOnlineUsersTab(bool isMobile, bool isTablet) {
@@ -303,12 +315,11 @@ class _UserManagementPageState extends State<UserManagementPage>
   void _toggleUserStatus(AppUser user) {
     Get.dialog(
       AlertDialog(
-        title: Text(user.isActive ? 'Désactiver utilisateur' : 'Activer utilisateur'),
-        content: Text(
-          user.isActive 
+        title: Text(
+            user.isActive ? 'Désactiver utilisateur' : 'Activer utilisateur'),
+        content: Text(user.isActive
             ? 'Êtes-vous sûr de vouloir désactiver ${user.nomComplet} ?'
-            : 'Êtes-vous sûr de vouloir activer ${user.nomComplet} ?'
-        ),
+            : 'Êtes-vous sûr de vouloir activer ${user.nomComplet} ?'),
         actions: [
           TextButton(
             onPressed: () => Get.back(),
@@ -317,7 +328,8 @@ class _UserManagementPageState extends State<UserManagementPage>
           ElevatedButton(
             onPressed: () async {
               Get.back();
-              final success = await _userService.toggleUserStatus(user.id, !user.isActive);
+              final success =
+                  await _userService.toggleUserStatus(user.id, !user.isActive);
               if (success) {
                 Get.snackbar(
                   'Succès',
@@ -377,9 +389,7 @@ class _UserManagementPageState extends State<UserManagementPage>
     Get.dialog(
       AlertDialog(
         title: const Text('Réinitialiser mot de passe'),
-        content: Text(
-          'Envoyer un email de réinitialisation à ${user.email} ?'
-        ),
+        content: Text('Envoyer un email de réinitialisation à ${user.email} ?'),
         actions: [
           TextButton(
             onPressed: () => Get.back(),
@@ -419,9 +429,8 @@ class _UserManagementPageState extends State<UserManagementPage>
       AlertDialog(
         title: const Text('Supprimer utilisateur'),
         content: Text(
-          'Êtes-vous sûr de vouloir supprimer ${user.nomComplet} ?\n\n'
-          'Cette action désactivera le compte mais conservera les données.'
-        ),
+            'Êtes-vous sûr de vouloir supprimer ${user.nomComplet} ?\n\n'
+            'Cette action désactivera le compte mais conservera les données.'),
         actions: [
           TextButton(
             onPressed: () => Get.back(),

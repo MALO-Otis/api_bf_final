@@ -19,6 +19,8 @@ import 'package:apisavana_gestion/screens/dashboard/role_dashboards/extracteur_f
 import 'package:apisavana_gestion/screens/dashboard/role_dashboards/conditionneur_dashboard.dart';
 import 'package:apisavana_gestion/screens/dashboard/role_dashboards/commercial_dashboard.dart';
 import 'package:apisavana_gestion/screens/administration/pages/user_management_page.dart';
+import 'package:apisavana_gestion/screens/administration/pages/admin_reports_page.dart';
+import 'package:apisavana_gestion/screens/administration/pages/settings_page.dart';
 import 'package:apisavana_gestion/authentication/sign_up.dart';
 import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
 import 'package:apisavana_gestion/screens/extraction/pages/main_extraction_page.dart';
@@ -863,17 +865,19 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
           ),
         ),
         SizedBox(height: isMobile ? 12 : 16),
-        
+
         // Version responsive adaptée selon la taille d'écran
         if (isMobile)
           // Mobile : Liste verticale pour éviter les overflow
           Column(
-            children: actions.map((action) => 
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _buildAdminActionCard(action, isMobile),
-              ),
-            ).toList(),
+            children: actions
+                .map(
+                  (action) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _buildAdminActionCard(action, isMobile),
+                  ),
+                )
+                .toList(),
           )
         else
           // Tablet/Desktop : Grille responsive
@@ -881,8 +885,9 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
             builder: (context, constraints) {
               // Calculer le nombre de colonnes selon la largeur disponible
               final double cardWidth = 280; // Largeur minimale d'une carte
-              final int crossAxisCount = (constraints.maxWidth / cardWidth).floor().clamp(1, 4);
-              
+              final int crossAxisCount =
+                  (constraints.maxWidth / cardWidth).floor().clamp(1, 4);
+
               return GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -916,7 +921,8 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: (action['color'] as Color).withOpacity(0.2)),
+          border:
+              Border.all(color: (action['color'] as Color).withOpacity(0.2)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.05),
@@ -942,7 +948,7 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
               ),
             ),
             SizedBox(width: isMobile ? 10 : 12),
-            
+
             // Texte avec gestion de l'overflow
             Expanded(
               child: Column(
@@ -974,7 +980,7 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
                 ],
               ),
             ),
-            
+
             // Flèche avec taille fixe
             Container(
               width: 24,
@@ -997,23 +1003,17 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
   }
 
   void _navigateToUserManagement() {
-    Get.find<DashboardController>().currentPage.value = const UserManagementPage();
+    Get.find<DashboardController>().currentPage.value =
+        const UserManagementPage();
   }
 
   void _navigateToSystemSettings() {
-    Get.snackbar(
-      'Navigation',
-      'Paramètres Système - À implémenter',
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    Get.find<DashboardController>().currentPage.value = const SettingsPage();
   }
 
   void _navigateToAdminReports() {
-    Get.snackbar(
-      'Navigation',
-      'Rapports Admin - À implémenter',
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    Get.find<DashboardController>().currentPage.value =
+        const AdminReportsPage();
   }
 }
 
