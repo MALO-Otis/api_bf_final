@@ -13,6 +13,7 @@ import 'package:apisavana_gestion/screens/collecte_de_donnes/nouvelle_collecte_i
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_achats_scoop_contenants/nouvel_achat_scoop_contenants.dart';
 
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_mielleurie/nouvelle_collecte_miellerie.dart';
+import 'package:apisavana_gestion/screens/dashboard/pages/notifications_page.dart';
 import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
 import 'package:apisavana_gestion/screens/extraction/pages/main_extraction_page.dart';
 import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
@@ -435,13 +436,19 @@ class DashboardHeader extends StatelessWidget {
                     child: CircleAvatar(
                       backgroundColor: Colors.redAccent,
                       radius: 6,
-                      child: Text("3",
+                      child: Text("5",
                           style: TextStyle(fontSize: 9, color: Colors.white)),
                     ),
                   ),
                 ],
               ),
-              onPressed: () {},
+              onPressed: () {
+                Get.to(
+                  () => const NotificationsPage(),
+                  transition: Transition.rightToLeftWithFade,
+                  duration: const Duration(milliseconds: 300),
+                );
+              },
             ),
             if (!isMobile) ...[
               IconButton(
@@ -522,7 +529,7 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
                 children: [
                   KPICard(
                       title: "Ventes du mois",
-                      value: "€24,500",
+                      value: "16,072,500 FCFA",
                       icon: Icons.shopping_cart,
                       color: kHighlightColor,
                       trend: 12,
@@ -546,7 +553,7 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
                       isMobile: widget.isMobile),
                   KPICard(
                       title: "Crédits en attente",
-                      value: "€8,900",
+                      value: "5,842,100 FCFA",
                       icon: Icons.credit_card,
                       color: Colors.red,
                       trend: 15,
@@ -1523,7 +1530,7 @@ class AlertsSection extends StatelessWidget {
     {
       "type": "error",
       "title": "Crédit en retard",
-      "message": "Client Martin DUPONT: 2,400€ depuis 45 jours",
+      "message": "Client Martin DUPONT: 1,575,600 FCFA depuis 45 jours",
       "timestamp": "Il y a 3 heures",
       "action": "Relancer"
     },
