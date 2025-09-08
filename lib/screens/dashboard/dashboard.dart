@@ -201,7 +201,7 @@ class _DashboardPageState extends State<DashboardPage> {
     super.initState();
     // Initialiser le controller
     _dashboardController = Get.put(DashboardController());
-    
+
     // Initialiser le service de rôles
     Get.put(UserRoleService());
 
@@ -417,53 +417,58 @@ class DashboardHeader extends StatelessWidget {
                         try {
                           final roleService = Get.find<UserRoleService>();
                           return Text(roleService.dashboardSubtitle,
-                              style:
-                                  TextStyle(fontSize: 11, color: Colors.grey[600]));
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey[600]));
                         } catch (e) {
                           return Text("Plateforme de gestion Apisavana",
-                              style:
-                                  TextStyle(fontSize: 11, color: Colors.grey[600]));
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey[600]));
                         }
                       },
                     ),
                 ],
               ),
             ),
-            if (!isMobile)
-              Row(
-                children: [
-                  Column(
-                    children: [
-                      Text("Date",
-                          style: TextStyle(fontSize: 10, color: Colors.grey)),
-                      Text(dateStr,
-                          style: TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                  SizedBox(width: 10),
-                  Column(
-                    children: [
-                      Text("Heure",
-                          style: TextStyle(fontSize: 10, color: Colors.grey)),
-                      Text(hourStr,
-                          style: TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                  SizedBox(width: 10),
-                  Row(
-                    children: [
-                      Icon(Icons.circle, color: Colors.green, size: 11),
-                      SizedBox(width: 4),
-                      Text("Système actif",
-                          style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.green,
-                              fontWeight: FontWeight.w500)),
-                    ],
-                  ),
-                ],
+            if (!isMobile && !isTablet)
+              // Seulement sur desktop pour éviter l'overflow
+              Flexible(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Column(
+                      children: [
+                        Text("Date",
+                            style: TextStyle(fontSize: 10, color: Colors.grey)),
+                        Text(dateStr,
+                            style: TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                    SizedBox(width: 8),
+                    Column(
+                      children: [
+                        Text("Heure",
+                            style: TextStyle(fontSize: 10, color: Colors.grey)),
+                        Text(hourStr,
+                            style: TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                    SizedBox(width: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.circle, color: Colors.green, size: 10),
+                        SizedBox(width: 3),
+                        Text("Actif",
+                            style: TextStyle(
+                                fontSize: 9,
+                                color: Colors.green,
+                                fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             SizedBox(width: isMobile ? 6 : 12),
             IconButton(
@@ -549,7 +554,7 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
     // Vérifier le rôle et afficher le dashboard approprié
     try {
       final roleService = Get.find<UserRoleService>();
-      
+
       switch (roleService.currentRoleGroup) {
         case RoleGroup.controleur:
           return const ControleurDashboard();
@@ -626,6 +631,14 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
             ],
           ),
         ),
+
+        // Actions Rapides Admin (seulement pour les administrateurs)
+        Padding(
+          padding: sectionPad,
+          child:
+              _buildAdminQuickActionsSection(widget.isMobile, widget.isTablet),
+        ),
+
         // Chart
         Padding(
           padding: sectionPad,
@@ -803,6 +816,206 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
         ),
         SizedBox(height: widget.isMobile ? 20 : 32),
       ],
+    );
+  }
+
+  Widget _buildAdminQuickActionsSection(bool isMobile, bool isTablet) {
+    final actions = [
+      {
+        'title': 'Créer un Compte',
+        'subtitle': 'Ajouter un nouvel utilisateur',
+        'icon': Icons.person_add,
+        'color': const Color(0xFF2196F3),
+        'onTap': () => _navigateToCreateAccount(),
+      },
+      {
+        'title': 'Gestion Utilisateurs',
+        'subtitle': 'Voir tous les utilisateurs',
+        'icon': Icons.people,
+        'color': const Color(0xFF4CAF50),
+        'onTap': () => _navigateToUserManagement(),
+      },
+      {
+        'title': 'Paramètres Système',
+        'subtitle': 'Configuration générale',
+        'icon': Icons.settings,
+        'color': const Color(0xFFFF9800),
+        'onTap': () => _navigateToSystemSettings(),
+      },
+      {
+        'title': 'Rapports Admin',
+        'subtitle': 'Statistiques globales',
+        'icon': Icons.analytics,
+        'color': const Color(0xFF9C27B0),
+        'onTap': () => _navigateToAdminReports(),
+      },
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "Actions Rapides Admin",
+          style: TextStyle(
+            fontSize: isMobile ? 15 : 19,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        SizedBox(height: isMobile ? 12 : 16),
+        
+        // Version responsive adaptée selon la taille d'écran
+        if (isMobile)
+          // Mobile : Liste verticale pour éviter les overflow
+          Column(
+            children: actions.map((action) => 
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildAdminActionCard(action, isMobile),
+              ),
+            ).toList(),
+          )
+        else
+          // Tablet/Desktop : Grille responsive
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // Calculer le nombre de colonnes selon la largeur disponible
+              final double cardWidth = 280; // Largeur minimale d'une carte
+              final int crossAxisCount = (constraints.maxWidth / cardWidth).floor().clamp(1, 4);
+              
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: 2.8, // Ratio ajusté pour éviter l'overflow
+                ),
+                itemCount: actions.length,
+                itemBuilder: (context, index) {
+                  return _buildAdminActionCard(actions[index], false);
+                },
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  Widget _buildAdminActionCard(Map<String, dynamic> action, bool isMobile) {
+    return InkWell(
+      onTap: action['onTap'],
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        constraints: BoxConstraints(
+          minHeight: isMobile ? 70 : 80,
+        ),
+        padding: EdgeInsets.all(isMobile ? 12 : 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: (action['color'] as Color).withOpacity(0.2)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Icône avec taille fixe
+            Container(
+              width: isMobile ? 40 : 48,
+              height: isMobile ? 40 : 48,
+              decoration: BoxDecoration(
+                color: (action['color'] as Color).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                action['icon'],
+                color: action['color'],
+                size: isMobile ? 20 : 24,
+              ),
+            ),
+            SizedBox(width: isMobile ? 10 : 12),
+            
+            // Texte avec gestion de l'overflow
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    action['title'],
+                    style: TextStyle(
+                      fontSize: isMobile ? 14 : 16,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF2D0C0D),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: isMobile ? 2 : 4),
+                  Text(
+                    action['subtitle'],
+                    style: TextStyle(
+                      fontSize: isMobile ? 11 : 13,
+                      color: Colors.grey[600],
+                      height: 1.2,
+                    ),
+                    maxLines: isMobile ? 1 : 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            
+            // Flèche avec taille fixe
+            Container(
+              width: 24,
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.arrow_forward_ios,
+                size: 14,
+                color: Colors.grey[400],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Navigation methods for admin actions
+  void _navigateToCreateAccount() {
+    Get.find<DashboardController>().currentPage.value = const SignupPage();
+  }
+
+  void _navigateToUserManagement() {
+    Get.snackbar(
+      'Navigation',
+      'Gestion Utilisateurs - À implémenter',
+      snackPosition: SnackPosition.BOTTOM,
+    );
+  }
+
+  void _navigateToSystemSettings() {
+    Get.snackbar(
+      'Navigation',
+      'Paramètres Système - À implémenter',
+      snackPosition: SnackPosition.BOTTOM,
+    );
+  }
+
+  void _navigateToAdminReports() {
+    Get.snackbar(
+      'Navigation',
+      'Rapports Admin - À implémenter',
+      snackPosition: SnackPosition.BOTTOM,
     );
   }
 }
