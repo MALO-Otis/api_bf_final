@@ -35,16 +35,16 @@ class AppUser {
   factory AppUser.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return AppUser(
-      id: doc.id,
+      id: data['uid'] ?? doc.id, // Utiliser le champ uid du document
       email: data['email'] ?? '',
       nom: data['nom'] ?? '',
       prenom: data['prenom'] ?? '',
       telephone: data['telephone'] ?? '',
       role: data['role'] ?? '',
       site: data['site'] ?? '',
-      isActive: data['isActive'] ?? true,
+      isActive: data['isActive'] ?? true, // Par défaut true si pas spécifié
       emailVerified: data['emailVerified'] ?? false,
-      dateCreation: (data['dateCreation'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      dateCreation: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(), // createdAt au lieu de dateCreation
       dateLastLogin: (data['dateLastLogin'] as Timestamp?)?.toDate(),
       photoUrl: data['photoUrl'],
       metadata: data['metadata'],
@@ -53,6 +53,7 @@ class AppUser {
 
   Map<String, dynamic> toFirestore() {
     return {
+      'uid': id, // Ajouter le champ uid
       'email': email,
       'nom': nom,
       'prenom': prenom,
@@ -61,7 +62,7 @@ class AppUser {
       'site': site,
       'isActive': isActive,
       'emailVerified': emailVerified,
-      'dateCreation': Timestamp.fromDate(dateCreation),
+      'createdAt': Timestamp.fromDate(dateCreation), // createdAt au lieu de dateCreation
       'dateLastLogin': dateLastLogin != null ? Timestamp.fromDate(dateLastLogin!) : null,
       'photoUrl': photoUrl,
       'metadata': metadata,

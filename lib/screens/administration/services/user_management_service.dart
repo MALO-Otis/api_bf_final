@@ -10,7 +10,7 @@ class UserManagementService extends GetxService {
   final UserSession _userSession = Get.find<UserSession>();
 
   /// Collection des utilisateurs
-  CollectionReference get _usersCollection => _firestore.collection('users');
+  CollectionReference get _usersCollection => _firestore.collection('utilisateurs');
   
   /// Collection des actions sur les utilisateurs
   CollectionReference get _userActionsCollection => _firestore.collection('user_actions');
@@ -138,6 +138,7 @@ class UserManagementService extends GetxService {
         dateCreation: DateTime.now(),
       );
 
+      // Utiliser l'uid comme ID du document
       await _usersCollection.doc(user.uid).set(appUser.toFirestore());
 
       // Envoyer l'email de vérification

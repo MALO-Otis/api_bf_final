@@ -38,54 +38,70 @@ class UserStatisticsHeader extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Expanded(child: _buildStatCard(
-                          'Total', statistics.totalUsers.toString(), 
-                          Icons.people, const Color(0xFF2196F3)
-                        )),
+                        Expanded(
+                            child: _buildStatCard(
+                                'Total',
+                                statistics.totalUsers.toString(),
+                                Icons.people,
+                                const Color(0xFF2196F3))),
                         const SizedBox(width: 8),
-                        Expanded(child: _buildStatCard(
-                          'Actifs', statistics.activeUsers.toString(), 
-                          Icons.check_circle, const Color(0xFF4CAF50)
-                        )),
+                        Expanded(
+                            child: _buildStatCard(
+                                'Actifs',
+                                statistics.activeUsers.toString(),
+                                Icons.check_circle,
+                                const Color(0xFF4CAF50))),
                       ],
                     ),
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        Expanded(child: _buildStatCard(
-                          'Vérifiés', statistics.verifiedUsers.toString(), 
-                          Icons.verified, const Color(0xFFFF9800)
-                        )),
+                        Expanded(
+                            child: _buildStatCard(
+                                'Vérifiés',
+                                statistics.verifiedUsers.toString(),
+                                Icons.verified,
+                                const Color(0xFFFF9800))),
                         const SizedBox(width: 8),
-                        Expanded(child: _buildStatCard(
-                          'En ligne', statistics.onlineUsers.toString(), 
-                          Icons.online_prediction, const Color(0xFF9C27B0)
-                        )),
+                        Expanded(
+                            child: _buildStatCard(
+                                'En ligne',
+                                statistics.onlineUsers.toString(),
+                                Icons.online_prediction,
+                                const Color(0xFF9C27B0))),
                       ],
                     ),
                   ],
                 )
               : Row(
                   children: [
-                    Expanded(child: _buildStatCard(
-                      'Total Utilisateurs', statistics.totalUsers.toString(), 
-                      Icons.people, const Color(0xFF2196F3)
-                    )),
+                    Expanded(
+                        child: _buildStatCard(
+                            'Total Utilisateurs',
+                            statistics.totalUsers.toString(),
+                            Icons.people,
+                            const Color(0xFF2196F3))),
                     const SizedBox(width: 16),
-                    Expanded(child: _buildStatCard(
-                      'Utilisateurs Actifs', statistics.activeUsers.toString(), 
-                      Icons.check_circle, const Color(0xFF4CAF50)
-                    )),
+                    Expanded(
+                        child: _buildStatCard(
+                            'Utilisateurs Actifs',
+                            statistics.activeUsers.toString(),
+                            Icons.check_circle,
+                            const Color(0xFF4CAF50))),
                     const SizedBox(width: 16),
-                    Expanded(child: _buildStatCard(
-                      'Emails Vérifiés', statistics.verifiedUsers.toString(), 
-                      Icons.verified, const Color(0xFFFF9800)
-                    )),
+                    Expanded(
+                        child: _buildStatCard(
+                            'Emails Vérifiés',
+                            statistics.verifiedUsers.toString(),
+                            Icons.verified,
+                            const Color(0xFFFF9800))),
                     const SizedBox(width: 16),
-                    Expanded(child: _buildStatCard(
-                      'En Ligne', statistics.onlineUsers.toString(), 
-                      Icons.online_prediction, const Color(0xFF9C27B0)
-                    )),
+                    Expanded(
+                        child: _buildStatCard(
+                            'En Ligne',
+                            statistics.onlineUsers.toString(),
+                            Icons.online_prediction,
+                            const Color(0xFF9C27B0))),
                   ],
                 ),
         ],
@@ -93,7 +109,8 @@ class UserStatisticsHeader extends StatelessWidget {
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildStatCard(
+      String title, String value, IconData icon, Color color) {
     return Container(
       padding: EdgeInsets.all(isMobile ? 8 : 12),
       decoration: BoxDecoration(
@@ -157,23 +174,23 @@ class UserStatisticsDetailWidget extends StatelessWidget {
           _buildSectionTitle('Répartition par Rôle'),
           const SizedBox(height: 16),
           _buildRoleChart(),
-          
+
           const SizedBox(height: 32),
-          
+
           // Répartition par site
           _buildSectionTitle('Répartition par Site'),
           const SizedBox(height: 16),
           _buildSiteChart(),
-          
+
           const SizedBox(height: 32),
-          
+
           // Évolution des inscriptions
           _buildSectionTitle('Évolution des Inscriptions'),
           const SizedBox(height: 16),
           _buildRegistrationChart(),
-          
+
           const SizedBox(height: 32),
-          
+
           // Statistiques détaillées
           _buildSectionTitle('Statistiques Détaillées'),
           const SizedBox(height: 16),
@@ -198,7 +215,7 @@ class UserStatisticsDetailWidget extends StatelessWidget {
     final roleData = statistics.usersByRole.entries
         .where((entry) => entry.value > 0)
         .toList();
-    
+
     if (roleData.isEmpty) {
       return const Center(
         child: Text('Aucune donnée disponible'),
@@ -219,7 +236,7 @@ class UserStatisticsDetailWidget extends StatelessWidget {
           ),
         ],
       ),
-      child: isMobile 
+      child: isMobile
           ? _buildRoleBarChart(roleData)
           : Row(
               children: [
@@ -256,7 +273,7 @@ class UserStatisticsDetailWidget extends StatelessWidget {
           final index = entry.key;
           final data = entry.value;
           final percentage = (data.value / statistics.totalUsers * 100);
-          
+
           return PieChartSectionData(
             color: colors[index % colors.length],
             value: data.value.toDouble(),
@@ -294,7 +311,7 @@ class UserStatisticsDetailWidget extends StatelessWidget {
       children: roleData.asMap().entries.map((entry) {
         final index = entry.key;
         final data = entry.value;
-        
+
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: Row(
@@ -326,7 +343,10 @@ class UserStatisticsDetailWidget extends StatelessWidget {
     return BarChart(
       BarChartData(
         alignment: BarChartAlignment.spaceAround,
-        maxY: roleData.map((e) => e.value).reduce((a, b) => a > b ? a : b).toDouble(),
+        maxY: roleData
+            .map((e) => e.value)
+            .reduce((a, b) => a > b ? a : b)
+            .toDouble(),
         barTouchData: BarTouchData(enabled: false),
         titlesData: FlTitlesData(
           show: true,
@@ -339,7 +359,7 @@ class UserStatisticsDetailWidget extends StatelessWidget {
                   return Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      roleData[index].key.length > 8 
+                      roleData[index].key.length > 8
                           ? '${roleData[index].key.substring(0, 8)}...'
                           : roleData[index].key,
                       style: const TextStyle(fontSize: 10),
@@ -364,7 +384,7 @@ class UserStatisticsDetailWidget extends StatelessWidget {
         barGroups: roleData.asMap().entries.map((entry) {
           final index = entry.key;
           final data = entry.value;
-          
+
           return BarChartGroupData(
             x: index,
             barRods: [
@@ -372,7 +392,8 @@ class UserStatisticsDetailWidget extends StatelessWidget {
                 toY: data.value.toDouble(),
                 color: const Color(0xFF2196F3),
                 width: 16,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(4)),
               ),
             ],
           );
@@ -385,7 +406,7 @@ class UserStatisticsDetailWidget extends StatelessWidget {
     final siteData = statistics.usersBySite.entries
         .where((entry) => entry.value > 0)
         .toList();
-    
+
     if (siteData.isEmpty) {
       return const Center(
         child: Text('Aucune donnée disponible'),
@@ -409,7 +430,10 @@ class UserStatisticsDetailWidget extends StatelessWidget {
       child: BarChart(
         BarChartData(
           alignment: BarChartAlignment.spaceAround,
-          maxY: siteData.map((e) => e.value).reduce((a, b) => a > b ? a : b).toDouble(),
+          maxY: siteData
+              .map((e) => e.value)
+              .reduce((a, b) => a > b ? a : b)
+              .toDouble(),
           barTouchData: BarTouchData(enabled: false),
           titlesData: FlTitlesData(
             show: true,
@@ -445,7 +469,7 @@ class UserStatisticsDetailWidget extends StatelessWidget {
           barGroups: siteData.asMap().entries.map((entry) {
             final index = entry.key;
             final data = entry.value;
-            
+
             return BarChartGroupData(
               x: index,
               barRods: [
@@ -453,7 +477,8 @@ class UserStatisticsDetailWidget extends StatelessWidget {
                   toY: data.value.toDouble(),
                   color: const Color(0xFF4CAF50),
                   width: 20,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(4)),
                 ),
               ],
             );
@@ -465,7 +490,7 @@ class UserStatisticsDetailWidget extends StatelessWidget {
 
   Widget _buildRegistrationChart() {
     final registrationData = statistics.newUsersByMonth.entries.toList();
-    
+
     if (registrationData.isEmpty) {
       return const Center(
         child: Text('Aucune donnée disponible'),
@@ -522,8 +547,21 @@ class UserStatisticsDetailWidget extends StatelessWidget {
                     final parts = monthKey.split('-');
                     if (parts.length == 2) {
                       final month = int.parse(parts[1]);
-                      const months = ['', 'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
-                                     'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+                      const months = [
+                        '',
+                        'Jan',
+                        'Fév',
+                        'Mar',
+                        'Avr',
+                        'Mai',
+                        'Juin',
+                        'Juil',
+                        'Aoû',
+                        'Sep',
+                        'Oct',
+                        'Nov',
+                        'Déc'
+                      ];
                       return Text(
                         months[month],
                         style: const TextStyle(fontSize: 10),
@@ -549,11 +587,16 @@ class UserStatisticsDetailWidget extends StatelessWidget {
           minX: 0,
           maxX: registrationData.length.toDouble() - 1,
           minY: 0,
-          maxY: registrationData.map((e) => e.value).reduce((a, b) => a > b ? a : b).toDouble() + 1,
+          maxY: registrationData
+                  .map((e) => e.value)
+                  .reduce((a, b) => a > b ? a : b)
+                  .toDouble() +
+              1,
           lineBarsData: [
             LineChartBarData(
               spots: registrationData.asMap().entries.map((entry) {
-                return FlSpot(entry.key.toDouble(), entry.value.value.toDouble());
+                return FlSpot(
+                    entry.key.toDouble(), entry.value.value.toDouble());
               }).toList(),
               isCurved: true,
               gradient: const LinearGradient(
@@ -606,15 +649,27 @@ class UserStatisticsDetailWidget extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _buildStatRow('Total des utilisateurs', statistics.totalUsers.toString(), Icons.people),
-          _buildStatRow('Utilisateurs actifs', statistics.activeUsers.toString(), Icons.check_circle),
-          _buildStatRow('Utilisateurs inactifs', statistics.inactiveUsers.toString(), Icons.cancel),
-          _buildStatRow('Emails vérifiés', statistics.verifiedUsers.toString(), Icons.verified),
-          _buildStatRow('Emails non vérifiés', statistics.unverifiedUsers.toString(), Icons.email),
-          _buildStatRow('Utilisateurs en ligne', statistics.onlineUsers.toString(), Icons.online_prediction),
+          _buildStatRow('Total des utilisateurs',
+              statistics.totalUsers.toString(), Icons.people),
+          _buildStatRow('Utilisateurs actifs',
+              statistics.activeUsers.toString(), Icons.check_circle),
+          _buildStatRow('Utilisateurs inactifs',
+              statistics.inactiveUsers.toString(), Icons.cancel),
+          _buildStatRow('Emails vérifiés', statistics.verifiedUsers.toString(),
+              Icons.verified),
+          _buildStatRow('Emails non vérifiés',
+              statistics.unverifiedUsers.toString(), Icons.email),
+          _buildStatRow('Utilisateurs en ligne',
+              statistics.onlineUsers.toString(), Icons.online_prediction),
           const Divider(),
-          _buildStatRow('Taux d\'activation', '${(statistics.activeUsers / statistics.totalUsers * 100).toStringAsFixed(1)}%', Icons.trending_up),
-          _buildStatRow('Taux de vérification', '${(statistics.verifiedUsers / statistics.totalUsers * 100).toStringAsFixed(1)}%', Icons.verified_user),
+          _buildStatRow(
+              'Taux d\'activation',
+              '${(statistics.activeUsers / statistics.totalUsers * 100).toStringAsFixed(1)}%',
+              Icons.trending_up),
+          _buildStatRow(
+              'Taux de vérification',
+              '${(statistics.verifiedUsers / statistics.totalUsers * 100).toStringAsFixed(1)}%',
+              Icons.verified_user),
         ],
       ),
     );
