@@ -5,7 +5,6 @@ import 'package:get/get.dart';
 import 'package:apisavana_gestion/authentication/user_session.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:apisavana_gestion/authentication/login.dart';
-import 'package:apisavana_gestion/authentication/sign_up.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collectes.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nouvelle_collecte_individuelle.dart';
@@ -14,6 +13,12 @@ import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_achats_scoop_co
 
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_mielleurie/nouvelle_collecte_miellerie.dart';
 import 'package:apisavana_gestion/screens/dashboard/pages/notifications_page.dart';
+import 'package:apisavana_gestion/services/user_role_service.dart';
+import 'package:apisavana_gestion/screens/dashboard/role_dashboards/controleur_dashboard.dart';
+import 'package:apisavana_gestion/screens/dashboard/role_dashboards/extracteur_filtreur_dashboard.dart';
+import 'package:apisavana_gestion/screens/dashboard/role_dashboards/conditionneur_dashboard.dart';
+import 'package:apisavana_gestion/screens/dashboard/role_dashboards/commercial_dashboard.dart';
+import 'package:apisavana_gestion/authentication/sign_up.dart';
 import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
 import 'package:apisavana_gestion/screens/extraction/pages/main_extraction_page.dart';
 import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
@@ -136,6 +141,13 @@ class DashboardController extends GetxController {
         return;
       }
 
+      // NOUVEAU : Module ADMINISTRATION (Admin seulement)
+      if (moduleName == 'ADMINISTRATION' && subModule == 'Créer un compte') {
+        print('✅ Navigation vers Créer un compte');
+        currentPage.value = const SignupPage();
+        return;
+      }
+
       switch (moduleName) {
         case 'COLLECTE':
           currentPage.value = NouvelleCollecteRecoltePage();
@@ -189,6 +201,9 @@ class _DashboardPageState extends State<DashboardPage> {
     super.initState();
     // Initialiser le controller
     _dashboardController = Get.put(DashboardController());
+    
+    // Initialiser le service de rôles
+    Get.put(UserRoleService());
 
     // Ne pas utiliser MediaQuery ici !
     Future.delayed(const Duration(seconds: 2), () {
@@ -374,17 +389,43 @@ class DashboardHeader extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Dashboard Administrateur",
-                      style: TextStyle(
-                        fontSize: isMobile ? 15 : 21,
-                        fontWeight: FontWeight.bold,
-                        color: kHighlightColor,
-                      ),
-                      overflow: TextOverflow.ellipsis),
+                  Builder(
+                    builder: (context) {
+                      try {
+                        final roleService = Get.find<UserRoleService>();
+                        return Text(roleService.dashboardTitle,
+                            style: TextStyle(
+                              fontSize: isMobile ? 15 : 21,
+                              fontWeight: FontWeight.bold,
+                              color: kHighlightColor,
+                            ),
+                            overflow: TextOverflow.ellipsis);
+                      } catch (e) {
+                        return Text("Dashboard Administrateur",
+                            style: TextStyle(
+                              fontSize: isMobile ? 15 : 21,
+                              fontWeight: FontWeight.bold,
+                              color: kHighlightColor,
+                            ),
+                            overflow: TextOverflow.ellipsis);
+                      }
+                    },
+                  ),
                   if (!isMobile)
-                    Text("Plateforme de gestion Apisavana",
-                        style:
-                            TextStyle(fontSize: 11, color: Colors.grey[600])),
+                    Builder(
+                      builder: (context) {
+                        try {
+                          final roleService = Get.find<UserRoleService>();
+                          return Text(roleService.dashboardSubtitle,
+                              style:
+                                  TextStyle(fontSize: 11, color: Colors.grey[600]));
+                        } catch (e) {
+                          return Text("Plateforme de gestion Apisavana",
+                              style:
+                                  TextStyle(fontSize: 11, color: Colors.grey[600]));
+                        }
+                      },
+                    ),
                 ],
               ),
             ),
@@ -505,6 +546,27 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
 
   @override
   Widget build(BuildContext context) {
+    // Vérifier le rôle et afficher le dashboard approprié
+    try {
+      final roleService = Get.find<UserRoleService>();
+      
+      switch (roleService.currentRoleGroup) {
+        case RoleGroup.controleur:
+          return const ControleurDashboard();
+        case RoleGroup.extracteurFiltreur:
+          return const ExtracteurFiltreurDashboard();
+        case RoleGroup.conditionneur:
+          return const ConditionneurDashboard();
+        case RoleGroup.commercial:
+        case RoleGroup.caissier:
+          return const CommercialDashboard();
+        case RoleGroup.admin:
+          // Garder le dashboard admin actuel
+          break;
+      }
+    } catch (e) {
+      // Si erreur, utiliser le dashboard admin par défaut
+    }
     final EdgeInsets sectionPad = EdgeInsets.symmetric(
         horizontal: widget.isMobile ? 6 : 22,
         vertical: widget.isMobile ? 8 : 18);
@@ -1842,6 +1904,7 @@ class NavigationSlider extends StatelessWidget {
       'Commercial'
     ],
     'RAPPORTS': ['Admin'],
+    'ADMINISTRATION': ['Admin'],
   };
 
   List<Map<String, dynamic>> filterModulesByUser(
@@ -1964,6 +2027,13 @@ class NavigationSlider extends StatelessWidget {
           {"name": "Prélèvements"},
           {"name": "Attribution commerciaux"},
           {"name": "Suivi distributions", "badge": 3}
+        ]
+      },
+      {
+        "name": "ADMINISTRATION",
+        "icon": Icons.admin_panel_settings,
+        "subModules": [
+          {"name": "Créer un compte", "icon": Icons.person_add}
         ]
       },
     ];
