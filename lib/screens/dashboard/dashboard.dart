@@ -2091,45 +2091,7 @@ class NavigationSlider extends StatelessWidget {
                               ),
                             ),
                           ),
-                          // Bouton "Créer un nouveau compte" pour les admins uniquement
-                          if (user.role?.toLowerCase() == 'admin') ...[
-                            SizedBox(height: 12),
-                            Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(15),
-                                onTap: () {
-                                  if (isMobile || isTablet) onToggle();
-                                  Get.to(() => SignupPage());
-                                },
-                                child: Container(
-                                  padding: EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.shade50,
-                                    borderRadius: BorderRadius.circular(15),
-                                    border: Border.all(
-                                        color: Colors.green.shade200),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.person_add,
-                                          color: Colors.green.shade600),
-                                      SizedBox(width: 12),
-                                      Expanded(
-                                        child: Text(
-                                          'Créer un nouveau compte',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.green.shade700,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                          // Bouton de création de compte supprimé
                         ],
                       ),
                     ),
