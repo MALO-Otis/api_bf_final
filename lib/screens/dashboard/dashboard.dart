@@ -18,6 +18,7 @@ import 'package:apisavana_gestion/screens/dashboard/role_dashboards/controleur_d
 import 'package:apisavana_gestion/screens/dashboard/role_dashboards/extracteur_filtreur_dashboard.dart';
 import 'package:apisavana_gestion/screens/dashboard/role_dashboards/conditionneur_dashboard.dart';
 import 'package:apisavana_gestion/screens/dashboard/role_dashboards/commercial_dashboard.dart';
+import 'package:apisavana_gestion/screens/administration/pages/user_management_page.dart';
 import 'package:apisavana_gestion/authentication/sign_up.dart';
 import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
 import 'package:apisavana_gestion/screens/extraction/pages/main_extraction_page.dart';
@@ -996,11 +997,7 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
   }
 
   void _navigateToUserManagement() {
-    Get.snackbar(
-      'Navigation',
-      'Gestion Utilisateurs - À implémenter',
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    Get.find<DashboardController>().currentPage.value = const UserManagementPage();
   }
 
   void _navigateToSystemSettings() {

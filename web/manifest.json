@@ -1,11 +1,11 @@
 {
-    "name": "apisavana_gestion",
-    "short_name": "apisavana_gestion",
+    "name": "Apisavana Gestion",
+    "short_name": "Apisavana",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "Gestion de miêlleurie Apisavana",
+    "description": "Gestion de miellerie Apisavana",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

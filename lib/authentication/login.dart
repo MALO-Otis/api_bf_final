@@ -328,28 +328,16 @@ class _LoginPageState extends State<LoginPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Logo centré
+                      // Logo centré agrandi
                       Center(
                         child: Image.asset(
                           "assets/logo/logo.jpeg",
-                          height: isMobile ? 70 : 90,
-                          width: isMobile ? 70 : 90,
+                          height: isMobile ? 120 : 150,
+                          width: isMobile ? 120 : 150,
                           fit: BoxFit.contain,
                         ),
                       ),
-                      SizedBox(height: 16),
-                      Center(
-                        child: Text(
-                          'ApiSavana',
-                          style: TextStyle(
-                            fontSize: isMobile ? 26 : 32,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFFF49101),
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: 8),
+                      SizedBox(height: 24),
                       Center(
                         child: Text(
                           "Connexion à la plateforme",
