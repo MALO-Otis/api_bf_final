@@ -2118,8 +2118,34 @@ class NavigationSlider extends StatelessWidget {
     'Pô': ['Tout'],
   };
 
-  // Matrice d'accès module/role
+  // Matrice d'accès module/role - ACCÈS STRICT PAR RÔLE
   static const Map<String, List<String>> moduleRoles = {
+    // 🔒 COLLECTEUR : Seulement COLLECTE
+    'COLLECTE': ['Admin', 'Collecteur'],
+    
+    // 🔒 CONTRÔLEUR : Seulement CONTRÔLE, FILTRAGE, EXTRACTION
+    'CONTRÔLE': ['Admin', 'Contrôleur', 'Controlleur'],
+    'FILTRAGE': ['Admin', 'Contrôleur', 'Controlleur', 'Filtreur', 'Extracteur'],
+    'EXTRACTION': ['Admin', 'Contrôleur', 'Controlleur', 'Filtreur', 'Extracteur'],
+    
+    // 🔒 EXTRACTEUR : Seulement FILTRAGE, EXTRACTION
+    // 🔒 FILTREUR : Seulement FILTRAGE, EXTRACTION
+    // (Déjà inclus dans les lignes ci-dessus)
+    
+    // 🔒 CONDITIONNEUR : Seulement CONDITIONNEMENT
+    'CONDITIONNEMENT': ['Admin', 'Conditionneur'],
+    
+    // 🔒 GESTION DE VENTES : Rôles commerciaux uniquement
+    'GESTION DE VENTES': [
+      'Admin',
+      'Magazinier',
+      'Gestionnaire Commercial',
+      'Commercial',
+      'Caissier',
+      'Caissière'
+    ],
+    
+    // 🔒 VENTES : Rôles commerciaux uniquement
     'VENTES': [
       'Admin',
       'Magazinier',
@@ -2128,46 +2154,50 @@ class NavigationSlider extends StatelessWidget {
       'Caissier',
       'Caissière'
     ],
-    'COLLECTE': ['Admin', 'Collecteur'],
-    'CONTRÔLE': ['Admin', 'Contrôleur', 'Controlleur'],
-    'EXTRACTION': ['Admin', 'Extracteur'],
-    'FILTRAGE': ['Admin', 'Filtreur'],
-    'CONDITIONNEMENT': ['Admin', 'Conditionneur'],
-    'GESTION DE VENTES': [
-      'Admin',
-      'Magazinier',
-      'Gestionnaire Commercial',
-      'Commercial'
-    ],
+    
+    // 🔒 ADMINISTRATION : Admin uniquement
     'RAPPORTS': ['Admin'],
     'ADMINISTRATION': ['Admin'],
   };
 
   List<Map<String, dynamic>> filterModulesByUser(
       List<Map<String, dynamic>> modules, UserSession user) {
-    String site = user.site ?? '';
     final role = user.role ?? '';
-    // Correction : normalise la casse du site pour la clé
-    if (site.isNotEmpty) {
-      site = site[0].toUpperCase() + site.substring(1).toLowerCase();
-    }
+
+    debugPrint('🔍 [FilterModules] Utilisateur: $role (Site: ${user.site})');
+    
     // Si admin, accès à tout
-    if (role.toLowerCase() == 'admin') return modules;
-    // Vérifier accès site
-    final allowedRoles = siteRoles[site] ?? [];
-    if (allowedRoles.contains('Tout') ||
-        allowedRoles.contains(role) ||
-        allowedRoles.contains(role + 'e')) {
-      // Filtrer modules selon le rôle
-      return modules.where((m) {
-        final allowed = moduleRoles[m['name']] ?? [];
-        return allowed.contains(role) ||
-            allowed.contains(role + 'e') ||
-            allowed.contains('Admin');
-      }).toList();
+    if (role.toLowerCase() == 'admin') {
+      debugPrint('✅ [FilterModules] Admin détecté - Accès à tous les modules');
+      return modules;
     }
-    // Aucun accès si le site ne correspond pas
-    return [];
+    
+    // 📋 AFFICHER LES RÈGLES D'ACCÈS PAR RÔLE
+    debugPrint('📋 [FilterModules] Règles d\'accès par rôle:');
+    debugPrint('   🔒 Collecteur → COLLECTE uniquement');
+    debugPrint('   🔒 Contrôleur → CONTRÔLE, FILTRAGE, EXTRACTION');
+    debugPrint('   🔒 Extracteur → FILTRAGE, EXTRACTION uniquement');
+    debugPrint('   🔒 Filtreur → FILTRAGE, EXTRACTION uniquement');
+    debugPrint('   🔒 Conditionneur → CONDITIONNEMENT uniquement');
+    debugPrint('   🔒 Commercial/Caissier → VENTES, GESTION DE VENTES');
+    debugPrint('   🔒 Admin → TOUS les modules');
+
+    // 🔒 FILTRAGE UNIQUEMENT PAR RÔLE (indépendamment du site)
+    final filteredModules = modules.where((m) {
+      final moduleName = m['name'] as String;
+      final allowed = moduleRoles[moduleName] ?? [];
+
+      final hasAccess = allowed.contains(role) ||
+          allowed.contains(role + 'e');
+
+      debugPrint(
+          '🔍 [FilterModules] Module $moduleName: $hasAccess (Rôles autorisés: $allowed)');
+      return hasAccess;
+    }).toList();
+
+    debugPrint(
+        '✅ [FilterModules] Modules filtrés: ${filteredModules.map((m) => m['name']).join(", ")}');
+    return filteredModules;
   }
 
   @override
@@ -2276,7 +2306,19 @@ class NavigationSlider extends StatelessWidget {
         ]
       },
     ];
+
+    // 🔒 FILTRAGE DES MODULES PAR RÔLE UTILISATEUR
     final filteredModules = filterModulesByUser(modules, user);
+
+    debugPrint('🔍 [Sidebar] Utilisateur: ${user.role} (${user.site})');
+    debugPrint('🔍 [Sidebar] Total modules disponibles: ${modules.length}');
+    debugPrint('🔍 [Sidebar] Modules accessibles après filtrage: ${filteredModules.length}');
+    debugPrint('🔍 [Sidebar] Modules accessibles: ${filteredModules.map((m) => m["name"]).join(", ")}');
+    
+    // 🚨 VÉRIFICATION CRITIQUE : Si aucun module accessible, afficher un message
+    if (filteredModules.isEmpty) {
+      debugPrint('❌ [Sidebar] ATTENTION: Aucun module accessible pour ${user.role} (${user.site})');
+    }
 
     return AnimatedContainer(
       duration: Duration(milliseconds: 400),
@@ -2366,6 +2408,39 @@ class NavigationSlider extends StatelessWidget {
                       ),
                     ),
 
+                    // 🔒 Indicateur de filtrage par rôle
+                    if (user.role?.toLowerCase() != 'admin')
+                      Container(
+                        margin:
+                            EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.security,
+                              color: Colors.orange.shade700,
+                              size: 16,
+                            ),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Accès limité: ${filteredModules.length}/${modules.length} modules',
+                                style: TextStyle(
+                                  color: Colors.orange.shade700,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
                     // Bouton retour au dashboard avec design moderne
                     Padding(
                       padding: const EdgeInsets.all(16),
@@ -2414,33 +2489,87 @@ class NavigationSlider extends StatelessWidget {
 
                     // Liste des modules avec animations
                     Expanded(
-                      child: ListView.builder(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        itemCount: filteredModules.length,
-                        itemBuilder: (context, index) {
-                          final module = filteredModules[index];
-                          return TweenAnimationBuilder<double>(
-                            duration:
-                                Duration(milliseconds: 300 + (index * 100)),
-                            tween: Tween(begin: 0.0, end: 1.0),
-                            builder: (context, value, child) {
-                              return Transform.translate(
-                                offset: Offset(50 * (1 - value), 0),
-                                child: Opacity(
-                                  opacity: value,
-                                  child: _buildModuleCard(module),
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
+                      child: filteredModules.isEmpty
+                          ? _buildNoAccessMessage()
+                          : ListView.builder(
+                              padding: EdgeInsets.symmetric(horizontal: 8),
+                              itemCount: filteredModules.length,
+                              itemBuilder: (context, index) {
+                                final module = filteredModules[index];
+                                return TweenAnimationBuilder<double>(
+                                  duration:
+                                      Duration(milliseconds: 300 + (index * 100)),
+                                  tween: Tween(begin: 0.0, end: 1.0),
+                                  builder: (context, value, child) {
+                                    return Transform.translate(
+                                      offset: Offset(50 * (1 - value), 0),
+                                      child: Opacity(
+                                        opacity: value,
+                                        child: _buildModuleCard(module),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            ),
                     ),
                   ],
                 ),
               ),
             )
           : SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildNoAccessMessage() {
+    return Container(
+      padding: EdgeInsets.all(20),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.lock_outline,
+            size: 64,
+            color: Colors.grey.shade400,
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Aucun module accessible',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade600,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Votre rôle ne vous donne accès à aucun module sur ce site.',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade500,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 16),
+          Container(
+            padding: EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.shade200),
+            ),
+            child: Text(
+              'Contactez votre administrateur pour obtenir les permissions nécessaires.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.orange.shade700,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
