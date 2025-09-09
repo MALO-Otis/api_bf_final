@@ -7,10 +7,12 @@ class ExtracteurFiltreurDashboard extends StatefulWidget {
   const ExtracteurFiltreurDashboard({super.key});
 
   @override
-  State<ExtracteurFiltreurDashboard> createState() => _ExtracteurFiltreurDashboardState();
+  State<ExtracteurFiltreurDashboard> createState() =>
+      _ExtracteurFiltreurDashboardState();
 }
 
-class _ExtracteurFiltreurDashboardState extends State<ExtracteurFiltreurDashboard> {
+class _ExtracteurFiltreurDashboardState
+    extends State<ExtracteurFiltreurDashboard> {
   final UserSession userSession = Get.find<UserSession>();
   final UserRoleService roleService = Get.find<UserRoleService>();
 
@@ -27,27 +29,27 @@ class _ExtracteurFiltreurDashboardState extends State<ExtracteurFiltreurDashboar
           // Header personnalisé
           _buildWelcomeSection(isMobile),
           const SizedBox(height: 24),
-          
+
           // KPIs spécifiques production
           _buildKPISection(isMobile, isTablet),
           const SizedBox(height: 24),
-          
+
           // Actions rapides
           _buildQuickActionsSection(isMobile, isTablet),
           const SizedBox(height: 24),
-          
+
           // Processus en cours
           _buildActiveProcessSection(isMobile),
           const SizedBox(height: 24),
-          
+
           // Statistiques de production
           _buildProductionStatsSection(isMobile, isTablet),
           const SizedBox(height: 24),
-          
+
           // Équipements et maintenance
           _buildEquipmentSection(isMobile, isTablet),
           const SizedBox(height: 24),
-          
+
           // Activité récente
           _buildRecentActivitySection(isMobile),
         ],
@@ -326,7 +328,8 @@ class _ExtracteurFiltreurDashboardState extends State<ExtracteurFiltreurDashboar
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: (action['color'] as Color).withOpacity(0.2)),
+          border:
+              Border.all(color: (action['color'] as Color).withOpacity(0.2)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.05),
@@ -478,7 +481,9 @@ class _ExtracteurFiltreurDashboardState extends State<ExtracteurFiltreurDashboar
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
-                  process['type'] == 'Extraction' ? Icons.opacity : Icons.filter_alt,
+                  process['type'] == 'Extraction'
+                      ? Icons.opacity
+                      : Icons.filter_alt,
                   color: process['color'],
                   size: 20,
                 ),
@@ -665,7 +670,8 @@ class _ExtracteurFiltreurDashboardState extends State<ExtracteurFiltreurDashboar
     );
   }
 
-  Widget _buildStatCard(String title, String value, String subtitle, IconData icon, Color color, bool isMobile) {
+  Widget _buildStatCard(String title, String value, String subtitle,
+      IconData icon, Color color, bool isMobile) {
     return Container(
       padding: EdgeInsets.all(isMobile ? 12 : 16),
       decoration: BoxDecoration(
@@ -770,7 +776,8 @@ class _ExtracteurFiltreurDashboardState extends State<ExtracteurFiltreurDashboar
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: (equipment['color'] as Color).withOpacity(0.3)),
+        border:
+            Border.all(color: (equipment['color'] as Color).withOpacity(0.3)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),

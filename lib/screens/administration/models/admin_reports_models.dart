@@ -7,38 +7,38 @@ class ReportsData {
   final double totalControle;
   final double totalExtraction;
   final double totalFiltrage;
-  
+
   // Commercial (données de test)
   final double totalVentes;
   final double chiffresAffaires;
   final int totalClients;
-  
+
   // Financier (données de test)
   final double revenus;
   final double charges;
   final double benefices;
-  
+
   // Données par date
   final Map<String, double> collecteByDate;
   final Map<String, double> controleByDate;
   final Map<String, double> extractionByDate;
   final Map<String, double> filtrageByDate;
   final Map<String, double> venteByDate;
-  
+
   // Données par site
   final Map<String, double> collecteBySite;
   final Map<String, double> controleBySite;
   final Map<String, double> extractionBySite;
   final Map<String, double> filtrageBySite;
-  
+
   // Indicateurs de performance
   final double rendementExtraction;
   final double tauxControleConforme;
   final Map<String, double> evolutionProduction;
-  
+
   // Activité récente
   final List<RecentActivity> recentActivities;
-  
+
   // Métadonnées
   final DateTime startDate;
   final DateTime endDate;
@@ -108,9 +108,10 @@ class ReportsData {
   // Getters calculés
   double get totalProduction => totalCollecte + totalExtraction + totalFiltrage;
   double get margeNette => benefices / revenus * 100;
-  double get panierMoyen => totalVentes > 0 ? chiffresAffaires / totalVentes : 0;
+  double get panierMoyen =>
+      totalVentes > 0 ? chiffresAffaires / totalVentes : 0;
   int get totalTransactions => totalVentes.toInt() + totalControle.toInt();
-  
+
   // Évolution vs période précédente (simulation)
   double get evolutionCollecte => 12.5; // +12.5%
   double get evolutionVentes => 8.3; // +8.3%
@@ -138,7 +139,7 @@ class RecentActivity {
   String get timeAgo {
     final now = DateTime.now();
     final difference = now.difference(timestamp);
-    
+
     if (difference.inMinutes < 60) {
       return 'Il y a ${difference.inMinutes}min';
     } else if (difference.inHours < 24) {
@@ -369,7 +370,7 @@ class DataTrend {
 
   bool get isIncreasing => slope > 0;
   bool get isStrongTrend => correlation.abs() > 0.7;
-  
+
   String get trendDescription {
     if (correlation.abs() < 0.3) return 'Stable';
     if (isIncreasing) {

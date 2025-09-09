@@ -109,7 +109,8 @@ class UserActionsWidget extends StatelessWidget {
                 ),
                 if (!isMobile)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: _getActionColor(action.type).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
@@ -125,9 +126,9 @@ class UserActionsWidget extends StatelessWidget {
                   ),
               ],
             ),
-            
+
             const SizedBox(height: 12),
-            
+
             // Description
             Text(
               action.description,
@@ -136,9 +137,9 @@ class UserActionsWidget extends StatelessWidget {
                 color: const Color(0xFF2D0C0D),
               ),
             ),
-            
+
             const SizedBox(height: 8),
-            
+
             // Informations sur l'admin
             Row(
               children: [
@@ -158,7 +159,7 @@ class UserActionsWidget extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             // Détails des changements (si disponibles)
             if (action.oldValues != null || action.newValues != null)
               _buildChangeDetails(action),
@@ -189,12 +190,11 @@ class UserActionsWidget extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          
           if (action.oldValues != null && action.newValues != null)
             ...action.newValues!.keys.map((key) {
               final oldValue = action.oldValues?[key];
               final newValue = action.newValues![key];
-              
+
               return Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Row(
@@ -302,7 +302,7 @@ class UserActionsWidget extends StatelessWidget {
   String _formatTimestamp(DateTime timestamp) {
     final now = DateTime.now();
     final difference = now.difference(timestamp);
-    
+
     if (difference.inMinutes < 60) {
       return 'Il y a ${difference.inMinutes} minute${difference.inMinutes > 1 ? 's' : ''}';
     } else if (difference.inHours < 24) {
@@ -339,7 +339,7 @@ class _CreateUserModalState extends State<CreateUserModal> {
   final _nomController = TextEditingController();
   final _prenomController = TextEditingController();
   final _telephoneController = TextEditingController();
-  
+
   String? _selectedRole;
   String? _selectedSite;
   bool _isLoading = false;
@@ -374,7 +374,8 @@ class _CreateUserModalState extends State<CreateUserModal> {
 
     try {
       // Vérifier si l'email existe déjà
-      final emailExists = await _userService.emailExists(_emailController.text.trim());
+      final emailExists =
+          await _userService.emailExists(_emailController.text.trim());
       if (emailExists) {
         Get.snackbar(
           'Erreur',
@@ -463,9 +464,9 @@ class _CreateUserModalState extends State<CreateUserModal> {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 24),
-              
+
               // Formulaire
               TextFormField(
                 controller: _emailController,
@@ -485,17 +486,20 @@ class _CreateUserModalState extends State<CreateUserModal> {
                   return null;
                 },
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               TextFormField(
                 controller: _passwordController,
                 decoration: InputDecoration(
                   labelText: 'Mot de passe *',
                   prefixIcon: const Icon(Icons.lock),
                   suffixIcon: IconButton(
-                    icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility),
-                    onPressed: () => setState(() => _showPassword = !_showPassword),
+                    icon: Icon(_showPassword
+                        ? Icons.visibility_off
+                        : Icons.visibility),
+                    onPressed: () =>
+                        setState(() => _showPassword = !_showPassword),
                   ),
                   border: const OutlineInputBorder(),
                 ),
@@ -510,9 +514,9 @@ class _CreateUserModalState extends State<CreateUserModal> {
                   return null;
                 },
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               Row(
                 children: [
                   Expanded(
@@ -550,9 +554,9 @@ class _CreateUserModalState extends State<CreateUserModal> {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               TextFormField(
                 controller: _telephoneController,
                 decoration: const InputDecoration(
@@ -568,9 +572,9 @@ class _CreateUserModalState extends State<CreateUserModal> {
                   return null;
                 },
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               Row(
                 children: [
                   Expanded(
@@ -581,11 +585,14 @@ class _CreateUserModalState extends State<CreateUserModal> {
                         prefixIcon: Icon(Icons.work),
                         border: OutlineInputBorder(),
                       ),
-                      items: widget.availableRoles.map((role) => DropdownMenuItem(
-                        value: role,
-                        child: Text(role),
-                      )).toList(),
-                      onChanged: (value) => setState(() => _selectedRole = value),
+                      items: widget.availableRoles
+                          .map((role) => DropdownMenuItem(
+                                value: role,
+                                child: Text(role),
+                              ))
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => _selectedRole = value),
                       validator: (value) {
                         if (value == null) {
                           return 'Le rôle est requis';
@@ -603,11 +610,14 @@ class _CreateUserModalState extends State<CreateUserModal> {
                         prefixIcon: Icon(Icons.location_on),
                         border: OutlineInputBorder(),
                       ),
-                      items: widget.availableSites.map((site) => DropdownMenuItem(
-                        value: site,
-                        child: Text(site),
-                      )).toList(),
-                      onChanged: (value) => setState(() => _selectedSite = value),
+                      items: widget.availableSites
+                          .map((site) => DropdownMenuItem(
+                                value: site,
+                                child: Text(site),
+                              ))
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => _selectedSite = value),
                       validator: (value) {
                         if (value == null) {
                           return 'Le site est requis';
@@ -618,9 +628,9 @@ class _CreateUserModalState extends State<CreateUserModal> {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 24),
-              
+
               // Boutons
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -635,7 +645,8 @@ class _CreateUserModalState extends State<CreateUserModal> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF2196F3),
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
                     ),
                     child: _isLoading
                         ? const SizedBox(
@@ -643,7 +654,8 @@ class _CreateUserModalState extends State<CreateUserModal> {
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
                         : const Text('Créer'),
@@ -690,10 +702,10 @@ class UserDetailsModal extends StatelessWidget {
                 CircleAvatar(
                   radius: 24,
                   backgroundColor: _getRoleColor(user.role).withOpacity(0.2),
-                  backgroundImage: user.photoUrl != null 
-                      ? NetworkImage(user.photoUrl!) 
+                  backgroundImage: user.photoUrl != null
+                      ? NetworkImage(user.photoUrl!)
                       : null,
-                  child: user.photoUrl == null 
+                  child: user.photoUrl == null
                       ? Text(
                           user.initiales,
                           style: TextStyle(
@@ -725,7 +737,8 @@ class UserDetailsModal extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: user.isActive ? Colors.green : Colors.red,
                     borderRadius: BorderRadius.circular(16),
@@ -745,25 +758,25 @@ class UserDetailsModal extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 24),
-            
+
             // Informations détaillées
             _buildInfoSection('Informations personnelles', [
               _buildInfoRow(Icons.person, 'Nom complet', user.nomComplet),
               _buildInfoRow(Icons.email, 'Email', user.email),
               _buildInfoRow(Icons.phone, 'Téléphone', user.telephone),
             ]),
-            
+
             const SizedBox(height: 16),
-            
+
             _buildInfoSection('Informations professionnelles', [
               _buildInfoRow(Icons.work, 'Rôle', user.role),
               _buildInfoRow(Icons.location_on, 'Site', user.site),
             ]),
-            
+
             const SizedBox(height: 16),
-            
+
             _buildInfoSection('Statut du compte', [
               _buildInfoRow(
                 user.isActive ? Icons.check_circle : Icons.cancel,
@@ -784,20 +797,23 @@ class UserDetailsModal extends StatelessWidget {
                 color: user.isOnline ? Colors.green : Colors.grey,
               ),
             ]),
-            
+
             const SizedBox(height: 16),
-            
+
             _buildInfoSection('Dates importantes', [
-              _buildInfoRow(Icons.calendar_today, 'Créé le', _formatDate(user.dateCreation)),
+              _buildInfoRow(Icons.calendar_today, 'Créé le',
+                  _formatDate(user.dateCreation)),
               _buildInfoRow(
                 Icons.login,
                 'Dernière connexion',
-                user.dateLastLogin != null ? _formatDate(user.dateLastLogin!) : 'Jamais',
+                user.dateLastLogin != null
+                    ? _formatDate(user.dateLastLogin!)
+                    : 'Jamais',
               ),
             ]),
-            
+
             const SizedBox(height: 24),
-            
+
             // Actions
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -854,7 +870,8 @@ class UserDetailsModal extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value, {Color? color}) {
+  Widget _buildInfoRow(IconData icon, String label, String value,
+      {Color? color}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -999,9 +1016,9 @@ class _UserHistoryModalState extends State<UserHistoryModal> {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // Contenu
             Expanded(
               child: _isLoading
@@ -1047,7 +1064,7 @@ class _EditUserModalState extends State<EditUserModal> {
   late TextEditingController _nomController;
   late TextEditingController _prenomController;
   late TextEditingController _telephoneController;
-  
+
   late String _selectedRole;
   late String _selectedSite;
   bool _isLoading = false;
@@ -1079,23 +1096,23 @@ class _EditUserModalState extends State<EditUserModal> {
 
     try {
       final updates = <String, dynamic>{};
-      
+
       if (_nomController.text.trim() != widget.user.nom) {
         updates['nom'] = _nomController.text.trim();
       }
-      
+
       if (_prenomController.text.trim() != widget.user.prenom) {
         updates['prenom'] = _prenomController.text.trim();
       }
-      
+
       if (_telephoneController.text.trim() != widget.user.telephone) {
         updates['telephone'] = _telephoneController.text.trim();
       }
-      
+
       if (_selectedRole != widget.user.role) {
         updates['role'] = _selectedRole;
       }
-      
+
       if (_selectedSite != widget.user.site) {
         updates['site'] = _selectedSite;
       }
@@ -1178,9 +1195,9 @@ class _EditUserModalState extends State<EditUserModal> {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 24),
-              
+
               // Email (lecture seule)
               TextFormField(
                 initialValue: widget.user.email,
@@ -1192,9 +1209,9 @@ class _EditUserModalState extends State<EditUserModal> {
                 readOnly: true,
                 style: TextStyle(color: Colors.grey[600]),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               Row(
                 children: [
                   Expanded(
@@ -1232,9 +1249,9 @@ class _EditUserModalState extends State<EditUserModal> {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               TextFormField(
                 controller: _telephoneController,
                 decoration: const InputDecoration(
@@ -1250,9 +1267,9 @@ class _EditUserModalState extends State<EditUserModal> {
                   return null;
                 },
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               Row(
                 children: [
                   Expanded(
@@ -1263,11 +1280,14 @@ class _EditUserModalState extends State<EditUserModal> {
                         prefixIcon: Icon(Icons.work),
                         border: OutlineInputBorder(),
                       ),
-                      items: widget.availableRoles.map((role) => DropdownMenuItem(
-                        value: role,
-                        child: Text(role),
-                      )).toList(),
-                      onChanged: (value) => setState(() => _selectedRole = value!),
+                      items: widget.availableRoles
+                          .map((role) => DropdownMenuItem(
+                                value: role,
+                                child: Text(role),
+                              ))
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => _selectedRole = value!),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -1279,18 +1299,21 @@ class _EditUserModalState extends State<EditUserModal> {
                         prefixIcon: Icon(Icons.location_on),
                         border: OutlineInputBorder(),
                       ),
-                      items: widget.availableSites.map((site) => DropdownMenuItem(
-                        value: site,
-                        child: Text(site),
-                      )).toList(),
-                      onChanged: (value) => setState(() => _selectedSite = value!),
+                      items: widget.availableSites
+                          .map((site) => DropdownMenuItem(
+                                value: site,
+                                child: Text(site),
+                              ))
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => _selectedSite = value!),
                     ),
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 24),
-              
+
               // Boutons
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -1305,7 +1328,8 @@ class _EditUserModalState extends State<EditUserModal> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF2196F3),
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
                     ),
                     child: _isLoading
                         ? const SizedBox(
@@ -1313,7 +1337,8 @@ class _EditUserModalState extends State<EditUserModal> {
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
                         : const Text('Sauvegarder'),
@@ -1370,7 +1395,8 @@ class _ChangeRoleModalState extends State<ChangeRoleModal> {
     setState(() => _isLoading = true);
 
     try {
-      final success = await _userService.changeUserRole(widget.user.id, _selectedRole);
+      final success =
+          await _userService.changeUserRole(widget.user.id, _selectedRole);
 
       if (success) {
         Get.snackbar(
@@ -1430,10 +1456,12 @@ class _ChangeRoleModalState extends State<ChangeRoleModal> {
               labelText: 'Nouveau rôle',
               border: OutlineInputBorder(),
             ),
-            items: widget.availableRoles.map((role) => DropdownMenuItem(
-              value: role,
-              child: Text(role),
-            )).toList(),
+            items: widget.availableRoles
+                .map((role) => DropdownMenuItem(
+                      value: role,
+                      child: Text(role),
+                    ))
+                .toList(),
             onChanged: (value) => setState(() => _selectedRole = value!),
           ),
         ],
@@ -1507,7 +1535,8 @@ class _ChangeSiteModalState extends State<ChangeSiteModal> {
     setState(() => _isLoading = true);
 
     try {
-      final success = await _userService.changeUserSite(widget.user.id, _selectedSite);
+      final success =
+          await _userService.changeUserSite(widget.user.id, _selectedSite);
 
       if (success) {
         Get.snackbar(
@@ -1567,10 +1596,12 @@ class _ChangeSiteModalState extends State<ChangeSiteModal> {
               labelText: 'Nouveau site',
               border: OutlineInputBorder(),
             ),
-            items: widget.availableSites.map((site) => DropdownMenuItem(
-              value: site,
-              child: Text(site),
-            )).toList(),
+            items: widget.availableSites
+                .map((site) => DropdownMenuItem(
+                      value: site,
+                      child: Text(site),
+                    ))
+                .toList(),
             onChanged: (value) => setState(() => _selectedSite = value!),
           ),
         ],

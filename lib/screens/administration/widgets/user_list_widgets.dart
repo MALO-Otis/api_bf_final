@@ -71,9 +71,7 @@ class UserListWidget extends StatelessWidget {
 
       return Container(
         color: Colors.white,
-        child: isMobile 
-            ? _buildMobileList()
-            : _buildDesktopTable(),
+        child: isMobile ? _buildMobileList() : _buildDesktopTable(),
       );
     });
   }
@@ -111,11 +109,12 @@ class UserListWidget extends StatelessWidget {
                     children: [
                       CircleAvatar(
                         radius: 24,
-                        backgroundColor: _getRoleColor(user.role).withOpacity(0.2),
-                        backgroundImage: user.photoUrl != null 
-                            ? NetworkImage(user.photoUrl!) 
+                        backgroundColor:
+                            _getRoleColor(user.role).withOpacity(0.2),
+                        backgroundImage: user.photoUrl != null
+                            ? NetworkImage(user.photoUrl!)
                             : null,
-                        child: user.photoUrl == null 
+                        child: user.photoUrl == null
                             ? Text(
                                 user.initiales,
                                 style: TextStyle(
@@ -168,7 +167,8 @@ class UserListWidget extends StatelessWidget {
                   ),
                   // Badge statut
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: user.isActive ? Colors.green : Colors.red,
                       borderRadius: BorderRadius.circular(12),
@@ -184,9 +184,9 @@ class UserListWidget extends StatelessWidget {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 12),
-              
+
               // Informations détaillées
               Row(
                 children: [
@@ -209,9 +209,9 @@ class UserListWidget extends StatelessWidget {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 8),
-              
+
               Row(
                 children: [
                   Expanded(
@@ -231,9 +231,9 @@ class UserListWidget extends StatelessWidget {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 12),
-              
+
               // Actions
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -302,7 +302,8 @@ class UserListWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButton(IconData icon, String label, Color color, VoidCallback onPressed) {
+  Widget _buildActionButton(
+      IconData icon, String label, Color color, VoidCallback onPressed) {
     return InkWell(
       onTap: onPressed,
       borderRadius: BorderRadius.circular(8),
@@ -397,7 +398,8 @@ class UserListWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildActionTile(IconData icon, String title, VoidCallback onPressed, {bool isDestructive = false}) {
+  Widget _buildActionTile(IconData icon, String title, VoidCallback onPressed,
+      {bool isDestructive = false}) {
     return ListTile(
       leading: Icon(
         icon,
@@ -424,13 +426,27 @@ class UserListWidget extends StatelessWidget {
           columnSpacing: 16,
           headingRowColor: MaterialStateProperty.all(Colors.grey[50]),
           columns: const [
-            DataColumn(label: Text('Utilisateur', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Rôle', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Site', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Statut', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Email', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Dernière connexion', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(
+                label: Text('Utilisateur',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(
+                label: Text('Rôle',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(
+                label: Text('Site',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(
+                label: Text('Statut',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(
+                label: Text('Email',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(
+                label: Text('Dernière connexion',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(
+                label: Text('Actions',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
           ],
           rows: users.map((user) => _buildDesktopRow(user)).toList(),
         ),
@@ -450,10 +466,10 @@ class UserListWidget extends StatelessWidget {
                   CircleAvatar(
                     radius: 16,
                     backgroundColor: _getRoleColor(user.role).withOpacity(0.2),
-                    backgroundImage: user.photoUrl != null 
-                        ? NetworkImage(user.photoUrl!) 
+                    backgroundImage: user.photoUrl != null
+                        ? NetworkImage(user.photoUrl!)
                         : null,
-                    child: user.photoUrl == null 
+                    child: user.photoUrl == null
                         ? Text(
                             user.initiales,
                             style: TextStyle(
@@ -508,7 +524,7 @@ class UserListWidget extends StatelessWidget {
           ),
           onTap: () => onUserTap(user),
         ),
-        
+
         // Rôle
         DataCell(
           Container(
@@ -516,7 +532,8 @@ class UserListWidget extends StatelessWidget {
             decoration: BoxDecoration(
               color: _getRoleColor(user.role).withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _getRoleColor(user.role).withOpacity(0.3)),
+              border:
+                  Border.all(color: _getRoleColor(user.role).withOpacity(0.3)),
             ),
             child: Text(
               user.role,
@@ -530,7 +547,7 @@ class UserListWidget extends StatelessWidget {
             ),
           ),
         ),
-        
+
         // Site
         DataCell(
           Row(
@@ -548,7 +565,7 @@ class UserListWidget extends StatelessWidget {
             ],
           ),
         ),
-        
+
         // Statut
         DataCell(
           Row(
@@ -576,7 +593,7 @@ class UserListWidget extends StatelessWidget {
             ],
           ),
         ),
-        
+
         // Email
         DataCell(
           ConstrainedBox(
@@ -588,11 +605,11 @@ class UserListWidget extends StatelessWidget {
             ),
           ),
         ),
-        
+
         // Dernière connexion
         DataCell(
           Text(
-            user.dateLastLogin != null 
+            user.dateLastLogin != null
                 ? _formatDate(user.dateLastLogin!)
                 : 'Jamais',
             style: TextStyle(
@@ -600,7 +617,7 @@ class UserListWidget extends StatelessWidget {
             ),
           ),
         ),
-        
+
         // Actions
         DataCell(
           Row(
@@ -719,7 +736,7 @@ class UserListWidget extends StatelessWidget {
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     final difference = now.difference(date);
-    
+
     if (difference.inMinutes < 60) {
       return 'Il y a ${difference.inMinutes}min';
     } else if (difference.inHours < 24) {
@@ -824,10 +841,10 @@ class UserOnlineWidget extends StatelessWidget {
                 CircleAvatar(
                   radius: 24,
                   backgroundColor: _getRoleColor(user.role).withOpacity(0.2),
-                  backgroundImage: user.photoUrl != null 
-                      ? NetworkImage(user.photoUrl!) 
+                  backgroundImage: user.photoUrl != null
+                      ? NetworkImage(user.photoUrl!)
                       : null,
-                  child: user.photoUrl == null 
+                  child: user.photoUrl == null
                       ? Text(
                           user.initiales,
                           style: TextStyle(

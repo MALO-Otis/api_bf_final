@@ -309,19 +309,16 @@ class _AdminReportsPageState extends State<AdminReportsPage>
 
               const SizedBox(height: 24),
 
-              // Graphiques principaux - Layout responsive
+              // Graphiques principaux
               LayoutBuilder(
                 builder: (context, constraints) {
-                  // Utiliser une Row seulement si on a assez d'espace (minimum 1000px)
-                  final useHorizontalLayout = constraints.maxWidth >= 1000;
-
-                  if (useHorizontalLayout) {
+                  // Si l'écran est assez large (desktop), afficher côte à côte
+                  if (constraints.maxWidth > 1200) {
                     return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          flex:
-                              3, // Plus d'espace pour le graphique de production
+                          flex: 2,
                           child: ReportsProductionChart(
                             reportsService: _reportsService,
                             isLoading: _isLoading.value,
@@ -329,7 +326,6 @@ class _AdminReportsPageState extends State<AdminReportsPage>
                         ),
                         const SizedBox(width: 16),
                         Expanded(
-                          flex: 2, // Moins d'espace pour le graphique de ventes
                           child: ReportsSalesChart(
                             reportsService: _reportsService,
                             isLoading: _isLoading.value,
@@ -337,8 +333,30 @@ class _AdminReportsPageState extends State<AdminReportsPage>
                         ),
                       ],
                     );
-                  } else {
-                    // Layout vertical pour les écrans plus petits
+                  } 
+                  // Si l'écran est moyen (tablet), afficher côte à côte mais plus compact
+                  else if (constraints.maxWidth > 800) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: ReportsProductionChart(
+                            reportsService: _reportsService,
+                            isLoading: _isLoading.value,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ReportsSalesChart(
+                            reportsService: _reportsService,
+                            isLoading: _isLoading.value,
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                  // Si l'écran est petit (mobile), afficher en colonne
+                  else {
                     return Column(
                       children: [
                         ReportsProductionChart(

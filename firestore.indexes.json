@@ -1,8 +1,28 @@
 {
   "indexes": [
     {
-      "collectionGroup": "conditionnement",
-      "queryScope": "COLLECTION",
+      "collectionGroup": "conditionnements",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "date",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "conditionnements",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "lotFiltrageId",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "conditionnements",
+      "queryScope": "COLLECTION_GROUP",
       "fields": [
         {
           "fieldPath": "site",
@@ -11,20 +31,6 @@
         {
           "fieldPath": "date",
           "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "conditionnement",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "site",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "date",
-          "order": "ASCENDING"
         }
       ]
     },
@@ -99,6 +105,88 @@
         {
           "fieldPath": "datePerte",
           "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "processus",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "statut",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateFiltrage",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "filtered_products",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "site_origine",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "statut",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date_fin_filtrage",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "collectes",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "dateCollecte",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "collectes",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "dateCollecte",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "controles",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "dateControle",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "extractions",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "dateExtraction",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "produits_filtres",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "dateFiltrage",
+          "order": "ASCENDING"
         }
       ]
     }

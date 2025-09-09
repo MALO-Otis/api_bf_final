@@ -156,11 +156,10 @@ class _UserManagementPageState extends State<UserManagementPage>
       body: Column(
         children: [
           // Statistiques en haut
-          Obx(() => UserStatisticsHeader(
-                statistics: _statistics.value,
-                isLoading: _isLoadingStats.value,
-                isMobile: isMobile,
-              )),
+          UserStatisticsWidget(
+            userService: _userService,
+            isMobile: isMobile,
+          ),
 
           // Onglets
           Container(
@@ -216,20 +215,20 @@ class _UserManagementPageState extends State<UserManagementPage>
   }
 
   Widget _buildUsersTab(bool isMobile, bool isTablet) {
-    return Column(
-      children: [
-        // Filtres
-        UserFiltersWidget(
-          filters: _filters.value,
-          onFiltersChanged: _applyFilters,
-          availableRoles: _userService.availableRoles,
-          availableSites: _userService.availableSites,
-          isMobile: isMobile,
-        ),
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          // Filtres
+          UserFiltersWidget(
+            filters: _filters.value,
+            onFiltersChanged: _applyFilters,
+            availableRoles: _userService.availableRoles,
+            availableSites: _userService.availableSites,
+            isMobile: isMobile,
+          ),
 
-        // Liste des utilisateurs
-        Expanded(
-          child: Obx(() => UserListWidget(
+          // Liste des utilisateurs
+          Obx(() => UserListWidget(
                 users: _users,
                 isLoading: _isLoading.value,
                 isMobile: isMobile,
@@ -241,36 +240,41 @@ class _UserManagementPageState extends State<UserManagementPage>
                 onUserResetPassword: _resetUserPassword,
                 onUserDelete: _deleteUser,
               )),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildStatisticsTab(bool isMobile, bool isTablet) {
-    return Obx(() => UserStatisticsDetailWidget(
-          statistics: _statistics.value,
-          isLoading: _isLoadingStats.value,
-          isMobile: isMobile,
-        ));
+    return SingleChildScrollView(
+      child: UserStatisticsWidget(
+        userService: _userService,
+        isMobile: isMobile,
+      ),
+    );
   }
 
   Widget _buildHistoryTab(bool isMobile, bool isTablet) {
-    return Obx(() => UserActionsWidget(
-          actions: _recentActions,
-          isLoading: _isLoading.value,
-          isMobile: isMobile,
-        ));
+    return SingleChildScrollView(
+      child: Obx(() => UserActionsWidget(
+            actions: _recentActions,
+            isLoading: _isLoading.value,
+            isMobile: isMobile,
+          )),
+    );
   }
 
   Widget _buildOnlineUsersTab(bool isMobile, bool isTablet) {
-    return Obx(() {
-      final onlineUsers = _users.where((user) => user.isOnline).toList();
-      return UserOnlineWidget(
-        onlineUsers: onlineUsers,
-        isLoading: _isLoading.value,
-        isMobile: isMobile,
-      );
-    });
+    return SingleChildScrollView(
+      child: Obx(() {
+        final onlineUsers = _users.where((user) => user.isOnline).toList();
+        return UserOnlineWidget(
+          onlineUsers: onlineUsers,
+          isLoading: _isLoading.value,
+          isMobile: isMobile,
+        );
+      }),
+    );
   }
 
   // Actions des utilisateurs

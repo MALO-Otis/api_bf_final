@@ -145,10 +145,24 @@ class DashboardController extends GetxController {
       }
 
       // NOUVEAU : Module ADMINISTRATION (Admin seulement)
-      if (moduleName == 'ADMINISTRATION' && subModule == 'Créer un compte') {
-        print('✅ Navigation vers Créer un compte');
-        currentPage.value = const SignupPage();
-        return;
+      if (moduleName == 'ADMINISTRATION') {
+        if (subModule == 'Créer un compte') {
+          print('✅ Navigation vers Créer un compte');
+          currentPage.value = const SignupPage();
+          return;
+        } else if (subModule == 'Gestion Utilisateurs') {
+          print('✅ Navigation vers Gestion Utilisateurs');
+          currentPage.value = const UserManagementPage();
+          return;
+        } else if (subModule == 'Paramètres Système') {
+          print('✅ Navigation vers Paramètres Système');
+          currentPage.value = const SettingsPage();
+          return;
+        } else if (subModule == 'Rapports Admin') {
+          print('✅ Navigation vers Rapports Admin');
+          currentPage.value = const AdminReportsPage();
+          return;
+        }
       }
 
       switch (moduleName) {
@@ -636,10 +650,22 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
         ),
 
         // Actions Rapides Admin (seulement pour les administrateurs)
-        Padding(
-          padding: sectionPad,
-          child:
-              _buildAdminQuickActionsSection(widget.isMobile, widget.isTablet),
+        Builder(
+          builder: (context) {
+            try {
+              final roleService = Get.find<UserRoleService>();
+              if (roleService.currentRoleGroup == RoleGroup.admin) {
+                return Padding(
+                  padding: sectionPad,
+                  child: _buildAdminQuickActionsSection(
+                      widget.isMobile, widget.isTablet),
+                );
+              }
+            } catch (e) {
+              // Si le service n'est pas disponible, ne pas afficher la section
+            }
+            return const SizedBox.shrink();
+          },
         ),
 
         // Chart
@@ -2243,7 +2269,10 @@ class NavigationSlider extends StatelessWidget {
         "name": "ADMINISTRATION",
         "icon": Icons.admin_panel_settings,
         "subModules": [
-          {"name": "Créer un compte", "icon": Icons.person_add}
+          {"name": "Créer un compte", "icon": Icons.person_add},
+          {"name": "Gestion Utilisateurs", "icon": Icons.people},
+          {"name": "Paramètres Système", "icon": Icons.settings},
+          {"name": "Rapports Admin", "icon": Icons.analytics}
         ]
       },
     ];

@@ -10,7 +10,7 @@ import 'package:intl/intl.dart';
 import '../../utils/smart_appbar.dart';
 import '../../../authentication/user_session.dart';
 import 'conditionnement_models.dart';
-import 'services/conditionnement_service.dart';
+import 'services/conditionnement_db_service.dart';
 import 'conditionnement_edit.dart';
 
 class ConditionnementHomePage extends StatefulWidget {
@@ -23,7 +23,7 @@ class ConditionnementHomePage extends StatefulWidget {
 
 class _ConditionnementHomePageState extends State<ConditionnementHomePage>
     with TickerProviderStateMixin {
-  final ConditionnementService _service = ConditionnementService();
+  late ConditionnementDbService _service;
   final UserSession _userSession = Get.find<UserSession>();
 
   // Animation controllers
@@ -38,11 +38,9 @@ class _ConditionnementHomePageState extends State<ConditionnementHomePage>
   late Animation<double> _fabRotationAnimation;
 
   // État de l'application
-  bool _isLoading = true;
   bool _showFilters = false;
   String? _selectedSiteFilter;
   String _searchQuery = '';
-  List<LotFiltre> _allLots = [];
   List<LotFiltre> _filteredLots = [];
   Map<String, dynamic> _statistics = {};
 
@@ -54,6 +52,7 @@ class _ConditionnementHomePageState extends State<ConditionnementHomePage>
   void initState() {
     super.initState();
     _initializeAnimations();
+    _initializeService();
     _loadData();
     _searchController.addListener(_onSearchChanged);
   }
@@ -66,6 +65,11 @@ class _ConditionnementHomePageState extends State<ConditionnementHomePage>
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// Initialise le service
+  void _initializeService() {
+    _service = Get.put(ConditionnementDbService());
   }
 
   /// Initialise les animations
@@ -120,25 +124,12 @@ class _ConditionnementHomePageState extends State<ConditionnementHomePage>
 
   /// Charge les données
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-
     try {
-      // Récupérer les lots et statistiques en parallèle
-      final results = await Future.wait([
-        _service.getLotsDisponiblesConditionnement(
-          siteFilter: _userSession.role == 'admin'
-              ? _selectedSiteFilter
-              : _userSession.site,
-        ),
-        _service.getStatistiquesConditionnement(
-          siteFilter: _userSession.role == 'admin'
-              ? _selectedSiteFilter
-              : _userSession.site,
-        ),
-      ]);
+      // Recharger les données du service
+      await _service.refreshData();
 
-      _allLots = results[0] as List<LotFiltre>;
-      _statistics = results[1] as Map<String, dynamic>;
+      // Récupérer les statistiques
+      _statistics = await _service.getStatistiques();
 
       _applyFilters();
 
@@ -150,14 +141,13 @@ class _ConditionnementHomePageState extends State<ConditionnementHomePage>
       _fabAnimationController.forward();
     } catch (e) {
       _showErrorSnackbar('Erreur lors du chargement des données: $e');
-    } finally {
-      setState(() => _isLoading = false);
     }
   }
 
   /// Applique les filtres de recherche
   void _applyFilters() {
-    _filteredLots = _allLots.where((lot) {
+    final allLots = _service.lotsDisponibles;
+    _filteredLots = allLots.where((lot) {
       // Filtre de recherche textuelle
       if (_searchQuery.isNotEmpty) {
         final query = _searchQuery.toLowerCase();
@@ -206,7 +196,9 @@ class _ConditionnementHomePageState extends State<ConditionnementHomePage>
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: _buildAppBar(theme),
-      body: _isLoading ? _buildLoadingView() : _buildMainContent(isMobile),
+      body: Obx(() => _service.isLoading
+          ? _buildLoadingView()
+          : _buildMainContent(isMobile)),
       floatingActionButton: _buildFloatingActionButton(),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );

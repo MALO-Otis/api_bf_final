@@ -8,7 +8,7 @@ import 'package:get/get.dart';
 import '../../utils/smart_appbar.dart';
 import 'condionnement_home.dart';
 import 'conditionnement_models.dart';
-import 'services/conditionnement_service.dart';
+import 'services/conditionnement_db_service.dart';
 import 'pages/stock_conditionne_page.dart';
 import 'pages/lots_disponibles_page.dart';
 
@@ -22,7 +22,7 @@ class ConditionnementMainPage extends StatefulWidget {
 
 class _ConditionnementMainPageState extends State<ConditionnementMainPage>
     with TickerProviderStateMixin {
-  final ConditionnementService _service = ConditionnementService();
+  late ConditionnementDbService _service;
 
   // Animation controllers
   late AnimationController _fadeController;
@@ -39,8 +39,13 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
   @override
   void initState() {
     super.initState();
+    _initializeService();
     _initializeAnimations();
     _loadStatistics();
+  }
+
+  void _initializeService() {
+    _service = Get.put(ConditionnementDbService());
   }
 
   @override
@@ -86,7 +91,8 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
 
   Future<void> _loadStatistics() async {
     try {
-      final stats = await _service.getStatistiquesConditionnement();
+      await _service.refreshData();
+      final stats = await _service.getStatistiques();
       setState(() {
         _statistics = stats;
         _isLoading = false;
@@ -109,7 +115,7 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
         backgroundColor: const Color(0xFF2E7D32),
         onBackPressed: () => Get.offAllNamed('/dashboard'),
       ),
-      body: _isLoading ? _buildLoadingView() : _buildMainContent(isMobile),
+      body: Obx(() => _service.isLoading ? _buildLoadingView() : _buildMainContent(isMobile)),
     );
   }
 
@@ -240,7 +246,7 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
               Expanded(
                 child: _buildStatCard(
                   'Lots disponibles',
-                  _statistics['lotsDisponibles']?.toString() ?? '0',
+                  _service.lotsDisponibles.length.toString(),
                   Icons.inventory_2,
                   Colors.white,
                   isMobile,
@@ -250,7 +256,7 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
               Expanded(
                 child: _buildStatCard(
                   'Conditionnés',
-                  _statistics['lotsConditionnes']?.toString() ?? '0',
+                  _service.conditionnements.length.toString(),
                   Icons.check_circle,
                   Colors.white,
                   isMobile,
@@ -327,7 +333,7 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
         'color': const Color(0xFF2196F3),
         'gradient': [const Color(0xFF2196F3), const Color(0xFF42A5F5)],
         'action': () => _navigateToLotsDisponibles(),
-        'badge': _statistics['lotsDisponibles']?.toString(),
+        'badge': _service.lotsDisponibles.length.toString(),
       },
       {
         'title': 'Stock Conditionné',
@@ -336,7 +342,7 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
         'color': const Color(0xFF9C27B0),
         'gradient': [const Color(0xFF9C27B0), const Color(0xFFBA68C8)],
         'action': () => _navigateToStockConditionne(),
-        'badge': _statistics['lotsConditionnes']?.toString(),
+        'badge': _service.conditionnements.length.toString(),
       },
       {
         'title': 'Rapports & Analytics',
@@ -601,7 +607,7 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
   // Navigation methods
   void _navigateToNouveauConditionnement() {
     Get.to(
-      () => const ConditionnementHomePage(),
+      () => const LotsDisponiblesPage(),
       transition: Transition.rightToLeftWithFade,
       duration: const Duration(milliseconds: 300),
     );

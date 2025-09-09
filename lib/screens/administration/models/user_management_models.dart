@@ -44,7 +44,8 @@ class AppUser {
       site: data['site'] ?? '',
       isActive: data['isActive'] ?? true, // Par défaut true si pas spécifié
       emailVerified: data['emailVerified'] ?? false,
-      dateCreation: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(), // createdAt au lieu de dateCreation
+      dateCreation: (data['createdAt'] as Timestamp?)?.toDate() ??
+          DateTime.now(), // createdAt au lieu de dateCreation
       dateLastLogin: (data['dateLastLogin'] as Timestamp?)?.toDate(),
       photoUrl: data['photoUrl'],
       metadata: data['metadata'],
@@ -62,18 +63,23 @@ class AppUser {
       'site': site,
       'isActive': isActive,
       'emailVerified': emailVerified,
-      'createdAt': Timestamp.fromDate(dateCreation), // createdAt au lieu de dateCreation
-      'dateLastLogin': dateLastLogin != null ? Timestamp.fromDate(dateLastLogin!) : null,
+      'createdAt':
+          Timestamp.fromDate(dateCreation), // createdAt au lieu de dateCreation
+      'dateLastLogin':
+          dateLastLogin != null ? Timestamp.fromDate(dateLastLogin!) : null,
       'photoUrl': photoUrl,
       'metadata': metadata,
     };
   }
 
   String get nomComplet => '$prenom $nom';
-  String get initiales => '${prenom.isNotEmpty ? prenom[0] : ''}${nom.isNotEmpty ? nom[0] : ''}'.toUpperCase();
-  
-  bool get isOnline => dateLastLogin != null && 
-    DateTime.now().difference(dateLastLogin!).inMinutes < 30;
+  String get initiales =>
+      '${prenom.isNotEmpty ? prenom[0] : ''}${nom.isNotEmpty ? nom[0] : ''}'
+          .toUpperCase();
+
+  bool get isOnline =>
+      dateLastLogin != null &&
+      DateTime.now().difference(dateLastLogin!).inMinutes < 30;
 
   AppUser copyWith({
     String? email,
@@ -198,12 +204,12 @@ class UserFilters {
 
   bool get hasActiveFilters {
     return searchTerm != null && searchTerm!.isNotEmpty ||
-           role != null ||
-           site != null ||
-           isActive != null ||
-           emailVerified != null ||
-           dateCreationStart != null ||
-           dateCreationEnd != null;
+        role != null ||
+        site != null ||
+        isActive != null ||
+        emailVerified != null ||
+        dateCreationStart != null ||
+        dateCreationEnd != null;
   }
 
   UserFilters clearFilters() {

@@ -29,9 +29,7 @@ class ReportsDashboardKPIs extends StatelessWidget {
     final kpis = _buildKPIs(data);
 
     return Container(
-      child: isMobile 
-          ? _buildMobileKPIs(kpis)
-          : _buildDesktopKPIs(kpis),
+      child: isMobile ? _buildMobileKPIs(kpis) : _buildDesktopKPIs(kpis),
     );
   }
 
@@ -154,7 +152,7 @@ class ReportsDashboardKPIs extends StatelessWidget {
 
   Widget _buildKPICard(KPI kpi, {bool isMobile = false}) {
     final color = _hexToColor(kpi.color);
-    
+
     return Container(
       padding: EdgeInsets.all(isMobile ? 12 : 16),
       decoration: BoxDecoration(
@@ -181,9 +179,10 @@ class ReportsDashboardKPIs extends StatelessWidget {
               const Spacer(),
               if (kpi.trend != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: kpi.isPositiveTrend 
+                    color: kpi.isPositiveTrend
                         ? Colors.green.withOpacity(0.1)
                         : Colors.red.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
@@ -192,7 +191,9 @@ class ReportsDashboardKPIs extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        kpi.isPositiveTrend ? Icons.trending_up : Icons.trending_down,
+                        kpi.isPositiveTrend
+                            ? Icons.trending_up
+                            : Icons.trending_down,
                         size: 12,
                         color: kpi.isPositiveTrend ? Colors.green : Colors.red,
                       ),
@@ -201,7 +202,8 @@ class ReportsDashboardKPIs extends StatelessWidget {
                         kpi.trendText,
                         style: TextStyle(
                           fontSize: 10,
-                          color: kpi.isPositiveTrend ? Colors.green : Colors.red,
+                          color:
+                              kpi.isPositiveTrend ? Colors.green : Colors.red,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -210,9 +212,9 @@ class ReportsDashboardKPIs extends StatelessWidget {
                 ),
             ],
           ),
-          
+
           const SizedBox(height: 8),
-          
+
           // Valeur principale
           Text(
             kpi.value,
@@ -222,9 +224,9 @@ class ReportsDashboardKPIs extends StatelessWidget {
               color: color,
             ),
           ),
-          
+
           const SizedBox(height: 4),
-          
+
           // Titre
           Text(
             kpi.title,
@@ -234,9 +236,9 @@ class ReportsDashboardKPIs extends StatelessWidget {
               color: const Color(0xFF2D0C0D),
             ),
           ),
-          
+
           const SizedBox(height: 2),
-          
+
           // Sous-titre
           Text(
             kpi.subtitle,
@@ -327,9 +329,9 @@ class ReportsRecentActivity extends StatelessWidget {
               ),
             ],
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Liste des activités
           if (activities.isEmpty)
             const Center(
@@ -343,9 +345,10 @@ class ReportsRecentActivity extends StatelessWidget {
             )
           else
             Column(
-              children: activities.take(5).map((activity) => 
-                _buildActivityItem(activity)
-              ).toList(),
+              children: activities
+                  .take(5)
+                  .map((activity) => _buildActivityItem(activity))
+                  .toList(),
             ),
         ],
       ),
@@ -354,7 +357,7 @@ class ReportsRecentActivity extends StatelessWidget {
 
   Widget _buildActivityItem(RecentActivity activity) {
     final color = _hexToColor(activity.color);
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -385,9 +388,9 @@ class ReportsRecentActivity extends StatelessWidget {
               ),
             ),
           ),
-          
+
           const SizedBox(width: 12),
-          
+
           // Contenu
           Expanded(
             child: Column(
@@ -413,7 +416,7 @@ class ReportsRecentActivity extends StatelessWidget {
               ],
             ),
           ),
-          
+
           // Timestamp
           Text(
             activity.timeAgo,
@@ -458,15 +461,16 @@ class ReportsRecentActivity extends StatelessWidget {
                   ),
                 ],
               ),
-              
+
               const Divider(),
-              
+
               // Liste complète
               Expanded(
                 child: ListView.builder(
                   itemCount: reportsService.reportsData.recentActivities.length,
                   itemBuilder: (context, index) {
-                    final activity = reportsService.reportsData.recentActivities[index];
+                    final activity =
+                        reportsService.reportsData.recentActivities[index];
                     return _buildActivityItem(activity);
                   },
                 ),
@@ -506,7 +510,7 @@ class ReportsPerformanceIndicators extends StatelessWidget {
     }
 
     final data = reportsService.reportsData;
-    
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -538,11 +542,11 @@ class ReportsPerformanceIndicators extends StatelessWidget {
               ),
             ],
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Indicateurs
-          isMobile 
+          isMobile
               ? Column(
                   children: [
                     _buildPerformanceIndicator(
@@ -609,15 +613,15 @@ class ReportsPerformanceIndicators extends StatelessWidget {
   }
 
   Widget _buildPerformanceIndicator(
-    String title, 
-    double value, 
-    double target, 
+    String title,
+    double value,
+    double target,
     String unit,
     Color color,
   ) {
     final percentage = target > 0 ? (value / target) * 100 : 0;
     final isGood = value >= target;
-    
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -651,9 +655,9 @@ class ReportsPerformanceIndicators extends StatelessWidget {
               ),
             ],
           ),
-          
+
           const SizedBox(height: 8),
-          
+
           // Barre de progression
           LinearProgressIndicator(
             value: (percentage / 100).clamp(0.0, 1.0),
@@ -662,9 +666,9 @@ class ReportsPerformanceIndicators extends StatelessWidget {
               isGood ? Colors.green : Colors.orange,
             ),
           ),
-          
+
           const SizedBox(height: 4),
-          
+
           // Objectif
           Text(
             'Objectif: ${target.toStringAsFixed(1)}$unit',

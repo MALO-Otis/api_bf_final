@@ -10,7 +10,7 @@ import 'package:intl/intl.dart';
 
 import '../../utils/smart_appbar.dart';
 import 'conditionnement_models.dart';
-import 'services/conditionnement_service.dart';
+import 'services/conditionnement_db_service.dart';
 
 class ConditionnementEditController extends GetxController {
   // Données du lot filtré
@@ -18,7 +18,7 @@ class ConditionnementEditController extends GetxController {
   late LotFiltre lotFiltrage;
 
   // Services
-  final ConditionnementService _service = ConditionnementService();
+  late ConditionnementDbService _service;
 
   // État réactif
   final Rxn<DateTime> dateConditionnement = Rxn<DateTime>();
@@ -46,6 +46,7 @@ class ConditionnementEditController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    _service = Get.find<ConditionnementDbService>();
     _initializeLot();
     _initializeControllers();
     _setupCalculationListeners();
@@ -169,9 +170,6 @@ class ConditionnementEditController extends GetxController {
 
   /// Configure les listeners pour les calculs en temps réel
   void _setupCalculationListeners() {
-    // Écouter les changements dans les emballages sélectionnés
-    selectedEmballages.listen((_) => _recalculateAll());
-
     // Écouter les changements de date
     dateConditionnement.listen((_) => _validateForm());
   }
@@ -187,8 +185,6 @@ class ConditionnementEditController extends GetxController {
       if (controller != null && controller.text.isNotEmpty) {
         final quantity = int.tryParse(controller.text) ?? 0;
         if (quantity > 0) {
-          selectedEmballages[emballageType.id] = quantity;
-
           // Calculer pour cet emballage
           final unites = emballageType.getNombreUnitesReelles(quantity);
           final poids = emballageType.getPoidsTotal(quantity);
@@ -198,8 +194,6 @@ class ConditionnementEditController extends GetxController {
           newTotalUnites += unites;
           newTotalPoids += poids;
           newTotalPrix += prix;
-        } else {
-          selectedEmballages.remove(emballageType.id);
         }
       }
     }
@@ -208,8 +202,8 @@ class ConditionnementEditController extends GetxController {
     totalUnites.value = newTotalUnites;
     totalPoids.value = newTotalPoids;
     totalPrix.value = newTotalPrix;
-    quantiteRestante.value =
-        (lotFiltrage.quantiteRecue - newTotalPoids).clamp(0, double.infinity);
+    quantiteRestante.value = (lotFiltrage.quantiteRestante - newTotalPoids)
+        .clamp(0, double.infinity);
 
     // Valider le formulaire
     _validateForm();
@@ -364,6 +358,80 @@ class ConditionnementEditController extends GetxController {
   String getFloralTypeIcon() {
     return ConditionnementUtils.iconesByFlorale[lotFiltrage.typeFlorale] ??
         '🍯';
+  }
+
+  /// Obtient la quantité saisie pour un emballage
+  double getQuantiteEmballage(String emballageId) {
+    final text = controllers[emballageId]?.text ?? '';
+    return double.tryParse(text) ?? 0.0;
+  }
+
+  /// Calcule la quantité maximale prélevable pour un emballage
+  double getQuantiteMaxEmballage(String emballageId) {
+    final emballage = EmballagesConfig.emballagesDisponibles
+        .firstWhere((e) => e.id == emballageId);
+
+    // Calculer la quantité déjà utilisée par TOUS les autres emballages (sauf celui en cours)
+    double quantiteUtilisee = 0.0;
+    for (final emballageType in EmballagesConfig.emballagesDisponibles) {
+      if (emballageType.id != emballageId) {
+        final controller = controllers[emballageType.id];
+        if (controller != null && controller.text.isNotEmpty) {
+          final quantity = int.tryParse(controller.text) ?? 0;
+          if (quantity > 0) {
+            quantiteUtilisee += quantity * emballageType.contenanceKg;
+          }
+        }
+      }
+    }
+
+    // Calculer la quantité disponible restante
+    final quantiteDisponible = lotFiltrage.quantiteRestante - quantiteUtilisee;
+
+    // Si la quantité disponible est négative ou nulle, retourner 0
+    if (quantiteDisponible <= 0) {
+      return 0.0;
+    }
+
+    // Calculer le nombre maximum d'unités de cet emballage possible
+    final maxUnites =
+        (quantiteDisponible / emballage.contenanceKg).floorToDouble();
+
+    return maxUnites;
+  }
+
+  /// Met à jour les calculs (appelé lors des changements)
+  void updateCalculations() {
+    _recalculateAll();
+  }
+
+  /// Calcule le reste disponible pour un emballage spécifique
+  double _calculateRestantPourEmballage(
+      String emballageId, double quantiteSaisie) {
+    final emballage = EmballagesConfig.emballagesDisponibles
+        .firstWhere((e) => e.id == emballageId);
+
+    // Calculer la quantité déjà utilisée par TOUS les autres emballages
+    double quantiteUtilisee = 0.0;
+    for (final emballageType in EmballagesConfig.emballagesDisponibles) {
+      if (emballageType.id != emballageId) {
+        final controller = controllers[emballageType.id];
+        if (controller != null && controller.text.isNotEmpty) {
+          final quantity = int.tryParse(controller.text) ?? 0;
+          if (quantity > 0) {
+            quantiteUtilisee += quantity * emballageType.contenanceKg;
+          }
+        }
+      }
+    }
+
+    // Ajouter la quantité de l'emballage actuel
+    quantiteUtilisee += quantiteSaisie * emballage.contenanceKg;
+
+    // Calculer le reste
+    final reste = lotFiltrage.quantiteRestante - quantiteUtilisee;
+
+    return reste >= 0 ? reste : 0.0;
   }
 }
 
@@ -754,32 +822,84 @@ class ConditionnementEditPage extends StatelessWidget {
             ),
           ),
 
-          // Champ de quantité
+          // Champ de quantité amélioré
           SizedBox(
-            width: 80,
-            child: TextFormField(
-              controller: controller.controllers[emballage.id],
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: InputDecoration(
-                labelText: 'Qté',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                    color: controller.getFloralTypeColor(),
-                    width: 2,
+            width: isMobile ? 120 : 140,
+            child: Obx(() {
+              final quantite = controller.getQuantiteEmballage(emballage.id);
+              final quantiteMax =
+                  controller.getQuantiteMaxEmballage(emballage.id);
+              final isValid = quantite <= quantiteMax && quantite >= 0;
+
+              return Column(
+                children: [
+                  TextFormField(
+                    controller: controller.controllers[emballage.id],
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: (value) {
+                      final quantite = double.tryParse(value) ?? 0.0;
+                      if (quantite > 0) {
+                        controller.selectedEmballages[emballage.id] =
+                            quantite.toInt();
+                      } else {
+                        controller.selectedEmballages.remove(emballage.id);
+                      }
+                      controller.updateCalculations();
+                    },
+                    decoration: InputDecoration(
+                      labelText: 'Quantité',
+                      hintText: 'Max: $quantiteMax',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: isValid
+                              ? controller.getFloralTypeColor()
+                              : Colors.red,
+                          width: 2,
+                        ),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: Colors.red, width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      suffixIcon: quantite > 0
+                          ? Icon(
+                              isValid ? Icons.check_circle : Icons.error,
+                              color: isValid ? Colors.green : Colors.red,
+                              size: 20,
+                            )
+                          : null,
+                    ),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: isMobile ? 14 : 16,
+                    ),
                   ),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 8,
-                ),
-              ),
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
+                  if (quantite > 0) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Restant: ${controller._calculateRestantPourEmballage(emballage.id, quantite).toStringAsFixed(1)} kg',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: isValid
+                            ? Colors.green.shade700
+                            : Colors.red.shade700,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              );
+            }),
           ),
         ],
       ),
@@ -835,45 +955,50 @@ class ConditionnementEditPage extends StatelessWidget {
 
                 const SizedBox(height: 16),
 
-                // Grille des totaux
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 2,
-                  childAspectRatio: 1.5,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
+                // Grille des totaux compacte
+                Row(
                   children: [
-                    _buildSummaryCard(
-                      'Total unités',
-                      controller.totalUnites.value.toString(),
-                      Icons.inventory_2,
-                      Colors.blue.shade600,
-                      isMobile,
+                    Expanded(
+                      child: _buildCompactSummaryCard(
+                        'Unités',
+                        controller.totalUnites.value.toString(),
+                        Icons.inventory_2,
+                        Colors.blue.shade600,
+                        isMobile,
+                      ),
                     ),
-                    _buildSummaryCard(
-                      'Total poids',
-                      '${controller.totalPoids.value.toStringAsFixed(1)} kg',
-                      Icons.scale,
-                      Colors.purple.shade600,
-                      isMobile,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildCompactSummaryCard(
+                        'Poids',
+                        '${controller.totalPoids.value.toStringAsFixed(1)} kg',
+                        Icons.scale,
+                        Colors.purple.shade600,
+                        isMobile,
+                      ),
                     ),
-                    _buildSummaryCard(
-                      'Prix total',
-                      ConditionnementUtils.formatPrix(
-                          controller.totalPrix.value),
-                      Icons.attach_money,
-                      Colors.green.shade600,
-                      isMobile,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildCompactSummaryCard(
+                        'Prix',
+                        ConditionnementUtils.formatPrix(
+                            controller.totalPrix.value),
+                        Icons.attach_money,
+                        Colors.green.shade600,
+                        isMobile,
+                      ),
                     ),
-                    _buildSummaryCard(
-                      'Reste',
-                      '${controller.quantiteRestante.value.toStringAsFixed(1)} kg',
-                      Icons.inventory,
-                      controller.quantiteRestante.value > 0
-                          ? Colors.orange.shade600
-                          : Colors.green.shade600,
-                      isMobile,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildCompactSummaryCard(
+                        'Reste',
+                        '${controller.quantiteRestante.value.toStringAsFixed(1)} kg',
+                        Icons.inventory,
+                        controller.quantiteRestante.value > 0
+                            ? Colors.orange.shade600
+                            : Colors.green.shade600,
+                        isMobile,
+                      ),
                     ),
                   ],
                 ),
@@ -964,6 +1089,47 @@ class ConditionnementEditPage extends StatelessWidget {
               color: Colors.grey.shade600,
             ),
             textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Construit une carte de résumé compacte
+  Widget _buildCompactSummaryCard(
+      String title, String value, IconData icon, Color color, bool isMobile) {
+    return Container(
+      padding: EdgeInsets.all(isMobile ? 6 : 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: color, size: isMobile ? 14 : 16),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: isMobile ? 10 : 12,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: isMobile ? 7 : 8,
+              color: color.withOpacity(0.8),
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

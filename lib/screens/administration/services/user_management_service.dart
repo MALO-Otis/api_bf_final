@@ -9,22 +9,96 @@ class UserManagementService extends GetxService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final UserSession _userSession = Get.find<UserSession>();
 
+  /// États observables
+  final RxBool _isLoadingStats = false.obs;
+  final Rx<UserStatistics> _statistics = UserStatistics.empty().obs;
+
+  // Getters
+  bool get isLoadingStats => _isLoadingStats.value;
+  UserStatistics get statistics => _statistics.value;
+
   /// Collection des utilisateurs
-  CollectionReference get _usersCollection => _firestore.collection('utilisateurs');
-  
+  CollectionReference get _usersCollection =>
+      _firestore.collection('utilisateurs');
+
   /// Collection des actions sur les utilisateurs
-  CollectionReference get _userActionsCollection => _firestore.collection('user_actions');
+  CollectionReference get _userActionsCollection =>
+      _firestore.collection('user_actions');
 
   /// Sites disponibles
   final List<String> availableSites = [
-    'Ouaga', 'Koudougou', 'Bobo', 'Mangodara', 'Bagre', 'Pô'
+    'Ouaga',
+    'Koudougou',
+    'Bobo',
+    'Mangodara',
+    'Bagre',
+    'Pô'
   ];
 
   /// Rôles disponibles
   final List<String> availableRoles = [
-    'Admin', 'Collecteur', 'Contrôleur', 'Filtreur', 'Extracteur',
-    'Conditionneur', 'Magazinier', 'Gestionnaire Commercial', 'Commercial', 'Caissier'
+    'Admin',
+    'Collecteur',
+    'Contrôleur',
+    'Filtreur',
+    'Extracteur',
+    'Conditionneur',
+    'Magazinier',
+    'Gestionnaire Commercial',
+    'Commercial',
+    'Caissier'
   ];
+
+  /// Récupérer les statistiques des utilisateurs
+  Future<UserStatistics> getUserStatistics() async {
+    _isLoadingStats.value = true;
+    try {
+      final users = await getUsers();
+
+      final stats = UserStatistics(
+        totalUsers: users.length,
+        activeUsers: users.where((u) => u.isActive).length,
+        inactiveUsers: users.where((u) => !u.isActive).length,
+        verifiedUsers: users.where((u) => u.emailVerified).length,
+        unverifiedUsers: users.where((u) => !u.emailVerified).length,
+        onlineUsers: 0, // TODO: Implémenter la logique d'utilisateurs en ligne
+        usersByRole: _groupUsersByField(users, (u) => u.role),
+        usersBySite: _groupUsersByField(users, (u) => u.site),
+        newUsersByMonth: _groupUsersByMonth(users),
+        loginsByMonth: {}, // TODO: Implémenter la logique des connexions
+      );
+
+      _statistics.value = stats;
+      return stats;
+    } catch (e) {
+      print('Erreur lors du chargement des statistiques: $e');
+      return UserStatistics.empty();
+    } finally {
+      _isLoadingStats.value = false;
+    }
+  }
+
+  /// Grouper les utilisateurs par un champ spécifique
+  Map<String, int> _groupUsersByField(
+      List<AppUser> users, String Function(AppUser) getField) {
+    final Map<String, int> groups = {};
+    for (final user in users) {
+      final field = getField(user);
+      groups[field] = (groups[field] ?? 0) + 1;
+    }
+    return groups;
+  }
+
+  /// Grouper les utilisateurs par mois de création
+  Map<String, int> _groupUsersByMonth(List<AppUser> users) {
+    final Map<String, int> groups = {};
+    for (final user in users) {
+      final month =
+          '${user.dateCreation.year}-${user.dateCreation.month.toString().padLeft(2, '0')}';
+      groups[month] = (groups[month] ?? 0) + 1;
+    }
+    return groups;
+  }
 
   /// Récupérer tous les utilisateurs avec filtres
   Future<List<AppUser>> getUsers({UserFilters? filters}) async {
@@ -56,31 +130,33 @@ class UserManagementService extends GetxService {
       }
 
       final snapshot = await query.get();
-      List<AppUser> users = snapshot.docs
-          .map((doc) => AppUser.fromFirestore(doc))
-          .toList();
+      List<AppUser> users =
+          snapshot.docs.map((doc) => AppUser.fromFirestore(doc)).toList();
 
       // Filtres côté client (pour les champs complexes)
       if (filters?.searchTerm != null && filters!.searchTerm!.isNotEmpty) {
         final searchLower = filters.searchTerm!.toLowerCase();
-        users = users.where((user) =>
-          user.nom.toLowerCase().contains(searchLower) ||
-          user.prenom.toLowerCase().contains(searchLower) ||
-          user.email.toLowerCase().contains(searchLower) ||
-          user.telephone.contains(searchLower)
-        ).toList();
+        users = users
+            .where((user) =>
+                user.nom.toLowerCase().contains(searchLower) ||
+                user.prenom.toLowerCase().contains(searchLower) ||
+                user.email.toLowerCase().contains(searchLower) ||
+                user.telephone.contains(searchLower))
+            .toList();
       }
 
       if (filters?.dateCreationStart != null) {
-        users = users.where((user) => 
-          user.dateCreation.isAfter(filters!.dateCreationStart!)
-        ).toList();
+        users = users
+            .where((user) =>
+                user.dateCreation.isAfter(filters!.dateCreationStart!))
+            .toList();
       }
 
       if (filters?.dateCreationEnd != null) {
-        users = users.where((user) => 
-          user.dateCreation.isBefore(filters!.dateCreationEnd!.add(Duration(days: 1)))
-        ).toList();
+        users = users
+            .where((user) => user.dateCreation
+                .isBefore(filters!.dateCreationEnd!.add(Duration(days: 1))))
+            .toList();
       }
 
       return users;
@@ -89,7 +165,6 @@ class UserManagementService extends GetxService {
       return [];
     }
   }
-
 
   /// Récupérer un utilisateur par ID
   Future<AppUser?> getUserById(String userId) async {
@@ -194,7 +269,8 @@ class UserManagementService extends GetxService {
       await _logUserAction(
         userId: userId,
         type: isActive ? UserActionType.activated : UserActionType.deactivated,
-        description: 'Utilisateur ${isActive ? 'activé' : 'désactivé'} par ${_userSession.email}',
+        description:
+            'Utilisateur ${isActive ? 'activé' : 'désactivé'} par ${_userSession.email}',
         newValues: {'isActive': isActive},
       );
 
@@ -216,7 +292,8 @@ class UserManagementService extends GetxService {
       await _logUserAction(
         userId: userId,
         type: UserActionType.roleChanged,
-        description: 'Rôle changé de ${oldUser.role} vers $newRole par ${_userSession.email}',
+        description:
+            'Rôle changé de ${oldUser.role} vers $newRole par ${_userSession.email}',
         oldValues: {'role': oldUser.role},
         newValues: {'role': newRole},
       );
@@ -239,7 +316,8 @@ class UserManagementService extends GetxService {
       await _logUserAction(
         userId: userId,
         type: UserActionType.siteChanged,
-        description: 'Site changé de ${oldUser.site} vers $newSite par ${_userSession.email}',
+        description:
+            'Site changé de ${oldUser.site} vers $newSite par ${_userSession.email}',
         oldValues: {'site': oldUser.site},
         newValues: {'site': newSite},
       );
@@ -255,13 +333,13 @@ class UserManagementService extends GetxService {
   Future<bool> resetUserPassword(String email) async {
     try {
       await _auth.sendPasswordResetEmail(email: email);
-      
+
       // Trouver l'utilisateur par email pour l'ID
       final querySnapshot = await _usersCollection
           .where('email', isEqualTo: email)
           .limit(1)
           .get();
-      
+
       if (querySnapshot.docs.isNotEmpty) {
         final userId = querySnapshot.docs.first.id;
         await _logUserAction(
@@ -300,70 +378,6 @@ class UserManagementService extends GetxService {
     }
   }
 
-  /// Récupérer les statistiques des utilisateurs
-  Future<UserStatistics> getUserStatistics() async {
-    try {
-      final users = await getUsers();
-      
-      final totalUsers = users.length;
-      final activeUsers = users.where((u) => u.isActive).length;
-      final inactiveUsers = totalUsers - activeUsers;
-      final verifiedUsers = users.where((u) => u.emailVerified).length;
-      final unverifiedUsers = totalUsers - verifiedUsers;
-      final onlineUsers = users.where((u) => u.isOnline).length;
-
-      // Statistiques par rôle
-      final Map<String, int> usersByRole = {};
-      for (final role in availableRoles) {
-        usersByRole[role] = users.where((u) => u.role == role).length;
-      }
-
-      // Statistiques par site
-      final Map<String, int> usersBySite = {};
-      for (final site in availableSites) {
-        usersBySite[site] = users.where((u) => u.site == site).length;
-      }
-
-      // Nouveaux utilisateurs par mois (12 derniers mois)
-      final Map<String, int> newUsersByMonth = {};
-      final now = DateTime.now();
-      for (int i = 11; i >= 0; i--) {
-        final month = DateTime(now.year, now.month - i, 1);
-        final monthKey = '${month.year}-${month.month.toString().padLeft(2, '0')}';
-        final nextMonth = DateTime(month.year, month.month + 1, 1);
-        
-        newUsersByMonth[monthKey] = users.where((u) => 
-          u.dateCreation.isAfter(month) && u.dateCreation.isBefore(nextMonth)
-        ).length;
-      }
-
-      // Connexions par mois (simulé - dans un vrai système, vous auriez des logs de connexion)
-      final Map<String, int> loginsByMonth = {};
-      for (int i = 11; i >= 0; i--) {
-        final month = DateTime(now.year, now.month - i, 1);
-        final monthKey = '${month.year}-${month.month.toString().padLeft(2, '0')}';
-        // Simulation basée sur les utilisateurs actifs
-        loginsByMonth[monthKey] = (activeUsers * 0.7).round() + (i * 2);
-      }
-
-      return UserStatistics(
-        totalUsers: totalUsers,
-        activeUsers: activeUsers,
-        inactiveUsers: inactiveUsers,
-        verifiedUsers: verifiedUsers,
-        unverifiedUsers: unverifiedUsers,
-        onlineUsers: onlineUsers,
-        usersByRole: usersByRole,
-        usersBySite: usersBySite,
-        newUsersByMonth: newUsersByMonth,
-        loginsByMonth: loginsByMonth,
-      );
-    } catch (e) {
-      print('Erreur lors du calcul des statistiques: $e');
-      return UserStatistics.empty();
-    }
-  }
-
   /// Récupérer l'historique des actions sur un utilisateur
   Future<List<UserAction>> getUserActions(String userId) async {
     try {
@@ -373,9 +387,7 @@ class UserManagementService extends GetxService {
           .limit(50)
           .get();
 
-      return snapshot.docs
-          .map((doc) => UserAction.fromFirestore(doc))
-          .toList();
+      return snapshot.docs.map((doc) => UserAction.fromFirestore(doc)).toList();
     } catch (e) {
       print('Erreur lors de la récupération des actions: $e');
       return [];
@@ -390,9 +402,7 @@ class UserManagementService extends GetxService {
           .limit(limit)
           .get();
 
-      return snapshot.docs
-          .map((doc) => UserAction.fromFirestore(doc))
-          .toList();
+      return snapshot.docs.map((doc) => UserAction.fromFirestore(doc)).toList();
     } catch (e) {
       print('Erreur lors de la récupération des actions récentes: $e');
       return [];
@@ -466,19 +476,22 @@ class UserManagementService extends GetxService {
   Future<List<Map<String, dynamic>>> exportUsers() async {
     try {
       final users = await getUsers();
-      return users.map((user) => {
-        'ID': user.id,
-        'Email': user.email,
-        'Nom': user.nom,
-        'Prénom': user.prenom,
-        'Téléphone': user.telephone,
-        'Rôle': user.role,
-        'Site': user.site,
-        'Actif': user.isActive ? 'Oui' : 'Non',
-        'Email vérifié': user.emailVerified ? 'Oui' : 'Non',
-        'Date création': user.dateCreation.toIso8601String(),
-        'Dernière connexion': user.dateLastLogin?.toIso8601String() ?? 'Jamais',
-      }).toList();
+      return users
+          .map((user) => {
+                'ID': user.id,
+                'Email': user.email,
+                'Nom': user.nom,
+                'Prénom': user.prenom,
+                'Téléphone': user.telephone,
+                'Rôle': user.role,
+                'Site': user.site,
+                'Actif': user.isActive ? 'Oui' : 'Non',
+                'Email vérifié': user.emailVerified ? 'Oui' : 'Non',
+                'Date création': user.dateCreation.toIso8601String(),
+                'Dernière connexion':
+                    user.dateLastLogin?.toIso8601String() ?? 'Jamais',
+              })
+          .toList();
     } catch (e) {
       print('Erreur lors de l\'export: $e');
       return [];

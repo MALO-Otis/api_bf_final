@@ -69,52 +69,58 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
                     // Champ de recherche
                     Expanded(
                       child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Rechercher par nom, email, téléphone...',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() {
-                                  _currentFilters = _currentFilters.copyWith(searchTerm: '');
-                                });
-                                _updateFilters();
-                              },
-                            )
-                          : null,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.grey[300]!),
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Rechercher par nom, email, téléphone...',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() {
+                                      _currentFilters = _currentFilters
+                                          .copyWith(searchTerm: '');
+                                    });
+                                    _updateFilters();
+                                  },
+                                )
+                              : null,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide:
+                                const BorderSide(color: Color(0xFF2196F3)),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                        ),
+                        onChanged: (value) {
+                          setState(() {
+                            _currentFilters =
+                                _currentFilters.copyWith(searchTerm: value);
+                          });
+                        },
+                        onSubmitted: (value) => _updateFilters(),
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.grey[300]!),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF2196F3)),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     ),
-                    onChanged: (value) {
-                      setState(() {
-                        _currentFilters = _currentFilters.copyWith(searchTerm: value);
-                      });
-                    },
-                    onSubmitted: (value) => _updateFilters(),
-                  ),
-                ),
-                
+
                     SizedBox(width: widget.isMobile ? 4 : 8),
-                    
+
                     // Bouton filtres avancés
                     IconButton(
                       icon: Icon(
                         _isExpanded ? Icons.filter_list_off : Icons.filter_list,
-                        color: _currentFilters.hasActiveFilters ? const Color(0xFF2196F3) : Colors.grey,
+                        color: _currentFilters.hasActiveFilters
+                            ? const Color(0xFF2196F3)
+                            : Colors.grey,
                       ),
                       onPressed: () {
                         setState(() {
@@ -128,9 +134,10 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
                       ),
                       padding: EdgeInsets.all(widget.isMobile ? 6 : 8),
                     ),
-                    
+
                     // Bouton rechercher (conditionnel selon l'espace)
-                    if (!widget.isMobile || MediaQuery.of(context).size.width > 400)
+                    if (!widget.isMobile ||
+                        MediaQuery.of(context).size.width > 400)
                       Container(
                         margin: const EdgeInsets.only(left: 4),
                         child: ElevatedButton(
@@ -147,20 +154,20 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
                             ),
                             minimumSize: Size(widget.isMobile ? 40 : 100, 44),
                           ),
-                          child: widget.isMobile 
+                          child: widget.isMobile
                               ? const Icon(Icons.search, size: 18)
                               : const Text('Rechercher'),
                         ),
                       ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
-          
+
           // Filtres avancés (collapsible)
           if (_isExpanded) _buildAdvancedFilters(),
-          
+
           // Indicateurs de filtres actifs
           if (_currentFilters.hasActiveFilters) _buildActiveFiltersChips(),
         ],
@@ -186,9 +193,9 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // Première ligne de filtres
-          widget.isMobile 
+          widget.isMobile
               ? Column(
                   children: [
                     _buildRoleFilter(),
@@ -203,9 +210,9 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
                     Expanded(child: _buildSiteFilter()),
                   ],
                 ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Deuxième ligne de filtres
           widget.isMobile
               ? Column(
@@ -222,19 +229,19 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
                     Expanded(child: _buildEmailVerificationFilter()),
                   ],
                 ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Filtres de date
           _buildDateFilters(),
-          
+
           const SizedBox(height: 16),
-          
+
           // Tri
           _buildSortOptions(),
-          
+
           const SizedBox(height: 16),
-          
+
           // Boutons d'action
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
@@ -276,9 +283,9 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
           child: Text('Tous les rôles'),
         ),
         ...widget.availableRoles.map((role) => DropdownMenuItem<String>(
-          value: role,
-          child: Text(role),
-        )),
+              value: role,
+              child: Text(role),
+            )),
       ],
       onChanged: (value) {
         setState(() {
@@ -304,9 +311,9 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
           child: Text('Tous les sites'),
         ),
         ...widget.availableSites.map((site) => DropdownMenuItem<String>(
-          value: site,
-          child: Text(site),
-        )),
+              value: site,
+              child: Text(site),
+            )),
       ],
       onChanged: (value) {
         setState(() {
@@ -392,15 +399,20 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
         widget.isMobile
             ? Column(
                 children: [
-                  _buildDateField('Date de début', _currentFilters.dateCreationStart, (date) {
+                  _buildDateField(
+                      'Date de début', _currentFilters.dateCreationStart,
+                      (date) {
                     setState(() {
-                      _currentFilters = _currentFilters.copyWith(dateCreationStart: date);
+                      _currentFilters =
+                          _currentFilters.copyWith(dateCreationStart: date);
                     });
                   }),
                   const SizedBox(height: 8),
-                  _buildDateField('Date de fin', _currentFilters.dateCreationEnd, (date) {
+                  _buildDateField(
+                      'Date de fin', _currentFilters.dateCreationEnd, (date) {
                     setState(() {
-                      _currentFilters = _currentFilters.copyWith(dateCreationEnd: date);
+                      _currentFilters =
+                          _currentFilters.copyWith(dateCreationEnd: date);
                     });
                   }),
                 ],
@@ -408,17 +420,22 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
             : Row(
                 children: [
                   Expanded(
-                    child: _buildDateField('Date de début', _currentFilters.dateCreationStart, (date) {
+                    child: _buildDateField(
+                        'Date de début', _currentFilters.dateCreationStart,
+                        (date) {
                       setState(() {
-                        _currentFilters = _currentFilters.copyWith(dateCreationStart: date);
+                        _currentFilters =
+                            _currentFilters.copyWith(dateCreationStart: date);
                       });
                     }),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: _buildDateField('Date de fin', _currentFilters.dateCreationEnd, (date) {
+                    child: _buildDateField(
+                        'Date de fin', _currentFilters.dateCreationEnd, (date) {
                       setState(() {
-                        _currentFilters = _currentFilters.copyWith(dateCreationEnd: date);
+                        _currentFilters =
+                            _currentFilters.copyWith(dateCreationEnd: date);
                       });
                     }),
                   ),
@@ -428,7 +445,8 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
     );
   }
 
-  Widget _buildDateField(String label, DateTime? value, Function(DateTime?) onChanged) {
+  Widget _buildDateField(
+      String label, DateTime? value, Function(DateTime?) onChanged) {
     return TextFormField(
       readOnly: true,
       decoration: InputDecoration(
@@ -436,7 +454,7 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
         ),
-        suffixIcon: value != null 
+        suffixIcon: value != null
             ? IconButton(
                 icon: const Icon(Icons.clear),
                 onPressed: () => onChanged(null),
@@ -480,16 +498,20 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
                     ),
-                    items: UserSortField.values.map((field) => DropdownMenuItem(
-                      value: field,
-                      child: Text(field.displayName),
-                    )).toList(),
+                    items: UserSortField.values
+                        .map((field) => DropdownMenuItem(
+                              value: field,
+                              child: Text(field.displayName),
+                            ))
+                        .toList(),
                     onChanged: (value) {
                       if (value != null) {
                         setState(() {
-                          _currentFilters = _currentFilters.copyWith(sortField: value);
+                          _currentFilters =
+                              _currentFilters.copyWith(sortField: value);
                         });
                       }
                     },
@@ -504,7 +526,8 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
                           groupValue: _currentFilters.sortAscending,
                           onChanged: (value) {
                             setState(() {
-                              _currentFilters = _currentFilters.copyWith(sortAscending: value);
+                              _currentFilters = _currentFilters.copyWith(
+                                  sortAscending: value);
                             });
                           },
                           dense: true,
@@ -517,7 +540,8 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
                           groupValue: _currentFilters.sortAscending,
                           onChanged: (value) {
                             setState(() {
-                              _currentFilters = _currentFilters.copyWith(sortAscending: value);
+                              _currentFilters = _currentFilters.copyWith(
+                                  sortAscending: value);
                             });
                           },
                           dense: true,
@@ -538,16 +562,20 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
                       ),
-                      items: UserSortField.values.map((field) => DropdownMenuItem(
-                        value: field,
-                        child: Text(field.displayName),
-                      )).toList(),
+                      items: UserSortField.values
+                          .map((field) => DropdownMenuItem(
+                                value: field,
+                                child: Text(field.displayName),
+                              ))
+                          .toList(),
                       onChanged: (value) {
                         if (value != null) {
                           setState(() {
-                            _currentFilters = _currentFilters.copyWith(sortField: value);
+                            _currentFilters =
+                                _currentFilters.copyWith(sortField: value);
                           });
                         }
                       },
@@ -562,7 +590,8 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
                       ),
                       items: const [
                         DropdownMenuItem<bool>(
@@ -577,7 +606,8 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
                       onChanged: (value) {
                         if (value != null) {
                           setState(() {
-                            _currentFilters = _currentFilters.copyWith(sortAscending: value);
+                            _currentFilters =
+                                _currentFilters.copyWith(sortAscending: value);
                           });
                         }
                       },
@@ -591,9 +621,11 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
 
   Widget _buildActiveFiltersChips() {
     final activeFilters = <Widget>[];
-    
-    if (_currentFilters.searchTerm != null && _currentFilters.searchTerm!.isNotEmpty) {
-      activeFilters.add(_buildFilterChip('Recherche: "${_currentFilters.searchTerm}"', () {
+
+    if (_currentFilters.searchTerm != null &&
+        _currentFilters.searchTerm!.isNotEmpty) {
+      activeFilters.add(
+          _buildFilterChip('Recherche: "${_currentFilters.searchTerm}"', () {
         setState(() {
           _currentFilters = _currentFilters.copyWith(searchTerm: '');
           _searchController.clear();
@@ -601,7 +633,7 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
         _updateFilters();
       }));
     }
-    
+
     if (_currentFilters.role != null) {
       activeFilters.add(_buildFilterChip('Rôle: ${_currentFilters.role}', () {
         setState(() {
@@ -610,7 +642,7 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
         _updateFilters();
       }));
     }
-    
+
     if (_currentFilters.site != null) {
       activeFilters.add(_buildFilterChip('Site: ${_currentFilters.site}', () {
         setState(() {
@@ -619,29 +651,26 @@ class _UserFiltersWidgetState extends State<UserFiltersWidget> {
         _updateFilters();
       }));
     }
-    
+
     if (_currentFilters.isActive != null) {
       activeFilters.add(_buildFilterChip(
-        'Statut: ${_currentFilters.isActive! ? 'Actif' : 'Inactif'}', 
-        () {
-          setState(() {
-            _currentFilters = _currentFilters.copyWith(isActive: null);
-          });
-          _updateFilters();
-        }
-      ));
+          'Statut: ${_currentFilters.isActive! ? 'Actif' : 'Inactif'}', () {
+        setState(() {
+          _currentFilters = _currentFilters.copyWith(isActive: null);
+        });
+        _updateFilters();
+      }));
     }
-    
+
     if (_currentFilters.emailVerified != null) {
       activeFilters.add(_buildFilterChip(
-        'Email: ${_currentFilters.emailVerified! ? 'Vérifié' : 'Non vérifié'}', 
-        () {
-          setState(() {
-            _currentFilters = _currentFilters.copyWith(emailVerified: null);
-          });
-          _updateFilters();
-        }
-      ));
+          'Email: ${_currentFilters.emailVerified! ? 'Vérifié' : 'Non vérifié'}',
+          () {
+        setState(() {
+          _currentFilters = _currentFilters.copyWith(emailVerified: null);
+        });
+        _updateFilters();
+      }));
     }
 
     if (activeFilters.isEmpty) return const SizedBox.shrink();

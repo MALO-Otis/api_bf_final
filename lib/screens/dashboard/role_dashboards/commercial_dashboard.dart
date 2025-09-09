@@ -27,27 +27,27 @@ class _CommercialDashboardState extends State<CommercialDashboard> {
           // Header personnalisé
           _buildWelcomeSection(isMobile),
           const SizedBox(height: 24),
-          
+
           // KPIs spécifiques commercial
           _buildKPISection(isMobile, isTablet),
           const SizedBox(height: 24),
-          
+
           // Actions rapides
           _buildQuickActionsSection(isMobile, isTablet),
           const SizedBox(height: 24),
-          
+
           // Mes prélèvements
           _buildMyPrelevementsSection(isMobile),
           const SizedBox(height: 24),
-          
+
           // Clients récents
           _buildRecentClientsSection(isMobile, isTablet),
           const SizedBox(height: 24),
-          
+
           // Objectifs et performance
           _buildPerformanceSection(isMobile),
           const SizedBox(height: 24),
-          
+
           // Activité récente
           _buildRecentActivitySection(isMobile),
         ],
@@ -56,22 +56,26 @@ class _CommercialDashboardState extends State<CommercialDashboard> {
   }
 
   Widget _buildWelcomeSection(bool isMobile) {
-    final isCommercial = userSession.role?.toLowerCase().contains('commercial') == true;
-    
+    final isCommercial =
+        userSession.role?.toLowerCase().contains('commercial') == true;
+
     return Container(
       padding: EdgeInsets.all(isMobile ? 16 : 24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: isCommercial 
-            ? [const Color(0xFF9C27B0), const Color(0xFF7B1FA2)]
-            : [const Color(0xFF607D8B), const Color(0xFF455A64)],
+          colors: isCommercial
+              ? [const Color(0xFF9C27B0), const Color(0xFF7B1FA2)]
+              : [const Color(0xFF607D8B), const Color(0xFF455A64)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: (isCommercial ? const Color(0xFF9C27B0) : const Color(0xFF607D8B)).withOpacity(0.3),
+            color: (isCommercial
+                    ? const Color(0xFF9C27B0)
+                    : const Color(0xFF607D8B))
+                .withOpacity(0.3),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -111,9 +115,9 @@ class _CommercialDashboardState extends State<CommercialDashboard> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  isCommercial 
-                    ? 'Votre mission : Développer les ventes et fidéliser la clientèle'
-                    : 'Votre mission : Gérer les encaissements et la caisse',
+                  isCommercial
+                      ? 'Votre mission : Développer les ventes et fidéliser la clientèle'
+                      : 'Votre mission : Gérer les encaissements et la caisse',
                   style: TextStyle(
                     fontSize: isMobile ? 12 : 14,
                     color: Colors.white.withOpacity(0.8),
@@ -129,75 +133,78 @@ class _CommercialDashboardState extends State<CommercialDashboard> {
   }
 
   Widget _buildKPISection(bool isMobile, bool isTablet) {
-    final isCommercial = userSession.role?.toLowerCase().contains('commercial') == true;
-    
-    final kpis = isCommercial ? [
-      {
-        'title': 'Ventes du Jour',
-        'value': '1,247,500',
-        'subtitle': 'FCFA',
-        'icon': Icons.trending_up,
-        'color': const Color(0xFF4CAF50),
-        'trend': '+15.3%',
-      },
-      {
-        'title': 'CA Commercial',
-        'value': '12,850,000',
-        'subtitle': 'FCFA ce mois',
-        'icon': Icons.account_balance_wallet,
-        'color': const Color(0xFF2196F3),
-        'trend': '+8.7%',
-      },
-      {
-        'title': 'Clients Actifs',
-        'value': '47',
-        'subtitle': 'Ce mois',
-        'icon': Icons.people,
-        'color': const Color(0xFF9C27B0),
-        'trend': '+6',
-      },
-      {
-        'title': 'Objectif',
-        'value': '78%',
-        'subtitle': 'Atteint',
-        'icon': Icons.flag,
-        'color': const Color(0xFFFF9800),
-        'trend': '+12%',
-      },
-    ] : [
-      {
-        'title': 'Encaissements',
-        'value': '2,450,000',
-        'subtitle': 'FCFA aujourd\'hui',
-        'icon': Icons.payments,
-        'color': const Color(0xFF4CAF50),
-        'trend': '+850K',
-      },
-      {
-        'title': 'Crédits Accordés',
-        'value': '8',
-        'subtitle': 'Aujourd\'hui',
-        'icon': Icons.credit_card,
-        'color': const Color(0xFF2196F3),
-        'trend': '+3',
-      },
-      {
-        'title': 'Retards Paiement',
-        'value': '12',
-        'subtitle': 'À suivre',
-        'icon': Icons.schedule,
-        'color': const Color(0xFFF44336),
-        'trend': '+2',
-      },
-      {
-        'title': 'Solde Caisse',
-        'value': '156,500',
-        'subtitle': 'FCFA',
-        'icon': Icons.account_balance,
-        'color': const Color(0xFF607D8B),
-        'trend': '=',
-      },
-    ];
+    final isCommercial =
+        userSession.role?.toLowerCase().contains('commercial') == true;
+
+    final kpis = isCommercial
+        ? [
+            {
+              'title': 'Ventes du Jour',
+              'value': '1,247,500',
+              'subtitle': 'FCFA',
+              'icon': Icons.trending_up,
+              'color': const Color(0xFF4CAF50),
+              'trend': '+15.3%',
+            },
+            {
+              'title': 'CA Commercial',
+              'value': '12,850,000',
+              'subtitle': 'FCFA ce mois',
+              'icon': Icons.account_balance_wallet,
+              'color': const Color(0xFF2196F3),
+              'trend': '+8.7%',
+            },
+            {
+              'title': 'Clients Actifs',
+              'value': '47',
+              'subtitle': 'Ce mois',
+              'icon': Icons.people,
+              'color': const Color(0xFF9C27B0),
+              'trend': '+6',
+            },
+            {
+              'title': 'Objectif',
+              'value': '78%',
+              'subtitle': 'Atteint',
+              'icon': Icons.flag,
+              'color': const Color(0xFFFF9800),
+              'trend': '+12%',
+            },
+          ]
+        : [
+            {
+              'title': 'Encaissements',
+              'value': '2,450,000',
+              'subtitle': 'FCFA aujourd\'hui',
+              'icon': Icons.payments,
+              'color': const Color(0xFF4CAF50),
+              'trend': '+850K',
+            },
+            {
+              'title': 'Crédits Accordés',
+              'value': '8',
+              'subtitle': 'Aujourd\'hui',
+              'icon': Icons.credit_card,
+              'color': const Color(0xFF2196F3),
+              'trend': '+3',
+            },
+            {
+              'title': 'Retards Paiement',
+              'value': '12',
+              'subtitle': 'À suivre',
+              'icon': Icons.schedule,
+              'color': const Color(0xFFF44336),
+              'trend': '+2',
+            },
+            {
+              'title': 'Solde Caisse',
+              'value': '156,500',
+              'subtitle': 'FCFA',
+              'icon': Icons.account_balance,
+              'color': const Color(0xFF607D8B),
+              'trend': '=',
+            },
+          ];
 
     return GridView.builder(
       shrinkWrap: true,
@@ -296,67 +303,70 @@ class _CommercialDashboardState extends State<CommercialDashboard> {
   }
 
   Widget _buildQuickActionsSection(bool isMobile, bool isTablet) {
-    final isCommercial = userSession.role?.toLowerCase().contains('commercial') == true;
-    
-    final actions = isCommercial ? [
-      {
-        'title': 'Nouvelle Vente',
-        'subtitle': 'Enregistrer une vente',
-        'icon': Icons.add_shopping_cart,
-        'color': const Color(0xFF4CAF50),
-        'onTap': () => _navigateToNewSale(),
-      },
-      {
-        'title': 'Mes Prélèvements',
-        'subtitle': 'Voir mes produits',
-        'icon': Icons.inventory,
-        'color': const Color(0xFF2196F3),
-        'onTap': () => _navigateToMyPrelevements(),
-      },
-      {
-        'title': 'Clients',
-        'subtitle': 'Gérer la clientèle',
-        'icon': Icons.people,
-        'color': const Color(0xFF9C27B0),
-        'onTap': () => _navigateToClients(),
-      },
-      {
-        'title': 'Restitutions',
-        'subtitle': 'Retours produits',
-        'icon': Icons.undo,
-        'color': const Color(0xFFFF9800),
-        'onTap': () => _navigateToRestitutions(),
-      },
-    ] : [
-      {
-        'title': 'Nouvelle Vente',
-        'subtitle': 'Encaisser une vente',
-        'icon': Icons.point_of_sale,
-        'color': const Color(0xFF4CAF50),
-        'onTap': () => _navigateToNewSale(),
-      },
-      {
-        'title': 'Gestion Crédit',
-        'subtitle': 'Crédits et paiements',
-        'icon': Icons.credit_card,
-        'color': const Color(0xFF2196F3),
-        'onTap': () => _navigateToCredits(),
-      },
-      {
-        'title': 'Rapport Caisse',
-        'subtitle': 'État de la caisse',
-        'icon': Icons.assessment,
-        'color': const Color(0xFF607D8B),
-        'onTap': () => _navigateToCashReport(),
-      },
-      {
-        'title': 'Historique',
-        'subtitle': 'Transactions passées',
-        'icon': Icons.history,
-        'color': const Color(0xFFFF9800),
-        'onTap': () => _navigateToHistory(),
-      },
-    ];
+    final isCommercial =
+        userSession.role?.toLowerCase().contains('commercial') == true;
+
+    final actions = isCommercial
+        ? [
+            {
+              'title': 'Nouvelle Vente',
+              'subtitle': 'Enregistrer une vente',
+              'icon': Icons.add_shopping_cart,
+              'color': const Color(0xFF4CAF50),
+              'onTap': () => _navigateToNewSale(),
+            },
+            {
+              'title': 'Mes Prélèvements',
+              'subtitle': 'Voir mes produits',
+              'icon': Icons.inventory,
+              'color': const Color(0xFF2196F3),
+              'onTap': () => _navigateToMyPrelevements(),
+            },
+            {
+              'title': 'Clients',
+              'subtitle': 'Gérer la clientèle',
+              'icon': Icons.people,
+              'color': const Color(0xFF9C27B0),
+              'onTap': () => _navigateToClients(),
+            },
+            {
+              'title': 'Restitutions',
+              'subtitle': 'Retours produits',
+              'icon': Icons.undo,
+              'color': const Color(0xFFFF9800),
+              'onTap': () => _navigateToRestitutions(),
+            },
+          ]
+        : [
+            {
+              'title': 'Nouvelle Vente',
+              'subtitle': 'Encaisser une vente',
+              'icon': Icons.point_of_sale,
+              'color': const Color(0xFF4CAF50),
+              'onTap': () => _navigateToNewSale(),
+            },
+            {
+              'title': 'Gestion Crédit',
+              'subtitle': 'Crédits et paiements',
+              'icon': Icons.credit_card,
+              'color': const Color(0xFF2196F3),
+              'onTap': () => _navigateToCredits(),
+            },
+            {
+              'title': 'Rapport Caisse',
+              'subtitle': 'État de la caisse',
+              'icon': Icons.assessment,
+              'color': const Color(0xFF607D8B),
+              'onTap': () => _navigateToCashReport(),
+            },
+            {
+              'title': 'Historique',
+              'subtitle': 'Transactions passées',
+              'icon': Icons.history,
+              'color': const Color(0xFFFF9800),
+              'onTap': () => _navigateToHistory(),
+            },
+          ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -398,7 +408,8 @@ class _CommercialDashboardState extends State<CommercialDashboard> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: (action['color'] as Color).withOpacity(0.2)),
+          border:
+              Border.all(color: (action['color'] as Color).withOpacity(0.2)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.05),
@@ -520,7 +531,8 @@ class _CommercialDashboardState extends State<CommercialDashboard> {
     );
   }
 
-  Widget _buildPrelevementCard(Map<String, dynamic> prelevement, bool isMobile) {
+  Widget _buildPrelevementCard(
+      Map<String, dynamic> prelevement, bool isMobile) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: EdgeInsets.all(isMobile ? 12 : 16),
@@ -572,7 +584,8 @@ class _CommercialDashboardState extends State<CommercialDashboard> {
                 ),
                 const SizedBox(height: 4),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: (prelevement['couleur'] as Color).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(4),
@@ -667,14 +680,16 @@ class _CommercialDashboardState extends State<CommercialDashboard> {
 
   Widget _buildClientCard(Map<String, dynamic> client, bool isMobile) {
     final isActive = client['statut'] == 'Actif';
-    
+
     return Container(
       padding: EdgeInsets.all(isMobile ? 12 : 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isActive ? const Color(0xFF4CAF50).withOpacity(0.3) : Colors.grey.withOpacity(0.2),
+          color: isActive
+              ? const Color(0xFF4CAF50).withOpacity(0.3)
+              : Colors.grey.withOpacity(0.2),
         ),
         boxShadow: [
           BoxShadow(
@@ -692,7 +707,8 @@ class _CommercialDashboardState extends State<CommercialDashboard> {
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: (isActive ? const Color(0xFF4CAF50) : Colors.grey).withOpacity(0.1),
+                  color: (isActive ? const Color(0xFF4CAF50) : Colors.grey)
+                      .withOpacity(0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Icon(
@@ -705,7 +721,8 @@ class _CommercialDashboardState extends State<CommercialDashboard> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: (isActive ? const Color(0xFF4CAF50) : Colors.grey).withOpacity(0.1),
+                  color: (isActive ? const Color(0xFF4CAF50) : Colors.grey)
+                      .withOpacity(0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -862,7 +879,8 @@ class _CommercialDashboardState extends State<CommercialDashboard> {
               LinearProgressIndicator(
                 value: 0.78,
                 backgroundColor: Colors.grey[200],
-                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF4CAF50)),
+                valueColor:
+                    const AlwaysStoppedAnimation<Color>(Color(0xFF4CAF50)),
                 minHeight: 8,
               ),
             ],

@@ -74,9 +74,9 @@ class _ReportsExportDialogState extends State<ReportsExportDialog> {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 24),
-            
+
             // Informations sur la période
             Container(
               padding: const EdgeInsets.all(12),
@@ -92,14 +92,16 @@ class _ReportsExportDialogState extends State<ReportsExportDialog> {
                     'Période sélectionnée:',
                     style: TextStyle(fontWeight: FontWeight.w500),
                   ),
-                  Text('Du ${_formatDate(widget.startDate)} au ${_formatDate(widget.endDate)}'),
-                  Text('Site: ${widget.selectedSite == 'all' ? 'Tous les sites' : widget.selectedSite}'),
+                  Text(
+                      'Du ${_formatDate(widget.startDate)} au ${_formatDate(widget.endDate)}'),
+                  Text(
+                      'Site: ${widget.selectedSite == 'all' ? 'Tous les sites' : widget.selectedSite}'),
                 ],
               ),
             ),
-            
+
             const SizedBox(height: 20),
-            
+
             // Format d'export
             const Text(
               'Format d\'export:',
@@ -111,22 +113,22 @@ class _ReportsExportDialogState extends State<ReportsExportDialog> {
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
-              children: _formats.entries.map((entry) => 
-                ChoiceChip(
-                  label: Text(entry.value),
-                  selected: _selectedFormat == entry.key,
-                  onSelected: (selected) {
-                    if (selected) {
-                      setState(() => _selectedFormat = entry.key);
-                    }
-                  },
-                  selectedColor: const Color(0xFF2196F3).withOpacity(0.2),
-                )
-              ).toList(),
+              children: _formats.entries
+                  .map((entry) => ChoiceChip(
+                        label: Text(entry.value),
+                        selected: _selectedFormat == entry.key,
+                        onSelected: (selected) {
+                          if (selected) {
+                            setState(() => _selectedFormat = entry.key);
+                          }
+                        },
+                        selectedColor: const Color(0xFF2196F3).withOpacity(0.2),
+                      ))
+                  .toList(),
             ),
-            
+
             const SizedBox(height: 20),
-            
+
             // Sections à inclure
             const Text(
               'Sections à inclure:',
@@ -137,27 +139,27 @@ class _ReportsExportDialogState extends State<ReportsExportDialog> {
             ),
             const SizedBox(height: 8),
             Column(
-              children: _sections.entries.map((entry) => 
-                CheckboxListTile(
-                  title: Text(entry.value),
-                  value: _selectedSections.contains(entry.key),
-                  onChanged: (value) {
-                    setState(() {
-                      if (value == true) {
-                        _selectedSections.add(entry.key);
-                      } else {
-                        _selectedSections.remove(entry.key);
-                      }
-                    });
-                  },
-                  controlAffinity: ListTileControlAffinity.leading,
-                  dense: true,
-                )
-              ).toList(),
+              children: _sections.entries
+                  .map((entry) => CheckboxListTile(
+                        title: Text(entry.value),
+                        value: _selectedSections.contains(entry.key),
+                        onChanged: (value) {
+                          setState(() {
+                            if (value == true) {
+                              _selectedSections.add(entry.key);
+                            } else {
+                              _selectedSections.remove(entry.key);
+                            }
+                          });
+                        },
+                        controlAffinity: ListTileControlAffinity.leading,
+                        dense: true,
+                      ))
+                  .toList(),
             ),
-            
+
             const SizedBox(height: 24),
-            
+
             // Actions
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -172,7 +174,8 @@ class _ReportsExportDialogState extends State<ReportsExportDialog> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2196F3),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
                   ),
                   child: _isExporting
                       ? const SizedBox(
@@ -180,7 +183,8 @@ class _ReportsExportDialogState extends State<ReportsExportDialog> {
                           height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
                       : const Text('Exporter'),

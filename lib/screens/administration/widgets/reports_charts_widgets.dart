@@ -75,9 +75,12 @@ class ReportsProductionChart extends StatelessWidget {
           const SizedBox(height: 16),
 
           // Graphique
-          SizedBox(
-            height: 250,
-            child: LineChart(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final chartHeight = constraints.maxWidth > 600 ? 250.0 : 200.0;
+              return SizedBox(
+                height: chartHeight,
+                child: LineChart(
               LineChartData(
                 gridData: FlGridData(
                   show: true,
@@ -196,20 +199,37 @@ class ReportsProductionChart extends StatelessWidget {
                 ],
               ),
             ),
+          );
+            },
           ),
 
           const SizedBox(height: 16),
 
           // Légende
-          Wrap(
-            alignment: WrapAlignment.spaceEvenly,
-            spacing: 16,
-            runSpacing: 8,
-            children: [
-              _buildLegendItem('Collecte', const Color(0xFF4CAF50)),
-              _buildLegendItem('Extraction', const Color(0xFF2196F3)),
-              _buildLegendItem('Filtrage', const Color(0xFFFF9800)),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth > 600) {
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildLegendItem('Collecte', const Color(0xFF4CAF50)),
+                    _buildLegendItem('Extraction', const Color(0xFF2196F3)),
+                    _buildLegendItem('Filtrage', const Color(0xFFFF9800)),
+                  ],
+                );
+              } else {
+                return Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 16,
+                  runSpacing: 8,
+                  children: [
+                    _buildLegendItem('Collecte', const Color(0xFF4CAF50)),
+                    _buildLegendItem('Extraction', const Color(0xFF2196F3)),
+                    _buildLegendItem('Filtrage', const Color(0xFFFF9800)),
+                  ],
+                );
+              }
+            },
           ),
         ],
       ),
@@ -328,9 +348,12 @@ class ReportsSalesChart extends StatelessWidget {
           const SizedBox(height: 16),
 
           // Graphique en barres
-          SizedBox(
-            height: 200,
-            child: BarChart(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final chartHeight = constraints.maxWidth > 600 ? 200.0 : 150.0;
+              return SizedBox(
+                height: chartHeight,
+                child: BarChart(
               BarChartData(
                 alignment: BarChartAlignment.spaceAround,
                 maxY: _getMaxValue(data.venteByDate.values) * 1.2,
@@ -371,37 +394,37 @@ class ReportsSalesChart extends StatelessWidget {
                 barGroups: _createBarGroups(data.venteByDate),
               ),
             ),
+          );
+            },
           ),
 
           const SizedBox(height: 16),
 
-          // Statistiques - Layout responsive
+          // Statistiques
           LayoutBuilder(
             builder: (context, constraints) {
-              // Si l'espace est suffisant, utiliser une Row, sinon une Column
-              if (constraints.maxWidth >= 400) {
+              if (constraints.maxWidth > 600) {
                 return Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    Flexible(
-                        child: _buildStatItem(
-                            'Total Ventes', '${data.totalVentes.toInt()}')),
-                    Flexible(
-                        child: _buildStatItem('CA Moyen/Jour',
-                            '${(data.chiffresAffaires / data.venteByDate.length).toStringAsFixed(0)} FCFA')),
-                    Flexible(
-                        child: _buildStatItem('Panier Moyen',
-                            '${data.panierMoyen.toStringAsFixed(0)} FCFA')),
+                    _buildStatItem('Total Ventes', '${data.totalVentes.toInt()}'),
+                    _buildStatItem('CA Moyen/Jour',
+                        '${(data.chiffresAffaires / data.venteByDate.length).toStringAsFixed(0)} FCFA'),
+                    _buildStatItem('Panier Moyen',
+                        '${data.panierMoyen.toStringAsFixed(0)} FCFA'),
                   ],
                 );
               } else {
                 return Column(
                   children: [
-                    _buildStatItem(
-                        'Total Ventes', '${data.totalVentes.toInt()}'),
-                    const SizedBox(height: 8),
-                    _buildStatItem('CA Moyen/Jour',
-                        '${(data.chiffresAffaires / data.venteByDate.length).toStringAsFixed(0)} FCFA'),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildStatItem('Total Ventes', '${data.totalVentes.toInt()}'),
+                        _buildStatItem('CA Moyen/Jour',
+                            '${(data.chiffresAffaires / data.venteByDate.length).toStringAsFixed(0)} FCFA'),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     _buildStatItem('Panier Moyen',
                         '${data.panierMoyen.toStringAsFixed(0)} FCFA'),
@@ -439,7 +462,6 @@ class ReportsSalesChart extends StatelessWidget {
 
   Widget _buildStatItem(String label, String value) {
     return Column(
-      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           value,
@@ -448,9 +470,6 @@ class ReportsSalesChart extends StatelessWidget {
             fontWeight: FontWeight.bold,
             color: Color(0xFF2196F3),
           ),
-          textAlign: TextAlign.center,
-          overflow: TextOverflow.ellipsis,
-          maxLines: 1,
         ),
         Text(
           label,
@@ -458,9 +477,6 @@ class ReportsSalesChart extends StatelessWidget {
             fontSize: 12,
             color: Colors.grey,
           ),
-          textAlign: TextAlign.center,
-          overflow: TextOverflow.ellipsis,
-          maxLines: 2,
         ),
       ],
     );

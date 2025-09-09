@@ -27,27 +27,27 @@ class _ConditionneurDashboardState extends State<ConditionneurDashboard> {
           // Header personnalisé
           _buildWelcomeSection(isMobile),
           const SizedBox(height: 24),
-          
+
           // KPIs spécifiques conditionnement
           _buildKPISection(isMobile, isTablet),
           const SizedBox(height: 24),
-          
+
           // Actions rapides
           _buildQuickActionsSection(isMobile, isTablet),
           const SizedBox(height: 24),
-          
+
           // Lots disponibles
           _buildAvailableLotsSection(isMobile),
           const SizedBox(height: 24),
-          
+
           // Stock emballages
           _buildPackagingStockSection(isMobile, isTablet),
           const SizedBox(height: 24),
-          
+
           // Commandes urgentes
           _buildUrgentOrdersSection(isMobile),
           const SizedBox(height: 24),
-          
+
           // Activité récente
           _buildRecentActivitySection(isMobile),
         ],
@@ -326,7 +326,8 @@ class _ConditionneurDashboardState extends State<ConditionneurDashboard> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: (action['color'] as Color).withOpacity(0.2)),
+          border:
+              Border.all(color: (action['color'] as Color).withOpacity(0.2)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.05),
@@ -453,7 +454,7 @@ class _ConditionneurDashboardState extends State<ConditionneurDashboard> {
 
   Widget _buildLotCard(Map<String, dynamic> lot, bool isMobile) {
     final isPriority = lot['priorite'] == 'Haute';
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: EdgeInsets.all(isMobile ? 12 : 16),
@@ -461,7 +462,9 @@ class _ConditionneurDashboardState extends State<ConditionneurDashboard> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isPriority ? const Color(0xFFF44336).withOpacity(0.3) : Colors.grey.withOpacity(0.2),
+          color: isPriority
+              ? const Color(0xFFF44336).withOpacity(0.3)
+              : Colors.grey.withOpacity(0.2),
           width: isPriority ? 2 : 1,
         ),
         boxShadow: [
@@ -480,7 +483,9 @@ class _ConditionneurDashboardState extends State<ConditionneurDashboard> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isPriority ? const Color(0xFFF44336).withOpacity(0.1) : const Color(0xFF4CAF50).withOpacity(0.1),
+                  color: isPriority
+                      ? const Color(0xFFF44336).withOpacity(0.1)
+                      : const Color(0xFF4CAF50).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -488,7 +493,9 @@ class _ConditionneurDashboardState extends State<ConditionneurDashboard> {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
-                    color: isPriority ? const Color(0xFFF44336) : const Color(0xFF4CAF50),
+                    color: isPriority
+                        ? const Color(0xFFF44336)
+                        : const Color(0xFF4CAF50),
                   ),
                 ),
               ),
@@ -592,11 +599,36 @@ class _ConditionneurDashboardState extends State<ConditionneurDashboard> {
 
   Widget _buildPackagingStockSection(bool isMobile, bool isTablet) {
     final packaging = [
-      {'type': '500g', 'stock': 1250, 'min': 500, 'color': const Color(0xFF4CAF50)},
-      {'type': '250g', 'stock': 890, 'min': 400, 'color': const Color(0xFF4CAF50)},
-      {'type': '1Kg', 'stock': 320, 'min': 300, 'color': const Color(0xFFFF9800)},
-      {'type': 'Stick 20g', 'stock': 150, 'min': 200, 'color': const Color(0xFFF44336)},
-      {'type': '30g Alvéoles', 'stock': 680, 'min': 500, 'color': const Color(0xFF4CAF50)},
+      {
+        'type': '500g',
+        'stock': 1250,
+        'min': 500,
+        'color': const Color(0xFF4CAF50)
+      },
+      {
+        'type': '250g',
+        'stock': 890,
+        'min': 400,
+        'color': const Color(0xFF4CAF50)
+      },
+      {
+        'type': '1Kg',
+        'stock': 320,
+        'min': 300,
+        'color': const Color(0xFFFF9800)
+      },
+      {
+        'type': 'Stick 20g',
+        'stock': 150,
+        'min': 200,
+        'color': const Color(0xFFF44336)
+      },
+      {
+        'type': '30g Alvéoles',
+        'stock': 680,
+        'min': 500,
+        'color': const Color(0xFF4CAF50)
+      },
       {'type': '7Kg', 'stock': 45, 'min': 50, 'color': const Color(0xFFF44336)},
     ];
 
@@ -633,14 +665,16 @@ class _ConditionneurDashboardState extends State<ConditionneurDashboard> {
 
   Widget _buildPackagingCard(Map<String, dynamic> pack, bool isMobile) {
     final isLow = pack['stock'] < pack['min'];
-    
+
     return Container(
       padding: EdgeInsets.all(isMobile ? 8 : 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isLow ? const Color(0xFFF44336).withOpacity(0.3) : Colors.grey.withOpacity(0.2),
+          color: isLow
+              ? const Color(0xFFF44336).withOpacity(0.3)
+              : Colors.grey.withOpacity(0.2),
           width: isLow ? 2 : 1,
         ),
         boxShadow: [
@@ -758,7 +792,7 @@ class _ConditionneurDashboardState extends State<ConditionneurDashboard> {
 
   Widget _buildOrderCard(Map<String, dynamic> order, bool isMobile) {
     final isUrgent = order['status'] == 'urgent';
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: EdgeInsets.all(isMobile ? 12 : 16),
@@ -766,7 +800,9 @@ class _ConditionneurDashboardState extends State<ConditionneurDashboard> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isUrgent ? const Color(0xFFF44336).withOpacity(0.3) : Colors.grey.withOpacity(0.2),
+          color: isUrgent
+              ? const Color(0xFFF44336).withOpacity(0.3)
+              : Colors.grey.withOpacity(0.2),
           width: isUrgent ? 2 : 1,
         ),
         boxShadow: [
@@ -782,12 +818,15 @@ class _ConditionneurDashboardState extends State<ConditionneurDashboard> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: (isUrgent ? const Color(0xFFF44336) : const Color(0xFF4CAF50)).withOpacity(0.1),
+              color:
+                  (isUrgent ? const Color(0xFFF44336) : const Color(0xFF4CAF50))
+                      .withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               isUrgent ? Icons.priority_high : Icons.shopping_cart,
-              color: isUrgent ? const Color(0xFFF44336) : const Color(0xFF4CAF50),
+              color:
+                  isUrgent ? const Color(0xFFF44336) : const Color(0xFF4CAF50),
               size: 20,
             ),
           ),
@@ -817,7 +856,9 @@ class _ConditionneurDashboardState extends State<ConditionneurDashboard> {
                   'Deadline: ${order['deadline']}',
                   style: TextStyle(
                     fontSize: 12,
-                    color: isUrgent ? const Color(0xFFF44336) : const Color(0xFF4CAF50),
+                    color: isUrgent
+                        ? const Color(0xFFF44336)
+                        : const Color(0xFF4CAF50),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -827,7 +868,8 @@ class _ConditionneurDashboardState extends State<ConditionneurDashboard> {
           ElevatedButton(
             onPressed: () => _processOrder(order['client']),
             style: ElevatedButton.styleFrom(
-              backgroundColor: isUrgent ? const Color(0xFFF44336) : const Color(0xFF4CAF50),
+              backgroundColor:
+                  isUrgent ? const Color(0xFFF44336) : const Color(0xFF4CAF50),
               foregroundColor: Colors.white,
               elevation: 0,
               shape: RoundedRectangleBorder(

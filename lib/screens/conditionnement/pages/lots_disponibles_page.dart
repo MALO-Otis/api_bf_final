@@ -1,6 +1,7 @@
 /// 📦 PAGE DES LOTS FILTRÉS DISPONIBLES POUR CONDITIONNEMENT
 ///
 /// Affiche tous les lots filtrés avec leurs numéros de lot et permet de lancer le conditionnement
+/// Connectée à la base de données Firestore
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -8,6 +9,8 @@ import 'package:intl/intl.dart';
 
 import '../../../utils/smart_appbar.dart';
 import '../conditionnement_edit.dart';
+import '../conditionnement_models.dart';
+import '../services/conditionnement_db_service.dart';
 
 class LotsDisponiblesPage extends StatefulWidget {
   const LotsDisponiblesPage({super.key});
@@ -22,16 +25,15 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
-  // Données de test pour les lots filtrés
-  List<LotFiltre> _lotsDisponibles = [];
-  bool _isLoading = true;
+  // Service de conditionnement
+  late ConditionnementDbService _conditionnementService;
   String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _initializeAnimations();
-    _loadLotsDisponibles();
+    _initializeService();
   }
 
   @override
@@ -57,94 +59,20 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
     _fadeController.forward();
   }
 
-  Future<void> _loadLotsDisponibles() async {
-    // Simulation du chargement avec des données de test
-    await Future.delayed(const Duration(milliseconds: 1500));
-
-    setState(() {
-      _lotsDisponibles = _generateTestData();
-      _isLoading = false;
-    });
-  }
-
-  List<LotFiltre> _generateTestData() {
-    final now = DateTime.now();
-    return [
-      LotFiltre(
-        numeroLot: 'Lot-234-567',
-        dateFiltrage: now.subtract(const Duration(days: 2)),
-        quantiteRecue: 45.8,
-        quantiteFiltree: 42.3,
-        rendement: 92.4,
-        technologie: 'Automatique',
-        producteur: 'Coopérative SANA FAKS',
-        village: 'Mabaziga',
-        predominanceFlorale: 'Manguier',
-        statut: StatutLot.disponible,
-        observations: 'Excellent rendement, qualité premium',
-      ),
-      LotFiltre(
-        numeroLot: 'Lot-189-432',
-        dateFiltrage: now.subtract(const Duration(days: 1)),
-        quantiteRecue: 67.2,
-        quantiteFiltree: 61.5,
-        rendement: 91.5,
-        technologie: 'Manuelle',
-        producteur: 'Mr Bako',
-        village: 'Kankalbila',
-        predominanceFlorale: 'Mille fleurs',
-        statut: StatutLot.disponible,
-        observations: 'Très bonne qualité, couleur dorée',
-      ),
-      LotFiltre(
-        numeroLot: 'Lot-345-789',
-        dateFiltrage: now.subtract(const Duration(hours: 18)),
-        quantiteRecue: 38.9,
-        quantiteFiltree: 35.1,
-        rendement: 90.2,
-        technologie: 'Automatique',
-        producteur: 'Miellerie Mangodara',
-        village: 'Mangodara',
-        predominanceFlorale: 'Eucalyptus',
-        statut: StatutLot.disponible,
-        observations: 'Couleur claire, parfum intense',
-      ),
-      LotFiltre(
-        numeroLot: 'Lot-567-123',
-        dateFiltrage: now.subtract(const Duration(hours: 6)),
-        quantiteRecue: 52.4,
-        quantiteFiltree: 47.8,
-        rendement: 91.2,
-        technologie: 'Manuelle',
-        producteur: 'SCOOP Ramongo',
-        village: 'Sitelsanou',
-        predominanceFlorale: 'Tamarinier',
-        statut: StatutLot.disponible,
-        observations: 'Qualité exceptionnelle, goût authentique',
-      ),
-      LotFiltre(
-        numeroLot: 'Lot-890-456',
-        dateFiltrage: now.subtract(const Duration(days: 3)),
-        quantiteRecue: 71.3,
-        quantiteFiltree: 65.9,
-        rendement: 92.4,
-        technologie: 'Automatique',
-        producteur: 'Coopérative Bagré',
-        village: 'Bagré',
-        predominanceFlorale: 'Karité',
-        statut: StatutLot.enConditionnement,
-        observations: 'En cours de conditionnement depuis hier',
-      ),
-    ];
+  void _initializeService() {
+    _conditionnementService = Get.put(ConditionnementDbService());
   }
 
   List<LotFiltre> get _filteredLots {
-    if (_searchQuery.isEmpty) return _lotsDisponibles;
+    final lots = _conditionnementService.lotsDisponibles;
+    if (_searchQuery.isEmpty) return lots;
 
-    return _lotsDisponibles.where((lot) {
-      return lot.numeroLot.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          lot.producteur.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          lot.village.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+    return lots.where((lot) {
+      return lot.lotOrigine
+              .toLowerCase()
+              .contains(_searchQuery.toLowerCase()) ||
+          lot.technicien.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          lot.site.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           lot.predominanceFlorale
               .toLowerCase()
               .contains(_searchQuery.toLowerCase());
@@ -162,7 +90,9 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
         backgroundColor: const Color(0xFF2196F3),
         onBackPressed: () => Get.back(),
       ),
-      body: _isLoading ? _buildLoadingView() : _buildMainContent(isMobile),
+      body: Obx(() => _conditionnementService.isLoading
+          ? _buildLoadingView()
+          : _buildMainContent(isMobile)),
     );
   }
 
@@ -214,13 +144,12 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
 
   Widget _buildHeaderSection(bool isMobile) {
     final lotsDisponibles =
-        _filteredLots.where((lot) => lot.statut == StatutLot.disponible).length;
-    final lotsEnCours = _filteredLots
-        .where((lot) => lot.statut == StatutLot.enConditionnement)
-        .length;
+        _filteredLots.where((lot) => lot.peutEtreConditionne).length;
+    final lotsConditionnes =
+        _filteredLots.where((lot) => lot.estConditionne).length;
     final quantiteTotale = _filteredLots
-        .where((lot) => lot.statut == StatutLot.disponible)
-        .fold(0.0, (sum, lot) => sum + lot.quantiteFiltree);
+        .where((lot) => lot.peutEtreConditionne)
+        .fold(0.0, (sum, lot) => sum + lot.quantiteRestante);
 
     return Container(
       margin: EdgeInsets.all(isMobile ? 16 : 24),
@@ -256,9 +185,9 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
               SizedBox(width: isMobile ? 12 : 16),
               Expanded(
                 child: _buildStatCard(
-                  'En conditionnement',
-                  lotsEnCours.toString(),
-                  Icons.pending_actions,
+                  'Déjà conditionnés',
+                  lotsConditionnes.toString(),
+                  Icons.check_circle,
                   isMobile,
                 ),
               ),
@@ -284,7 +213,7 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
               });
             },
             decoration: InputDecoration(
-              hintText: 'Rechercher par numéro de lot, producteur, village...',
+              hintText: 'Rechercher par numéro de lot, technicien, site...',
               prefixIcon: const Icon(Icons.search, color: Colors.white70),
               filled: true,
               fillColor: Colors.white.withOpacity(0.2),
@@ -389,9 +318,9 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
   }
 
   Widget _buildLotCard(LotFiltre lot, bool isMobile) {
-    final isDisponible = lot.statut == StatutLot.disponible;
+    final isDisponible = lot.peutEtreConditionne;
     final statusColor = isDisponible ? Colors.green : Colors.orange;
-    final statusText = isDisponible ? 'Disponible' : 'En conditionnement';
+    final statusText = isDisponible ? 'Disponible' : 'Déjà conditionné';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -444,7 +373,7 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        lot.numeroLot,
+                        lot.lotOrigine,
                         style: TextStyle(
                           fontSize: isMobile ? 18 : 22,
                           fontWeight: FontWeight.bold,
@@ -492,8 +421,8 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
                   children: [
                     Expanded(
                       child: _buildInfoItem(
-                        'Producteur',
-                        lot.producteur,
+                        'Technicien',
+                        lot.technicien,
                         Icons.person,
                         isMobile,
                       ),
@@ -501,8 +430,8 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
                     const SizedBox(width: 16),
                     Expanded(
                       child: _buildInfoItem(
-                        'Village',
-                        lot.village,
+                        'Site',
+                        lot.site,
                         Icons.location_on,
                         isMobile,
                       ),
@@ -525,9 +454,9 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
                     const SizedBox(width: 16),
                     Expanded(
                       child: _buildInfoItem(
-                        'Technologie',
-                        lot.technologie,
-                        Icons.build,
+                        'Type Florale',
+                        lot.typeFlorale.label,
+                        Icons.local_florist,
                         isMobile,
                       ),
                     ),
@@ -561,8 +490,8 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
                       ),
                       Expanded(
                         child: _buildMetricItem(
-                          'Filtré',
-                          '${lot.quantiteFiltree.toStringAsFixed(1)} kg',
+                          'Restant',
+                          '${lot.quantiteRestante.toStringAsFixed(1)} kg',
                           Colors.green,
                           isMobile,
                         ),
@@ -574,9 +503,9 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
                       ),
                       Expanded(
                         child: _buildMetricItem(
-                          'Rendement',
-                          '${lot.rendement.toStringAsFixed(1)}%',
-                          lot.rendement >= 90 ? Colors.green : Colors.orange,
+                          'Expiration',
+                          lot.filtrageExpire ? 'Expiré' : 'Valide',
+                          lot.filtrageExpire ? Colors.red : Colors.green,
                           isMobile,
                         ),
                       ),
@@ -584,43 +513,45 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
                   ),
                 ),
 
-                if (lot.observations.isNotEmpty) ...[
+                // Informations sur l'expiration
+                if (lot.dateExpirationFiltrage != null) ...[
                   const SizedBox(height: 16),
                   Container(
                     width: double.infinity,
                     padding: EdgeInsets.all(isMobile ? 12 : 16),
                     decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
+                      color: lot.filtrageExpire
+                          ? Colors.red.shade50
+                          : Colors.green.shade50,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blue.shade200),
+                      border: Border.all(
+                        color: lot.filtrageExpire
+                            ? Colors.red.shade200
+                            : Colors.green.shade200,
+                      ),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.notes,
-                              size: 16,
-                              color: Colors.blue.shade600,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Observations',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.blue.shade600,
-                              ),
-                            ),
-                          ],
+                        Icon(
+                          lot.filtrageExpire
+                              ? Icons.warning
+                              : Icons.check_circle,
+                          size: 16,
+                          color: lot.filtrageExpire
+                              ? Colors.red.shade600
+                              : Colors.green.shade600,
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(width: 8),
                         Text(
-                          lot.observations,
+                          lot.filtrageExpire
+                              ? 'Filtrage expiré le ${DateFormat('dd/MM/yyyy').format(DateTime.parse(lot.dateExpirationFiltrage!))}'
+                              : 'Valide jusqu\'au ${DateFormat('dd/MM/yyyy').format(DateTime.parse(lot.dateExpirationFiltrage!))}',
                           style: TextStyle(
                             fontSize: isMobile ? 12 : 14,
-                            color: Colors.grey.shade700,
+                            color: lot.filtrageExpire
+                                ? Colors.red.shade700
+                                : Colors.green.shade700,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
@@ -643,7 +574,7 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
                     label: Text(
                       isDisponible
                           ? 'Démarrer le conditionnement'
-                          : 'Conditionnement en cours',
+                          : 'Déjà conditionné',
                       style: TextStyle(
                         fontSize: isMobile ? 14 : 16,
                         fontWeight: FontWeight.w600,
@@ -734,18 +665,8 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
   }
 
   void _startConditionnement(LotFiltre lot) {
-    // Convertir le modèle local vers le modèle attendu par ConditionnementEditPage
-    final lotFiltrageData = {
-      'id': lot.numeroLot,
-      'lot': lot.numeroLot,
-      'collecteId': 'COLLECTE_${DateTime.now().millisecondsSinceEpoch}',
-      'quantiteFiltree': lot.quantiteFiltree,
-      'quantiteRestante': lot.quantiteFiltree,
-      'predominanceFlorale': lot.predominanceFlorale,
-      'dateFiltrage': lot.dateFiltrage,
-      'site': 'Koudougou', // Site par défaut, à adapter selon vos besoins
-      'technicien': 'Test Technicien',
-    };
+    // Convertir le modèle LotFiltre vers le format attendu par ConditionnementEditPage
+    final lotFiltrageData = lot.toMap();
 
     Get.to(
       () => ConditionnementEditPage(lotFiltrageData: lotFiltrageData),
@@ -753,39 +674,4 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
       duration: const Duration(milliseconds: 300),
     );
   }
-}
-
-// Modèles de données pour les tests
-class LotFiltre {
-  final String numeroLot;
-  final DateTime dateFiltrage;
-  final double quantiteRecue;
-  final double quantiteFiltree;
-  final double rendement;
-  final String technologie;
-  final String producteur;
-  final String village;
-  final String predominanceFlorale;
-  final StatutLot statut;
-  final String observations;
-
-  LotFiltre({
-    required this.numeroLot,
-    required this.dateFiltrage,
-    required this.quantiteRecue,
-    required this.quantiteFiltree,
-    required this.rendement,
-    required this.technologie,
-    required this.producteur,
-    required this.village,
-    required this.predominanceFlorale,
-    required this.statut,
-    required this.observations,
-  });
-}
-
-enum StatutLot {
-  disponible,
-  enConditionnement,
-  conditionne,
 }

@@ -27,23 +27,23 @@ class _ControleurDashboardState extends State<ControleurDashboard> {
           // Header personnalisé
           _buildWelcomeSection(isMobile),
           const SizedBox(height: 24),
-          
+
           // KPIs spécifiques au contrôleur
           _buildKPISection(isMobile, isTablet),
           const SizedBox(height: 24),
-          
+
           // Actions rapides
           _buildQuickActionsSection(isMobile, isTablet),
           const SizedBox(height: 24),
-          
+
           // Contrôles en attente
           _buildPendingControlsSection(isMobile),
           const SizedBox(height: 24),
-          
+
           // Statistiques de contrôle
           _buildControlStatsSection(isMobile, isTablet),
           const SizedBox(height: 24),
-          
+
           // Activité récente
           _buildRecentActivitySection(isMobile),
         ],
@@ -315,7 +315,8 @@ class _ControleurDashboardState extends State<ControleurDashboard> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: (action['color'] as Color).withOpacity(0.2)),
+          border:
+              Border.all(color: (action['color'] as Color).withOpacity(0.2)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.05),
@@ -439,7 +440,7 @@ class _ControleurDashboardState extends State<ControleurDashboard> {
 
   Widget _buildPendingControlCard(Map<String, dynamic> control, bool isMobile) {
     final isPriority = control['priority'] == 'Haute';
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: EdgeInsets.all(isMobile ? 12 : 16),
@@ -447,7 +448,9 @@ class _ControleurDashboardState extends State<ControleurDashboard> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isPriority ? const Color(0xFFF44336).withOpacity(0.3) : Colors.grey.withOpacity(0.2),
+          color: isPriority
+              ? const Color(0xFFF44336).withOpacity(0.3)
+              : Colors.grey.withOpacity(0.2),
           width: isPriority ? 2 : 1,
         ),
         boxShadow: [
@@ -466,7 +469,9 @@ class _ControleurDashboardState extends State<ControleurDashboard> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isPriority ? const Color(0xFFF44336).withOpacity(0.1) : const Color(0xFF2196F3).withOpacity(0.1),
+                  color: isPriority
+                      ? const Color(0xFFF44336).withOpacity(0.1)
+                      : const Color(0xFF2196F3).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -474,7 +479,9 @@ class _ControleurDashboardState extends State<ControleurDashboard> {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
-                    color: isPriority ? const Color(0xFFF44336) : const Color(0xFF2196F3),
+                    color: isPriority
+                        ? const Color(0xFFF44336)
+                        : const Color(0xFF2196F3),
                   ),
                 ),
               ),
