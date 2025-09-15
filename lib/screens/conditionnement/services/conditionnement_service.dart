@@ -240,19 +240,26 @@ class ConditionnementService {
         throw Exception('Validation échouée: ${erreurs.join(', ')}');
       }
 
-      // Vérifier que le lot n'est pas déjà conditionné
+      // 🔥 VÉRIFICATION INTELLIGENTE : Permettre la mise à jour
       final conditionnementExistant =
           await getConditionnementByLotId(conditionnement.lotOrigine.id);
+
+      String? conditionnementIdExistant;
       if (conditionnementExistant != null) {
-        throw Exception('Ce lot est déjà conditionné');
+        conditionnementIdExistant = conditionnementExistant.id;
+        debugPrint(
+            '⚠️ [Conditionnement] Lot déjà conditionné, mise à jour du conditionnement existant: $conditionnementIdExistant');
       }
 
       // Transaction pour garantir la cohérence
       final batch = _firestore.batch();
 
-      // 1. Enregistrer le conditionnement
-      final conditionnementRef = _firestore.collection('conditionnement').doc();
-      batch.set(conditionnementRef, conditionnement.toFirestore());
+      // 1. Enregistrer ou mettre à jour le conditionnement
+      final conditionnementRef = _firestore
+          .collection('conditionnement')
+          .doc(conditionnementIdExistant);
+      batch.set(conditionnementRef, conditionnement.toFirestore(),
+          SetOptions(merge: true));
 
       // 2. Mettre à jour le document filtrage
       final filtrageRef =

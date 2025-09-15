@@ -1,14 +1,16 @@
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import '../models/vente_models.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../services/vente_service.dart';
+import '../utils/perte_receipt_pdf.dart';
+import '../utils/perte_receipt_text.dart';
+import '../../../utils/platform_download_helper.dart';
+// import 'dart:html' as html; // retiré pour compatibilité desktop
 /// 💔 MODAL DE FORMULAIRE DE DÉCLARATION DE PERTE COMPLET
 ///
 /// Interface complète pour déclarer des pertes de produits
-
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:get/get.dart';
-import 'package:intl/intl.dart';
-
-import '../models/vente_models.dart';
-import '../services/vente_service.dart';
 
 class PerteFormModal extends StatefulWidget {
   final Prelevement prelevement;
@@ -790,14 +792,13 @@ class _PerteFormModalState extends State<PerteFormModal> {
 
       if (success) {
         Get.back();
-        Get.snackbar(
-          'Succès',
-          'Déclaration de perte enregistrée pour ${perte.valeurTotale.toStringAsFixed(0)} FCFA\nEn attente de validation',
-          backgroundColor: Colors.orange,
-          colorText: Colors.white,
-          duration: const Duration(seconds: 4),
-        );
         widget.onPerteEnregistree();
+        // Générer reçu texte
+        final recu = buildPerteReceiptText(perte);
+        // Copier auto
+        await Clipboard.setData(ClipboardData(text: recu));
+        // Afficher dialog reçu
+        _showPerteReceiptDialog(perte, recu);
       } else {
         Get.snackbar(
           'Erreur',
@@ -815,6 +816,61 @@ class _PerteFormModalState extends State<PerteFormModal> {
       );
     } finally {
       setState(() => _isLoading = false);
+    }
+  }
+
+  void _showPerteReceiptDialog(Perte perte, String recu) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reçu Déclaration Perte'),
+        content: SizedBox(
+          width: 480,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              recu,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Fermer')),
+          TextButton(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: recu));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Reçu copié dans le presse-papiers')));
+              },
+              child: const Text('Copier')),
+          TextButton(
+              onPressed: () => _downloadPerteTxt(perte, recu),
+              child: const Text('Télécharger .txt')),
+          TextButton(
+              onPressed: () => _downloadPertePdf(perte),
+              child: const Text('Télécharger PDF')),
+        ],
+      ),
+    );
+  }
+
+  void _downloadPerteTxt(Perte perte, String recu) {
+    final stamp = DateFormat('yyyyMMdd_HHmm').format(perte.datePerte);
+    downloadTextCross(recu, fileName: 'recu_perte_${perte.id}_$stamp.txt');
+  }
+
+  Future<void> _downloadPertePdf(Perte perte) async {
+    try {
+      final data = await buildPerteReceiptPdf(perte);
+      final stamp = DateFormat('yyyyMMdd_HHmm').format(perte.datePerte);
+      await downloadBytesCross(data,
+          fileName: 'recu_perte_${perte.id}_$stamp.pdf',
+          mime: 'application/pdf');
+    } catch (e) {
+      Get.snackbar('Erreur', 'PDF non généré: $e',
+          backgroundColor: Colors.red, colorText: Colors.white);
     }
   }
 }

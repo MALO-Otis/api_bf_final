@@ -95,7 +95,7 @@ class SectionResume extends StatelessWidget {
                         SizedBox(width: isSmallScreen ? 8 : 12),
                         Expanded(
                           child: _buildStatCard(
-                            Icons.attach_money,
+                            Icons.text_fields,
                             'Montant',
                             montantTotal <= 0
                                 ? '0 F'

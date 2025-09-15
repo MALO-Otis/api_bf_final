@@ -115,7 +115,9 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
         backgroundColor: const Color(0xFF2E7D32),
         onBackPressed: () => Get.offAllNamed('/dashboard'),
       ),
-      body: Obx(() => _service.isLoading ? _buildLoadingView() : _buildMainContent(isMobile)),
+      body: Obx(() => _service.isLoading
+          ? _buildLoadingView()
+          : _buildMainContent(isMobile)),
     );
   }
 
@@ -268,7 +270,7 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
                   'Valeur totale',
                   ConditionnementUtils.formatPrix(
                       _statistics['valeurTotaleConditionnee'] ?? 0),
-                  Icons.attach_money,
+                  Icons.text_fields,
                   Colors.white,
                   isMobile,
                 ),

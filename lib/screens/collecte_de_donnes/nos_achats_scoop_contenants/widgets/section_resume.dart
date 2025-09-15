@@ -382,7 +382,7 @@ class SectionResume extends StatelessWidget {
                   child: _buildTotalItem(
                     'Montant total',
                     '${totals['montant']?.toStringAsFixed(2)} CFA',
-                    Icons.monetization_on,
+                    Icons.text_fields,
                     Colors.green,
                   ),
                 ),

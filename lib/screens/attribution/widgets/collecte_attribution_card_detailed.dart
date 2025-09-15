@@ -1412,7 +1412,7 @@ class _CollecteAttributionCardDetailedState
                 if (price != null)
                   Expanded(
                     child: _buildDetailItem('Total',
-                        '${price.toStringAsFixed(0)} €', Icons.attach_money),
+                        '${price.toStringAsFixed(0)} FCFA', Icons.text_fields),
                   ),
               ],
             ),
@@ -2271,6 +2271,8 @@ class _CollecteAttributionCardDetailedState
         return Icons.agriculture;
       case HoneyNature.prefilitre:
         return Icons.water_drop;
+      case HoneyNature.cire:
+        return Icons.build;
     }
   }
 

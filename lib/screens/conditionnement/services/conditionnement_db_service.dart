@@ -39,7 +39,12 @@ class ConditionnementDbService extends GetxService {
   @override
   void onInit() {
     super.onInit();
-    _loadLotsDisponibles();
+
+    // 🔥 Décaler les chargements pour éviter les erreurs de build
+    Future.microtask(() async {
+      await _loadLotsDisponibles();
+      await _loadConditionnements();
+    });
   }
 
   /// 🔄 CHARGEMENT DES LOTS FILTRÉS DISPONIBLES POUR CONDITIONNEMENT
@@ -161,7 +166,7 @@ class ConditionnementDbService extends GetxService {
             // Grouper les produits par lot
             final Map<String, List<DocumentSnapshot>> lotsGroupes = {};
             for (final doc in filteredProductsSnapshot.docs) {
-              final data = doc.data() as Map<String, dynamic>;
+              final data = doc.data();
               final lotId =
                   data['code_contenant']?.toString() ?? 'LOT-${doc.id}';
               lotsGroupes[lotId] ??= [];
@@ -186,13 +191,169 @@ class ConditionnementDbService extends GetxService {
         }
       }
 
-      _lotsDisponibles.value = lots;
+      // 🔥 FILTRER SEULEMENT LES LOTS NON CONDITIONNÉS
+      final lotsNonConditionnes =
+          lots.where((lot) => lot.peutEtreConditionne).toList();
+
+      _lotsDisponibles.value = lotsNonConditionnes;
       debugPrint(
-          '✅ [ConditionnementDB] ${lots.length} lots disponibles chargés');
+          '✅ [ConditionnementDB] ${lots.length} lots filtrés trouvés, ${lotsNonConditionnes.length} disponibles pour conditionnement');
     } catch (e) {
       debugPrint('❌ [ConditionnementDB] Erreur chargement lots: $e');
     } finally {
       _isLoading.value = false;
+    }
+  }
+
+  /// 🔄 CHARGEMENT DES CONDITIONNEMENTS EXISTANTS
+  Future<void> _loadConditionnements() async {
+    try {
+      debugPrint('🔄 [ConditionnementDB] Chargement conditionnements...');
+
+      final conditionnements = <ConditionnementData>[];
+      final sitesAutorises = _getSitesAutorises();
+
+      debugPrint('🔍 [ConditionnementDB] Sites autorisés: $sitesAutorises');
+
+      // 📊 EXPLORATION COMPLÈTE DE TOUTES LES STRUCTURES FIRESTORE POSSIBLES
+
+      // 1. Structure moderne par site : conditionnement/{site}/conditionnements
+      int totalModerne = 0;
+      for (final site in sitesAutorises) {
+        try {
+          final conditionnementsSite = await _firestore
+              .collection('conditionnement')
+              .doc(site)
+              .collection('conditionnements')
+              .get(); // Enlever orderBy pour éviter les erreurs d'index
+
+          totalModerne += conditionnementsSite.docs.length;
+          debugPrint(
+              '📊 [ConditionnementDB] Structure moderne - Site $site: ${conditionnementsSite.docs.length} conditionnements');
+
+          for (final doc in conditionnementsSite.docs) {
+            try {
+              debugPrint(
+                  '📄 [ConditionnementDB] Parsing doc ${doc.id} du site $site');
+              final conditionnement = ConditionnementData.fromFirestore(doc);
+              conditionnements.add(conditionnement);
+              debugPrint(
+                  '✅ [ConditionnementDB] Conditionnement ajouté: ${conditionnement.lotOrigine.lotOrigine}');
+            } catch (e) {
+              debugPrint(
+                  '❌ [ConditionnementDB] Erreur parsing conditionnement ${doc.id}: $e');
+              debugPrint(
+                  '🔍 [ConditionnementDB] Données du document: ${doc.data()}');
+            }
+          }
+        } catch (e) {
+          debugPrint(
+              '❌ [ConditionnementDB] Erreur chargement conditionnements site $site: $e');
+        }
+      }
+
+      // 2. Structure legacy : conditionnement (collection racine)
+      int totalLegacy = 0;
+      try {
+        final conditionnnementsLegacy = await _firestore
+            .collection('conditionnement')
+            .get(); // Sans orderBy pour éviter erreurs d'index
+
+        totalLegacy = conditionnnementsLegacy.docs.length;
+        debugPrint(
+            '📊 [ConditionnementDB] Structure legacy: ${conditionnnementsLegacy.docs.length} documents trouvés');
+
+        for (final doc in conditionnnementsLegacy.docs) {
+          try {
+            // Vérifier si c'est un document de conditionnement ou un document de site
+            final data = doc.data();
+
+            // Si le document a un champ 'date', c'est probablement un conditionnement
+            if (data.containsKey('date') && data.containsKey('emballages')) {
+              debugPrint(
+                  '📄 [ConditionnementDB] Parsing conditionnement legacy ${doc.id}');
+              final conditionnement = ConditionnementData.fromFirestore(doc);
+
+              // Éviter les doublons
+              if (!conditionnements.any((c) => c.id == conditionnement.id)) {
+                conditionnements.add(conditionnement);
+                debugPrint(
+                    '✅ [ConditionnementDB] Conditionnement legacy ajouté: ${conditionnement.lotOrigine.lotOrigine}');
+              } else {
+                debugPrint(
+                    '⚠️ [ConditionnementDB] Conditionnement ${doc.id} déjà présent (doublon évité)');
+              }
+            } else {
+              debugPrint(
+                  '⏭️ [ConditionnementDB] Document ${doc.id} ignoré (pas un conditionnement)');
+            }
+          } catch (e) {
+            debugPrint(
+                '❌ [ConditionnementDB] Erreur parsing conditionnement legacy ${doc.id}: $e');
+            debugPrint(
+                '🔍 [ConditionnementDB] Données du document legacy: ${doc.data()}');
+          }
+        }
+      } catch (e) {
+        debugPrint(
+            '❌ [ConditionnementDB] Erreur chargement conditionnements legacy: $e');
+      }
+
+      // 3. Autres structures possibles - Explorer toutes les collections
+      try {
+        debugPrint(
+            '🔍 [ConditionnementDB] Exploration d\'autres structures possibles...');
+
+        // Chercher dans d'autres collections qui pourraient contenir des conditionnements
+        final autresCollections = [
+          'conditionnements',
+          'stock_conditionne',
+          'lots_conditionnes'
+        ];
+
+        for (final collectionName in autresCollections) {
+          try {
+            final snapshot =
+                await _firestore.collection(collectionName).limit(5).get();
+            if (snapshot.docs.isNotEmpty) {
+              debugPrint(
+                  '📊 [ConditionnementDB] Collection "$collectionName" trouvée avec ${snapshot.docs.length} documents');
+              // Ici on pourrait ajouter une logique de parsing spécifique si besoin
+            }
+          } catch (e) {
+            debugPrint(
+                '⚠️ [ConditionnementDB] Collection "$collectionName" non accessible: $e');
+          }
+        }
+      } catch (e) {
+        debugPrint(
+            '❌ [ConditionnementDB] Erreur exploration autres structures: $e');
+      }
+
+      // Trier par date de conditionnement (plus récent en premier)
+      conditionnements.sort(
+          (a, b) => b.dateConditionnement.compareTo(a.dateConditionnement));
+
+      _conditionnements.value = conditionnements;
+
+      debugPrint('✅ [ConditionnementDB] RÉSUMÉ DU CHARGEMENT:');
+      debugPrint('   📊 Structure moderne: $totalModerne documents trouvés');
+      debugPrint('   📊 Structure legacy: $totalLegacy documents trouvés');
+      debugPrint(
+          '   📊 Total conditionnements chargés: ${conditionnements.length}');
+
+      if (conditionnements.isNotEmpty) {
+        debugPrint('   🎯 Premiers conditionnements:');
+        for (final cond in conditionnements.take(3)) {
+          debugPrint(
+              '     - ${cond.lotOrigine.lotOrigine} (${cond.dateConditionnement.day}/${cond.dateConditionnement.month}) - ${cond.quantiteConditionnee}kg');
+        }
+      } else {
+        debugPrint('   ⚠️ Aucun conditionnement trouvé dans aucune structure');
+      }
+    } catch (e) {
+      debugPrint(
+          '❌ [ConditionnementDB] Erreur générale chargement conditionnements: $e');
     }
   }
 
@@ -262,14 +423,48 @@ class ConditionnementDbService extends GetxService {
         }
       }
 
-      // Vérifier si le lot est déjà conditionné
-      final conditionnementExistant = await _firestore
-          .collection('conditionnement')
-          .where('lotFiltrageId', isEqualTo: premierProduit['code_contenant'])
-          .limit(1)
-          .get();
+      // 🔥 VÉRIFICATION INTELLIGENTE : Vérifier si le lot est déjà conditionné dans TOUTES les collections
+      bool estConditionne = false;
+      DateTime? dateConditionnementExistant;
 
-      final estConditionne = conditionnementExistant.docs.isNotEmpty;
+      // Vérifier dans la structure moderne par site
+      for (final siteCheck in _getSitesAutorises()) {
+        final conditionnementExistant = await _firestore
+            .collection('conditionnement')
+            .doc(siteCheck)
+            .collection('conditionnements')
+            .where('lotFiltrageId', isEqualTo: premierProduit['code_contenant'])
+            .limit(1)
+            .get();
+
+        if (conditionnementExistant.docs.isNotEmpty) {
+          estConditionne = true;
+          // Récupérer la date de conditionnement
+          final data = conditionnementExistant.docs.first.data();
+          if (data['date'] != null) {
+            dateConditionnementExistant = (data['date'] as Timestamp).toDate();
+          }
+          break;
+        }
+      }
+
+      // Vérifier aussi dans l'ancienne structure (compatibilité)
+      if (!estConditionne) {
+        final conditionnementExistantLegacy = await _firestore
+            .collection('conditionnement')
+            .where('lotFiltrageId', isEqualTo: premierProduit['code_contenant'])
+            .limit(1)
+            .get();
+        if (conditionnementExistantLegacy.docs.isNotEmpty) {
+          estConditionne = true;
+          // Récupérer la date de conditionnement
+          final data = conditionnementExistantLegacy.docs.first.data();
+          if (data['date'] != null) {
+            dateConditionnementExistant = (data['date'] as Timestamp).toDate();
+          }
+        }
+      }
+
       final quantiteRestante = estConditionne ? 0.0 : quantiteTotale;
 
       final lot = LotFiltre(
@@ -285,10 +480,7 @@ class ConditionnementDbService extends GetxService {
         dateExpirationFiltrage:
             _calculerDateExpiration(dateFiltrage ?? DateTime.now()),
         estConditionne: estConditionne,
-        dateConditionnement: estConditionne
-            ? (conditionnementExistant.docs.first.data()['date'] as Timestamp?)
-                ?.toDate()
-            : null,
+        dateConditionnement: dateConditionnementExistant,
         site: site,
         technicien: technicien,
       );
@@ -331,14 +523,51 @@ class ConditionnementDbService extends GetxService {
         }
       }
 
-      // Vérifier si le lot est déjà conditionné
-      final conditionnementExistant = await _firestore
-          .collection('conditionnement')
-          .where('lotFiltrageId', isEqualTo: doc.id)
-          .limit(1)
-          .get();
+      // 🔥 VÉRIFICATION INTELLIGENTE : Vérifier si le lot est déjà conditionné dans TOUTES les collections
+      bool estConditionne = false;
+      DateTime? dateConditionnementExistant;
 
-      final estConditionne = conditionnementExistant.docs.isNotEmpty;
+      // Vérifier dans la structure moderne par site
+      for (final siteCheck in _getSitesAutorises()) {
+        final conditionnementExistant = await _firestore
+            .collection('conditionnement')
+            .doc(siteCheck)
+            .collection('conditionnements')
+            .where('lotFiltrageId', isEqualTo: doc.id)
+            .limit(1)
+            .get();
+
+        if (conditionnementExistant.docs.isNotEmpty) {
+          estConditionne = true;
+          // Récupérer la date de conditionnement
+          final dataConditionnement = conditionnementExistant.docs.first.data();
+          if (dataConditionnement['date'] != null) {
+            dateConditionnementExistant =
+                (dataConditionnement['date'] as Timestamp).toDate();
+          }
+          break;
+        }
+      }
+
+      // Vérifier aussi dans l'ancienne structure (compatibilité)
+      if (!estConditionne) {
+        final conditionnementExistantLegacy = await _firestore
+            .collection('conditionnement')
+            .where('lotFiltrageId', isEqualTo: doc.id)
+            .limit(1)
+            .get();
+        if (conditionnementExistantLegacy.docs.isNotEmpty) {
+          estConditionne = true;
+          // Récupérer la date de conditionnement
+          final dataConditionnement =
+              conditionnementExistantLegacy.docs.first.data();
+          if (dataConditionnement['date'] != null) {
+            dateConditionnementExistant =
+                (dataConditionnement['date'] as Timestamp).toDate();
+          }
+        }
+      }
+
       final quantiteRestante = estConditionne ? 0.0 : quantiteTotale;
 
       final lot = LotFiltre(
@@ -352,10 +581,7 @@ class ConditionnementDbService extends GetxService {
             (data['dateFiltrage'] as Timestamp?)?.toDate() ?? DateTime.now(),
         dateExpirationFiltrage: _calculerDateExpiration(data['dateFiltrage']),
         estConditionne: estConditionne,
-        dateConditionnement: estConditionne
-            ? (conditionnementExistant.docs.first.data()['date'] as Timestamp?)
-                ?.toDate()
-            : null,
+        dateConditionnement: dateConditionnementExistant,
         site: site,
         technicien: data['utilisateur'] ?? 'Inconnu',
       );
@@ -457,41 +683,6 @@ class ConditionnementDbService extends GetxService {
     }
   }
 
-  /// 📊 CHARGEMENT DES CONDITIONNEMENTS EXISTANTS
-  Future<void> _loadConditionnements() async {
-    try {
-      debugPrint('🔄 [ConditionnementDB] Chargement des conditionnements...');
-
-      final sitesAutorises = _getSitesAutorises();
-      final conditionnements = <ConditionnementData>[];
-
-      for (final site in sitesAutorises) {
-        final snapshot = await _firestore
-            .collection('conditionnement')
-            .doc(site)
-            .collection('conditionnements')
-            .orderBy('date', descending: true)
-            .get();
-
-        for (final doc in snapshot.docs) {
-          try {
-            final conditionnement = ConditionnementData.fromFirestore(doc);
-            conditionnements.add(conditionnement);
-          } catch (e) {
-            debugPrint('❌ Erreur parsing conditionnement ${doc.id}: $e');
-          }
-        }
-      }
-
-      _conditionnements.value = conditionnements;
-      debugPrint(
-          '✅ [ConditionnementDB] ${conditionnements.length} conditionnements chargés');
-    } catch (e) {
-      debugPrint(
-          '❌ [ConditionnementDB] Erreur chargement conditionnements: $e');
-    }
-  }
-
   /// 💾 ENREGISTREMENT D'UN CONDITIONNEMENT
   Future<String> enregistrerConditionnement(
       ConditionnementData conditionnement) async {
@@ -505,7 +696,7 @@ class ConditionnementDbService extends GetxService {
         throw Exception('Validation échouée: ${erreurs.join(', ')}');
       }
 
-      // Vérifier que le lot n'est pas déjà conditionné
+      // 🔥 VÉRIFICATION INTELLIGENTE : Permettre la mise à jour ou confirmer le remplacement
       final conditionnementExistant = await _firestore
           .collection('conditionnement')
           .doc(conditionnement.lotOrigine.site)
@@ -514,26 +705,44 @@ class ConditionnementDbService extends GetxService {
           .limit(1)
           .get();
 
+      // Si un conditionnement existe déjà, on remplace plutôt que de bloquer
+      String? conditionnementIdExistant;
       if (conditionnementExistant.docs.isNotEmpty) {
-        throw Exception('Ce lot est déjà conditionné');
+        conditionnementIdExistant = conditionnementExistant.docs.first.id;
+        debugPrint(
+            '⚠️ [ConditionnementDB] Lot déjà conditionné, mise à jour du conditionnement existant: $conditionnementIdExistant');
       }
 
       // Transaction pour garantir la cohérence
       final batch = _firestore.batch();
 
-      // 1. Enregistrer le conditionnement dans la nouvelle structure
+      // 1. Enregistrer ou mettre à jour le conditionnement
       final conditionnementRef = _firestore
           .collection('conditionnement')
           .doc(conditionnement.lotOrigine.site)
           .collection('conditionnements')
-          .doc();
-      batch.set(conditionnementRef, conditionnement.toFirestore());
+          .doc(
+              conditionnementIdExistant); // Utilise l'ID existant si disponible, sinon Firestore génère un nouveau
+
+      // Utiliser set avec merge:true pour mettre à jour ou créer
+      batch.set(conditionnementRef, conditionnement.toFirestore(),
+          SetOptions(merge: true));
 
       // 2. Mettre à jour les statistiques du site
       await _updateStatistiquesSite(
           batch, conditionnement.lotOrigine.site, conditionnement);
 
-      // 3. Mettre à jour le document filtrage
+      // 3. 🚀 NOUVEAU : Marquer le lot comme conditionné et le déplacer
+      await _marquerLotCommeConditionne(batch, conditionnement);
+
+      // 4. 🚀 NOUVEAU : Créer les données pour stocks conditionnés
+      await _creerStockConditionne(batch, conditionnement);
+
+      // 5. 🚀 NOUVEAU : Générer les données analytiques (avec l'ID généré)
+      await _genererDonneesAnalytiques(
+          batch, conditionnement, conditionnementRef.id);
+
+      // 6. Mettre à jour le document filtrage
       final filtrageRef = _firestore
           .collection('Filtrage')
           .doc(conditionnement.lotOrigine.site)
@@ -779,6 +988,33 @@ class ConditionnementDbService extends GetxService {
     }
   }
 
+  /// 📊 RÉCUPÉRATION D'UN CONDITIONNEMENT PAR LOT ID
+  Future<ConditionnementData?> getConditionnementByLotId(String lotId) async {
+    try {
+      final sitesAutorises = _getSitesAutorises();
+
+      for (final site in sitesAutorises) {
+        final snapshot = await _firestore
+            .collection('conditionnement')
+            .doc(site)
+            .collection('conditionnements')
+            .where('lotFiltrageId', isEqualTo: lotId)
+            .limit(1)
+            .get();
+
+        if (snapshot.docs.isNotEmpty) {
+          return ConditionnementData.fromFirestore(snapshot.docs.first);
+        }
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint(
+          '❌ [ConditionnementDB] Erreur récupération conditionnement pour lot $lotId: $e');
+      return null;
+    }
+  }
+
   /// 📊 RÉCUPÉRATION D'UN LOT SPÉCIFIQUE
   Future<LotFiltre?> getLotById(String lotId) async {
     try {
@@ -906,5 +1142,179 @@ class ConditionnementDbService extends GetxService {
           '❌ [ConditionnementDB] Erreur récupération statistiques globales: $e');
       return {};
     }
+  }
+
+  /// 🚀 NOUVELLE MÉTHODE : Marque un lot selon le type de conditionnement (complet ou partiel)
+  Future<void> _marquerLotCommeConditionne(
+      WriteBatch batch, ConditionnementData conditionnement) async {
+    try {
+      debugPrint(
+          '📋 [ConditionnementDB] Marquage lot ${conditionnement.lotOrigine.id}...');
+
+      // Mettre à jour le document filtrage
+      final filtrageRef = _firestore
+          .collection('Filtrage')
+          .doc(conditionnement.lotOrigine.site)
+          .collection('processus')
+          .doc(conditionnement.lotOrigine.id);
+
+      // 🔄 VÉRIFIER SI CONDITIONNEMENT COMPLET OU PARTIEL
+      final quantiteRestante = conditionnement.quantiteRestante;
+      final estConditionnementComplet =
+          quantiteRestante <= 0.1; // Tolérance de 100g
+
+      if (estConditionnementComplet) {
+        // ✅ CONDITIONNEMENT COMPLET : Masquer le lot
+        debugPrint(
+            '✅ [ConditionnementDB] Conditionnement COMPLET - Lot retiré de la liste');
+        batch.update(filtrageRef, {
+          'statutConditionnement': 'Conditionné_Complet',
+          'dateConditionnement':
+              Timestamp.fromDate(conditionnement.dateConditionnement),
+          'quantiteConditionnee': conditionnement.quantiteConditionnee,
+          'quantiteRestante': 0.0,
+          'isVisible': false, // 🚫 Masquer de la liste
+          'movedToStock': true, // ✅ Déplacé vers stocks
+          'conditionnementComplete': true,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        // 🔄 CONDITIONNEMENT PARTIEL : Garder le lot visible avec quantité mise à jour
+        debugPrint(
+            '🔄 [ConditionnementDB] Conditionnement PARTIEL - Lot maintenu avec ${quantiteRestante.toStringAsFixed(2)}kg restants');
+        batch.update(filtrageRef, {
+          'statutConditionnement': 'Conditionné_Partiel',
+          'dateDernierConditionnement':
+              Timestamp.fromDate(conditionnement.dateConditionnement),
+          'quantiteConditionneeTotal':
+              FieldValue.increment(conditionnement.quantiteConditionnee),
+          'quantiteRestante':
+              quantiteRestante, // 🔄 Nouvelle quantité disponible
+          'quantiteRecue':
+              quantiteRestante, // 🔄 Mettre à jour la quantité "reçue" avec le restant
+          'isVisible': true, // ✅ Garder visible dans la liste
+          'movedToStock': false, // ❌ Pas encore déplacé complètement
+          'conditionnementPartiel': true,
+          'nbConditionnementsPartiels': FieldValue.increment(1),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      debugPrint(
+          '✅ [ConditionnementDB] Lot marqué selon le type de conditionnement');
+    } catch (e) {
+      debugPrint('❌ [ConditionnementDB] Erreur marquage lot: $e');
+      throw Exception('Erreur lors du marquage du lot: $e');
+    }
+  }
+
+  /// 🚀 NOUVELLE MÉTHODE : Crée les données dans la collection stocks conditionnés
+  Future<void> _creerStockConditionne(
+      WriteBatch batch, ConditionnementData conditionnement) async {
+    try {
+      debugPrint('📦 [ConditionnementDB] Création stock conditionné...');
+
+      // Créer une entrée dans la collection stocks conditionnés
+      final stockRef = _firestore
+          .collection('StocksConditionnes')
+          .doc(conditionnement.lotOrigine.site)
+          .collection('stocks')
+          .doc(); // Auto-générer un ID
+
+      /// 🔥 STOCK ULTRA-OPTIMISÉ : Seulement l'essentiel (économie Firestore)
+      final stockData = {
+        // 🔗 RÉFÉRENCES MINIMALES
+        'lotId': conditionnement.lotOrigine.id,
+        'lot': conditionnement.lotOrigine.lotOrigine,
+
+        // 🍯 MIEL
+        'florale': conditionnement.lotOrigine.predominanceFlorale,
+        'type': conditionnement.lotOrigine.typeFlorale.label,
+
+        // 📊 QUANTITÉS ESSENTIELLES
+        'kg': conditionnement.quantiteConditionnee,
+        'pots': conditionnement.nbTotalPots,
+        'prix': conditionnement.prixTotal,
+
+        // 📦 EMBALLAGES (format ultra-compact)
+        'emb': conditionnement.emballages
+            .map((e) => '${e.type.nom}:${e.nombreSaisi}')
+            .join(','),
+
+        // 📅 TEMPS & STATUT
+        'date': Timestamp.fromDate(conditionnement.dateConditionnement),
+        'dispo': true, // Disponible pour vente
+      };
+
+      batch.set(stockRef, stockData);
+      debugPrint(
+          '✅ [ConditionnementDB] Stock conditionné créé avec ID: ${stockRef.id}');
+    } catch (e) {
+      debugPrint('❌ [ConditionnementDB] Erreur création stock conditionné: $e');
+      throw Exception('Erreur lors de la création du stock: $e');
+    }
+  }
+
+  /// 🚀 NOUVELLE MÉTHODE : Génère les données analytiques pour rapports
+  Future<void> _genererDonneesAnalytiques(WriteBatch batch,
+      ConditionnementData conditionnement, String conditionnementId) async {
+    try {
+      debugPrint('📈 [ConditionnementDB] Génération données analytiques...');
+
+      // Créer une entrée dans la collection rapports analytiques
+      final rapportRef = _firestore
+          .collection('RapportsAnalytiques')
+          .doc(conditionnement.lotOrigine.site)
+          .collection('conditionnements')
+          .doc(conditionnementId); // 🔧 Utiliser l'ID généré par Firestore
+
+      final analyticsData = {
+        /// 🔥 ANALYTICS ULTRA-OPTIMISÉ : Métriques essentielles seulement (économie Firestore)
+        // 📅 TEMPS (format compact)
+        'mois': conditionnement.dateConditionnement.month,
+        'annee': conditionnement.dateConditionnement.year,
+
+        // 📊 MÉTRIQUES CLÉS SEULEMENT
+        'kg': conditionnement.quantiteConditionnee,
+        'pots': conditionnement.nbTotalPots,
+        'prix': conditionnement.prixTotal,
+        'rendement': ((conditionnement.quantiteConditionnee /
+                    conditionnement.lotOrigine.quantiteRecue) *
+                100)
+            .round(),
+
+        // 🍯 CARACTÉRISTIQUES ESSENTIELLES
+        'florale': conditionnement.lotOrigine.typeFlorale.label,
+        'embTop': _getEmballageLePlusUtilise(conditionnement.emballages),
+      };
+
+      batch.set(rapportRef, analyticsData);
+      debugPrint('✅ [ConditionnementDB] Données analytiques générées');
+    } catch (e) {
+      debugPrint(
+          '❌ [ConditionnementDB] Erreur génération données analytiques: $e');
+      throw Exception(
+          'Erreur lors de la génération des données analytiques: $e');
+    }
+  }
+
+  // 🔧 MÉTHODE UTILITAIRE POUR ANALYTICS OPTIMISÉ
+
+  String _getEmballageLePlusUtilise(List<EmballageSelectionne> emballages) {
+    if (emballages.isEmpty) return 'Aucun';
+
+    // Trouver l'emballage avec le plus grand poids total
+    var maxPoids = 0.0;
+    var maxEmballage = '';
+
+    for (final emballage in emballages) {
+      final poids = emballage.nombreSaisi * emballage.type.contenanceKg;
+      if (poids > maxPoids) {
+        maxPoids = poids;
+        maxEmballage = emballage.type.nom;
+      }
+    }
+
+    return maxEmballage;
   }
 }

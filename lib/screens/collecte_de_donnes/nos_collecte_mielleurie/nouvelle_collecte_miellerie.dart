@@ -8,6 +8,8 @@ import '../../../data/personnel/personnel_apisavana.dart';
 import '../../../authentication/user_session.dart';
 import '../../../services/universal_container_id_service.dart';
 import '../historiques_collectes.dart';
+import 'widgets/modal_ajout_miellerie.dart';
+import '../../../widgets/money_icon_widget.dart';
 
 class NouvelleCollecteMielleriePage extends StatefulWidget {
   const NouvelleCollecteMielleriePage({super.key});
@@ -37,6 +39,8 @@ class _NouvelleCollecteMielleriePageState
 
   // Listes
   List<String> _sitesDisponibles = []; // Sites des techniciens comme mielleries
+  List<String> _mielleriesDisponibles =
+      []; // Mielleries dynamiques depuis la BD
   List<Map<String, dynamic>> _cooperatives = [];
 
   // NOUVEAU SYSTÈME SCOOP : Variables d'état du formulaire intégré
@@ -76,14 +80,18 @@ class _NouvelleCollecteMielleriePageState
     try {
       final site = _userSession.site ?? '';
 
-      // Charger les coopératives
-      final cooperatives =
-          await StatsMielleriesService.loadCooperativesForSite(site);
+      // Charger les coopératives et les mielleries dynamiques
+      final results = await Future.wait([
+        StatsMielleriesService.loadCooperativesForSite(site),
+        StatsMielleriesService.loadMiellerieNamesForSite(),
+      ]);
 
       setState(() {
         // NOUVEAU : Utiliser les sites des techniciens comme mielleries
         _sitesDisponibles = List.from(sitesApisavana);
-        _cooperatives = cooperatives;
+        // NOUVEAU : Ajouter les mielleries dynamiques depuis la BD
+        _mielleriesDisponibles = results[1] as List<String>;
+        _cooperatives = results[0] as List<Map<String, dynamic>>;
       });
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors du chargement des données: $e');
@@ -141,6 +149,33 @@ class _NouvelleCollecteMielleriePageState
 
   void _removeContenant(int index) {
     setState(() => _contenants.removeAt(index));
+  }
+
+  /// Gère l'ajout d'une nouvelle miellerie
+  void _onMiellerieAdded(String nomMiellerie) {
+    setState(() {
+      // Ajouter la nouvelle miellerie à la liste
+      if (!_mielleriesDisponibles.contains(nomMiellerie)) {
+        _mielleriesDisponibles.add(nomMiellerie);
+        _mielleriesDisponibles.sort(); // Trier par ordre alphabétique
+      }
+      // Sélectionner automatiquement la nouvelle miellerie
+      _selectedSiteMiellerie = nomMiellerie;
+      // Auto-remplir la localité
+      _localiteController.text = nomMiellerie;
+      // Suggestions de répondant par défaut
+      _repondantController.text = 'Responsable $nomMiellerie';
+    });
+  }
+
+  /// Ouvre le modal d'ajout de miellerie
+  void _ouvrirModalAjoutMiellerie() {
+    showDialog(
+      context: context,
+      builder: (context) => ModalAjoutMiellerie(
+        onMiellerieAdded: _onMiellerieAdded,
+      ),
+    );
   }
 
   double get _poidsTotal {
@@ -368,61 +403,119 @@ class _NouvelleCollecteMielleriePageState
                         Row(
                           children: [
                             Expanded(
-                              child: DropdownButtonFormField<String>(
-                                value: _selectedSiteMiellerie,
-                                decoration: const InputDecoration(
-                                  labelText:
-                                      'Sélectionner une miellerie (site)',
-                                  border: OutlineInputBorder(),
-                                  prefixIcon: Icon(Icons.factory),
-                                  helperText:
-                                      'Les mielleries correspondent aux sites des techniciens',
-                                ),
-                                items: _sitesDisponibles.map((site) {
-                                  final techniciensSite =
-                                      PersonnelUtils.getTechniciensBySite(site);
-                                  return DropdownMenuItem(
-                                    value: site,
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          site,
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold),
-                                        ),
-                                        Text(
-                                          '${techniciensSite.length} technicien(s)',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                        ),
-                                      ],
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  DropdownButtonFormField<String>(
+                                    value: _selectedSiteMiellerie,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Sélectionner une miellerie',
+                                      border: OutlineInputBorder(),
+                                      prefixIcon: Icon(Icons.factory),
+                                      helperText:
+                                          'Sites des techniciens + Mielleries ajoutées',
                                     ),
-                                  );
-                                }).toList(),
-                                onChanged: (site) {
-                                  setState(() {
-                                    _selectedSiteMiellerie = site;
-                                    // Auto-remplir la localité
-                                    _localiteController.text = site ?? '';
-                                    // Suggestions de répondant par défaut
-                                    if (site != null) {
-                                      final techniciens =
-                                          PersonnelUtils.getTechniciensBySite(
-                                              site);
-                                      if (techniciens.isNotEmpty) {
-                                        _repondantController.text =
-                                            'Responsable $site';
-                                      }
-                                    }
-                                  });
-                                },
-                                validator: (value) => value == null
-                                    ? 'Sélectionnez une miellerie'
-                                    : null,
+                                    items: [
+                                      // Sites des techniciens
+                                      ..._sitesDisponibles.map((site) {
+                                        final techniciensSite =
+                                            PersonnelUtils.getTechniciensBySite(
+                                                site);
+                                        return DropdownMenuItem(
+                                          value: site,
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                site,
+                                                style: const TextStyle(
+                                                    fontWeight:
+                                                        FontWeight.bold),
+                                              ),
+                                              Text(
+                                                'Site (${techniciensSite.length} technicien(s))',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey.shade600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }),
+                                      // Mielleries dynamiques
+                                      ..._mielleriesDisponibles
+                                          .map((miellerie) {
+                                        return DropdownMenuItem(
+                                          value: miellerie,
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                miellerie,
+                                                style: const TextStyle(
+                                                    fontWeight:
+                                                        FontWeight.bold),
+                                              ),
+                                              Text(
+                                                'Miellerie ajoutée',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.indigo.shade600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }),
+                                    ],
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _selectedSiteMiellerie = value;
+                                        // Auto-remplir la localité
+                                        _localiteController.text = value ?? '';
+                                        // Suggestions de répondant par défaut
+                                        if (value != null) {
+                                          if (_sitesDisponibles
+                                              .contains(value)) {
+                                            // C'est un site de technicien
+                                            final techniciens = PersonnelUtils
+                                                .getTechniciensBySite(value);
+                                            if (techniciens.isNotEmpty) {
+                                              _repondantController.text =
+                                                  'Responsable $value';
+                                            }
+                                          } else {
+                                            // C'est une miellerie ajoutée
+                                            _repondantController.text =
+                                                'Responsable $value';
+                                          }
+                                        }
+                                      });
+                                    },
+                                    validator: (value) => value == null
+                                        ? 'Sélectionnez une miellerie'
+                                        : null,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  // Bouton d'ajout de miellerie
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: OutlinedButton.icon(
+                                      onPressed: _ouvrirModalAjoutMiellerie,
+                                      icon: const Icon(Icons.add, size: 18),
+                                      label:
+                                          const Text('Ajouter une miellerie'),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: Colors.indigo.shade700,
+                                        side: BorderSide(
+                                            color: Colors.indigo.shade300),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             const SizedBox(width: 16),
@@ -667,6 +760,13 @@ class _NouvelleCollecteMielleriePageState
           _typeMiel = value!;
           _typeCire = null;
           _couleurCire = null;
+
+          // 🆕 Ajuster automatiquement le type de contenant selon le nouveau type de miel
+          final typesDisponibles =
+              TypeContenantMiellerie.getTypesForMiel(_typeMiel);
+          if (!typesDisponibles.contains(_typeContenant)) {
+            _typeContenant = typesDisponibles.first;
+          }
         });
       },
       validator: (value) =>
@@ -718,6 +818,14 @@ class _NouvelleCollecteMielleriePageState
   }
 
   Widget _buildTypeContenantField() {
+    // 🆕 Obtenir les types de contenants disponibles selon le type de miel
+    final typesDisponibles = TypeContenantMiellerie.getTypesForMiel(_typeMiel);
+
+    // 🆕 Vérifier si le type actuel est encore valide, sinon prendre le premier disponible
+    if (!typesDisponibles.contains(_typeContenant)) {
+      _typeContenant = typesDisponibles.first;
+    }
+
     return DropdownButtonFormField<String>(
       value: _typeContenant,
       decoration: const InputDecoration(
@@ -725,7 +833,7 @@ class _NouvelleCollecteMielleriePageState
         border: OutlineInputBorder(),
         prefixIcon: Icon(Icons.inventory),
       ),
-      items: TypeContenantMiellerie.typesList.map((type) {
+      items: typesDisponibles.map((type) {
         return DropdownMenuItem(value: type, child: Text(type));
       }).toList(),
       onChanged: (value) {
@@ -769,7 +877,7 @@ class _NouvelleCollecteMielleriePageState
             decoration: const InputDecoration(
               labelText: 'Prix unitaire (CFA)',
               border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.attach_money),
+              prefixIcon: const SimpleMoneyIcon(),
             ),
             keyboardType: TextInputType.number,
             inputFormatters: [

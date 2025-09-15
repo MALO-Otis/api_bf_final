@@ -1,15 +1,15 @@
+import 'package:intl/intl.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import '../services/attribution_collectes_service.dart';
+import '../../controle_de_donnes/models/collecte_models.dart';
+import '../../controle_de_donnes/models/quality_control_models.dart';
+import '../../controle_de_donnes/models/attribution_models_v2.dart'; // Pour ProductControle
 /// Widget pour afficher une carte de collecte avec ses informations de contrôle
 /// et les options d'attribution - VERSION DÉTAILLÉE ET DIAGNOSTIQUE
 library;
 
-import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:intl/intl.dart';
-import '../../controle_de_donnes/models/collecte_models.dart';
-import '../../controle_de_donnes/models/quality_control_models.dart';
-import '../../controle_de_donnes/models/attribution_models_v2.dart'; // Pour ProductControle
-import '../../extraction/models/extraction_models.dart'; // Pour ProductType
-import '../services/attribution_collectes_service.dart';
+
 
 class CollecteAttributionCard extends StatefulWidget {
   final BaseCollecte collecte;
@@ -766,17 +766,25 @@ class _CollecteAttributionCardState extends State<CollecteAttributionCard> {
                     final produits = info.produitsConformesDisponibles
                         .map((qc) => ProductControle(
                               id: '${widget.collecte.id}_${qc.containerCode}',
-                              collecteId: widget.collecte.id,
-                              containerCode: qc.containerCode,
-                              collecteType: _determineSection(widget.collecte),
-                              localite: _getCollecteLocation(widget.collecte),
-                              technicien: widget.collecte.technicien ?? '',
+                              codeContenant: qc.containerCode,
                               dateReception: widget.collecte.date,
-                              productType: _getProductTypeFromSection(
-                                  _determineSection(widget.collecte)),
-                              quantity: qc.totalWeight,
-                              qualityControl: qc,
-                              isAttributed: false,
+                              producteur: widget.collecte.technicien ?? '',
+                              village: _getCollecteLocation(widget.collecte),
+                              commune: _getCollecteLocation(widget.collecte),
+                              quartier: '',
+                              nature: ProductNature.brut,
+                              typeContenant: 'Standard',
+                              numeroContenant: qc.containerCode,
+                              poidsTotal: qc.totalWeight,
+                              poidsMiel: qc.totalWeight,
+                              qualite: 'Bon',
+                              predominanceFlorale: 'Standard',
+                              estConforme: true,
+                              dateControle: DateTime.now(),
+                              siteOrigine: _getCollecteLocation(widget.collecte),
+                              collecteId: widget.collecte.id,
+                              typeCollecte: _determineSection(widget.collecte).toString(),
+                              dateCollecte: widget.collecte.date,
                             ))
                         .toList();
 
@@ -869,22 +877,12 @@ class _CollecteAttributionCardState extends State<CollecteAttributionCard> {
         return Icons.science;
       case HoneyNature.prefilitre:
         return Icons.filter_alt;
+      case HoneyNature.cire:
+        return Icons.build;
     }
   }
 
-  /// Détermine le type de produit depuis une section
-  ProductType _getProductTypeFromSection(Section section) {
-    switch (section) {
-      case Section.recoltes:
-        return ProductType.extraction;
-      case Section.scoop:
-        return ProductType.filtrage;
-      case Section.individuel:
-        return ProductType.filtrage;
-      case Section.miellerie:
-        return ProductType.filtrage;
-    }
-  }
+
 
   /// Widget pour afficher les informations de poids
   Widget _buildWeightItem(

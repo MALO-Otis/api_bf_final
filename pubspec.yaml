@@ -35,8 +35,8 @@ dependencies:
   firebase_auth:
   firebase_storage:
   supabase_flutter:
-  pdf:
-  printing:
+  pdf: ^3.10.7
+  printing: ^5.12.0
   collection:
   cloudinary_public:
   image_picker:
@@ -54,6 +54,7 @@ dependencies:
   fl_chart:
   share_plus: ^10.0.3
   permission_handler: ^11.3.1
+  path_provider: ^2.1.1
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -64,7 +65,6 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  get:
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -113,6 +113,12 @@ flutter:
   #       - asset: fonts/TrajanPro.ttf
   #       - asset: fonts/TrajanPro_Bold.ttf
   #         weight: 700
+  fonts:
+    - family: OpenSans
+      fonts:
+        - asset: assets/fonts/OpenSans-Regular.ttf
+        - asset: assets/fonts/OpenSans-Bold.ttf
+          weight: 700
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package

@@ -126,11 +126,29 @@ class ScoopModel {
 
 /// Types de contenants autorisés
 enum ContenantType {
-  seau('Fût'),
-  bidon('Bidon');
+  seau('Seau'), // 🔧 Correction: seau doit afficher "Seau"
+  bidon('Bidon'),
+  fut('Fût'), // 🆕 Ajout du fût comme type séparé
+  sac('Sac');
 
   const ContenantType(this.label);
   final String label;
+
+  /// Retourne les types de contenants disponibles selon le type de miel
+  static List<ContenantType> getTypesForMiel(MielType typeMiel) {
+    if (typeMiel == MielType.cire) {
+      // 🆕 Pour la cire, seul le sac est autorisé
+      return [ContenantType.sac];
+    } else {
+      // Pour les autres types (Liquide, Brute), tous les contenants sont disponibles
+      return [
+        ContenantType.seau,
+        ContenantType.bidon,
+        ContenantType.fut,
+        ContenantType.sac
+      ];
+    }
+  }
 }
 
 /// Types de miel autorisés
@@ -264,6 +282,8 @@ class CollecteScoopModel {
   final String site;
   final DateTime createdAt;
   final String statut;
+  // Champs de géolocalisation
+  final Map<String, dynamic>? geolocationData;
 
   CollecteScoopModel({
     required this.id,
@@ -280,6 +300,7 @@ class CollecteScoopModel {
     required this.site,
     required this.createdAt,
     this.statut = 'collecte_terminee',
+    this.geolocationData,
   });
 
   factory CollecteScoopModel.fromFirestore(DocumentSnapshot doc) {
@@ -305,11 +326,12 @@ class CollecteScoopModel {
           ? (data['created_at'] as Timestamp).toDate()
           : DateTime.now(), // 🔧 Fallback si null
       statut: data['statut'] ?? 'collecte_terminee',
+      geolocationData: data['geolocation_data'] as Map<String, dynamic>?,
     );
   }
 
   Map<String, dynamic> toFirestore() {
-    return {
+    final data = {
       'date_achat': Timestamp.fromDate(dateAchat),
       'periode_collecte': periodeCollecte,
       'scoop_id': scoopId,
@@ -325,6 +347,13 @@ class CollecteScoopModel {
       'created_at': Timestamp.fromDate(createdAt),
       'statut': statut,
     };
+
+    // Ajouter les données de géolocalisation si disponibles
+    if (geolocationData != null && geolocationData!.isNotEmpty) {
+      data['geolocation_data'] = geolocationData!;
+    }
+
+    return data;
   }
 
   int get nombreBidons =>
@@ -333,6 +362,26 @@ class CollecteScoopModel {
       contenants.where((c) => c.typeContenant == ContenantType.seau).length;
 
   Set<String> get mielTypes => contenants.map((c) => c.typeMiel.label).toSet();
+
+  /// Retourne la localisation formatée à partir des données GPS
+  String get localisationFormatee {
+    if (geolocationData == null) return 'Non spécifié';
+
+    final latitude = geolocationData!['latitude'];
+    final longitude = geolocationData!['longitude'];
+    final accuracy = geolocationData!['accuracy'];
+
+    if (latitude != null && longitude != null) {
+      final latStr = latitude.toStringAsFixed(6);
+      final lngStr = longitude.toStringAsFixed(6);
+      final accuracyStr =
+          accuracy != null ? '±${accuracy.toStringAsFixed(1)}m' : '';
+
+      return 'GPS: $latStr, $lngStr $accuracyStr';
+    }
+
+    return 'Non spécifié';
+  }
 }
 
 /// Périodes prédéfinies pour la collecte

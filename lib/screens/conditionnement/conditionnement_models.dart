@@ -4,6 +4,7 @@
 /// avec calculs automatiques et validation stricte
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 /// Enum pour les modes de vente
 enum VenteMode {
@@ -68,9 +69,10 @@ class EmballageType {
     return nombreSaisi * multiplicateur;
   }
 
-  /// Calcul du poids total
+  /// Calcul du poids total (UNITÉS INDIVIDUELLES)
   double getPoidsTotal(int nombreSaisi) {
-    return getNombreUnitesReelles(nombreSaisi) * contenanceKg;
+    // 🔄 CORRECTION: Utiliser directement les unités saisies, ignorer le multiplicateur
+    return nombreSaisi * contenanceKg;
   }
 
   /// Calcul du prix total
@@ -393,72 +395,145 @@ class ConditionnementData {
     return recap;
   }
 
+  /// 🔥 OPTIMISÉ : Seulement les champs essentiels (économie Firestore)
   Map<String, dynamic> toFirestore() {
     return {
+      // 📅 TEMPS
       'date': Timestamp.fromDate(dateConditionnement),
-      'lotFiltrageId': lotOrigine.id,
-      'collecteId': lotOrigine.collecteId,
-      'lotOrigine': lotOrigine.lotOrigine,
-      'predominanceFlorale': lotOrigine.predominanceFlorale,
-      'quantiteRecue': lotOrigine.quantiteRecue,
-      'quantiteConditionnee': quantiteConditionnee,
-      'quantiteRestante': quantiteRestante,
-      'emballages': emballages.map((e) => e.toMap()).toList(),
-      'nbTotalPots': nbTotalPots,
-      'prixTotal': prixTotal,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'observations': observations,
-      'typeFlorale': lotOrigine.typeFlorale.label,
-      'site': lotOrigine.site,
-      'technicien': lotOrigine.technicien,
+
+      // 🔗 RÉFÉRENCES ESSENTIELLES
+      'lotId': lotOrigine.id,
+      'lot': lotOrigine.lotOrigine,
+
+      // 📊 QUANTITÉS CLÉS
+      'qteConditionnee': quantiteConditionnee,
+      'qteRestante': quantiteRestante,
+      'nbPots': nbTotalPots,
+      'prix': prixTotal,
+
+      // 📦 EMBALLAGES (format compact)
+      'emballages': emballages
+          .map((e) => {
+                'type': e.type.nom,
+                'nb': e.nombreSaisi,
+                'kg': e.type.contenanceKg,
+              })
+          .toList(),
+
+      // 📝 OPTIONNEL
+      if (observations?.isNotEmpty == true) 'notes': observations,
     };
   }
 
   factory ConditionnementData.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    try {
+      final data = doc.data() as Map<String, dynamic>;
 
-    // Reconstruction du lot (données minimales)
-    final lotOrigine = LotFiltre(
-      id: data['lotFiltrageId'] ?? '',
-      lotOrigine: data['lotOrigine'] ?? '',
-      collecteId: data['collecteId'] ?? '',
-      quantiteRecue: (data['quantiteRecue'] ?? 0).toDouble(),
-      quantiteRestante: (data['quantiteRestante'] ?? 0).toDouble(),
-      predominanceFlorale: data['predominanceFlorale'] ?? '',
-      dateFiltrage: DateTime.now(), // Placeholder
-      site: data['site'] ?? '',
-      technicien: data['technicien'] ?? '',
-      estConditionne: true,
-    );
+      debugPrint('🔍 [ConditionnementData] Parsing document ${doc.id}');
+      debugPrint(
+          '📊 [ConditionnementData] Clés disponibles: ${data.keys.toList()}');
 
-    // Reconstruction des emballages
-    final emballagesList = (data['emballages'] as List<dynamic>? ?? []);
-    final emballages = <EmballageSelectionne>[];
-
-    for (final embData in emballagesList) {
-      final typeId = embData['typeId'] ?? embData['type'];
-      final emballageType = EmballagesConfig.getEmballageById(typeId);
-      if (emballageType != null) {
-        emballages.add(EmballageSelectionne(
-          type: emballageType,
-          nombreSaisi: embData['nombreSaisi'] ?? 0,
-          typeFlorale: lotOrigine.typeFlorale,
-        ));
+      // Vérification des champs obligatoires
+      if (!data.containsKey('date')) {
+        throw Exception('Champ "date" manquant dans le document ${doc.id}');
       }
-    }
+      if (!data.containsKey('emballages')) {
+        throw Exception(
+            'Champ "emballages" manquant dans le document ${doc.id}');
+      }
 
-    return ConditionnementData(
-      id: doc.id,
-      dateConditionnement: (data['date'] as Timestamp).toDate(),
-      lotOrigine: lotOrigine,
-      emballages: emballages,
-      quantiteConditionnee: (data['quantiteConditionnee'] ?? 0).toDouble(),
-      quantiteRestante: (data['quantiteRestante'] ?? 0).toDouble(),
-      prixTotal: (data['prixTotal'] ?? 0).toDouble(),
-      nbTotalPots: data['nbTotalPots'] ?? 0,
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      observations: data['observations'],
-    );
+      // Reconstruction du lot (données minimales)
+      final lotOrigine = LotFiltre(
+        id: data['lotFiltrageId'] ?? doc.id,
+        lotOrigine: data['lotOrigine'] ?? 'LOT-${doc.id}',
+        collecteId: data['collecteId'] ?? '',
+        quantiteRecue: (data['quantiteRecue'] ?? 0).toDouble(),
+        quantiteRestante: (data['quantiteRestante'] ?? 0).toDouble(),
+        predominanceFlorale: data['predominanceFlorale'] ?? 'Mille fleurs',
+        dateFiltrage: DateTime.now(), // Placeholder
+        site: data['site'] ?? 'Inconnu',
+        technicien: data['technicien'] ?? 'Inconnu',
+        estConditionne: true,
+      );
+
+      debugPrint(
+          '✅ [ConditionnementData] Lot origine créé: ${lotOrigine.lotOrigine}');
+
+      // Reconstruction des emballages
+      final emballagesList = (data['emballages'] as List<dynamic>? ?? []);
+      final emballages = <EmballageSelectionne>[];
+
+      debugPrint(
+          '📦 [ConditionnementData] Parsing ${emballagesList.length} emballages');
+
+      for (int i = 0; i < emballagesList.length; i++) {
+        try {
+          final embData = emballagesList[i];
+          final embDataMap = embData as Map<String, dynamic>;
+          final typeId =
+              embDataMap['typeId'] ?? embDataMap['type'] ?? embDataMap['nom'];
+
+          debugPrint('   📦 Emballage $i: typeId=$typeId, data=$embDataMap');
+
+          final emballageType = EmballagesConfig.getEmballageById(typeId);
+          if (emballageType != null) {
+            emballages.add(EmballageSelectionne(
+              type: emballageType,
+              nombreSaisi: (embDataMap['nombreSaisi'] ?? 0).toInt(),
+              typeFlorale: lotOrigine.typeFlorale,
+            ));
+            debugPrint(
+                '   ✅ Emballage ajouté: ${emballageType.nom} x ${embDataMap['nombreSaisi']}');
+          } else {
+            debugPrint('   ⚠️ Type d\'emballage non trouvé pour: $typeId');
+          }
+        } catch (e) {
+          debugPrint('   ❌ Erreur parsing emballage $i: $e');
+        }
+      }
+
+      // Gestion des dates
+      DateTime dateConditionnement;
+      DateTime createdAt;
+
+      try {
+        dateConditionnement = (data['date'] as Timestamp).toDate();
+      } catch (e) {
+        debugPrint(
+            '⚠️ [ConditionnementData] Erreur parsing date: $e, utilisation date actuelle');
+        dateConditionnement = DateTime.now();
+      }
+
+      try {
+        createdAt = (data['createdAt'] as Timestamp).toDate();
+      } catch (e) {
+        debugPrint(
+            '⚠️ [ConditionnementData] Erreur parsing createdAt: $e, utilisation date de conditionnement');
+        createdAt = dateConditionnement;
+      }
+
+      final conditionnement = ConditionnementData(
+        id: doc.id,
+        dateConditionnement: dateConditionnement,
+        lotOrigine: lotOrigine,
+        emballages: emballages,
+        quantiteConditionnee: (data['quantiteConditionnee'] ?? 0).toDouble(),
+        quantiteRestante: (data['quantiteRestante'] ?? 0).toDouble(),
+        prixTotal: (data['prixTotal'] ?? 0).toDouble(),
+        nbTotalPots: (data['nbTotalPots'] ?? 0).toInt(),
+        createdAt: createdAt,
+        observations: data['observations']?.toString(),
+      );
+
+      debugPrint(
+          '✅ [ConditionnementData] Conditionnement créé avec succès: ${conditionnement.lotOrigine.lotOrigine}');
+      return conditionnement;
+    } catch (e) {
+      debugPrint(
+          '❌ [ConditionnementData] Erreur complète parsing document ${doc.id}: $e');
+      debugPrint('📊 [ConditionnementData] Données du document: ${doc.data()}');
+      rethrow;
+    }
   }
 }
 

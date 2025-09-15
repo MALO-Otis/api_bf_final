@@ -470,7 +470,7 @@
             ),
             Row(
               children: [
-                Icon(Icons.attach_money, size: 16, color: Colors.orange),
+                Icon(Icons.text_fields, size: 16, color: Colors.orange),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -741,7 +741,7 @@
                                 Icon(Icons.scale, size: 16, color: Colors.teal),
                                 Text(" ${quantite}kg  ",
                                     style: const TextStyle(fontSize: 13)),
-                                Icon(Icons.attach_money,
+                                Icon(Icons.text_fields,
                                     size: 16, color: Colors.orange),
                                 Text(" $montantTotal FCFA",
                                     style: const TextStyle(fontSize: 13)),

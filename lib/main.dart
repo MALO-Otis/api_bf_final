@@ -1,21 +1,22 @@
-// import 'package:apisavana_gestion/screens/collecte_de_donnes/collecte_donnes.dart'; // ANCIEN CODE - DÉSACTIVÉ
-import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
-import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collectes.dart';
-import 'package:apisavana_gestion/screens/commercialisation/commer_home.dart';
-import 'package:apisavana_gestion/screens/conditionnement/condionnement_home.dart';
-import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
-import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
-import 'package:apisavana_gestion/screens/extraction_page/extraction.dart';
-import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/date_symbol_data_local.dart';
-
+import 'utils/auth_wrapper.dart';
 import 'authentication/login.dart';
 import 'authentication/sign_up.dart';
+import 'package:flutter/material.dart';
 import 'authentication/user_session.dart';
-import 'utils/auth_wrapper.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'screens/caisse/pages/espace_caissier_page.dart';
+import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
+import 'screens/conditionnement/services/conditionnement_db_service.dart';
+import 'package:apisavana_gestion/screens/extraction_page/extraction.dart';
+import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
+import 'package:apisavana_gestion/screens/commercialisation/commer_home.dart';
+import 'package:apisavana_gestion/screens/conditionnement/condionnement_home.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collectes.dart';
+import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
+// import 'package:apisavana_gestion/screens/collecte_de_donnes/collecte_donnes.dart'; // ANCIEN CODE - DÉSACTIVÉ
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,7 +34,9 @@ void main() async {
 
   await initializeDateFormatting('fr_FR', null);
 
+  // Initialiser les services
   Get.put(UserSession());
+  Get.put(ConditionnementDbService());
 
   runApp(const ApisavanaApp());
 }
@@ -48,7 +51,8 @@ class ApisavanaApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.amber,
-        fontFamily: 'Montserrat',
+        // Police globale définie via pubspec.yaml
+        fontFamily: 'OpenSans',
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       // Utilisation de l'AuthWrapper comme page d'accueil
@@ -73,6 +77,7 @@ class ApisavanaApp extends StatelessWidget {
         GetPage(
             name: '/gestion_de_ventes',
             page: () => CommercialisationHomePage()),
+        GetPage(name: '/caisse', page: () => const EspaceCaissierPage()),
       ],
     );
   }

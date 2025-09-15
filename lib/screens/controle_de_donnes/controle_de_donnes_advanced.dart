@@ -2311,7 +2311,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
         label: isMobile ? 'Montant' : 'Montant total',
         value: Formatters.formatFCFA(stats.montant),
         tone: StatCardTone.warning,
-        icon: Icons.attach_money,
+        icon: Icons.text_fields,
       ),
       StatCard(
         label: isMobile ? 'Contenants' : 'Nombre de contenants',

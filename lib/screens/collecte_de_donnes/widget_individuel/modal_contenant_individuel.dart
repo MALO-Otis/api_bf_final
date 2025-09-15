@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../data/models/collecte_models.dart';
+import '../../../../widgets/money_icon_widget.dart';
 import '../../../../data/personnel/personnel_apisavana.dart';
 
 class ModalContenantIndividuel extends StatefulWidget {
@@ -56,7 +57,17 @@ class _ModalContenantIndividuelState extends State<ModalContenantIndividuel> {
 
   final List<String> _typesRuche = ['Traditionnelle', 'Moderne'];
   final List<String> _typesMiel = ['Liquide', 'Cristallisé', 'Cire'];
-  final List<String> _typesContenant = ['Bidon', 'Seau', 'Fût'];
+
+  /// Retourne les types de contenants disponibles selon le type de miel sélectionné
+  List<String> _getAvailableContenantTypes() {
+    if (_typeMiel == 'Cire') {
+      // 🆕 Pour la cire, seul le sac est autorisé
+      return ['Sac'];
+    } else {
+      // Pour les autres types de miel (Liquide, Cristallisé), tous les contenants sont disponibles
+      return ['Bidon', 'Seau', 'Fût'];
+    }
+  }
 
   @override
   void initState() {
@@ -163,6 +174,14 @@ class _ModalContenantIndividuelState extends State<ModalContenantIndividuel> {
                           if (_typeMiel != 'Cire') {
                             _typeCire = null;
                             _couleurCire = null;
+                          }
+                          // 🆕 Si on passe à Cire, forcer le type de contenant à Sac
+                          if (_typeMiel == 'Cire') {
+                            _typeContenant = 'Sac';
+                          }
+                          // Si on passe à un autre type que Cire, remettre à Bidon par défaut
+                          else {
+                            _typeContenant = 'Bidon';
                           }
                         });
                       },
@@ -284,13 +303,16 @@ class _ModalContenantIndividuelState extends State<ModalContenantIndividuel> {
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      value: _typeContenant,
+                      value:
+                          _getAvailableContenantTypes().contains(_typeContenant)
+                              ? _typeContenant
+                              : _getAvailableContenantTypes().first,
                       decoration: InputDecoration(
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8)),
                         prefixIcon: const Icon(Icons.inventory),
                       ),
-                      items: _typesContenant.map((type) {
+                      items: _getAvailableContenantTypes().map((type) {
                         return DropdownMenuItem(
                           value: type,
                           child: Text(type),
@@ -448,7 +470,7 @@ class _ModalContenantIndividuelState extends State<ModalContenantIndividuel> {
                             decoration: InputDecoration(
                               border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8)),
-                              prefixIcon: const Icon(Icons.monetization_on),
+                              prefixIcon: const SimpleMoneyIcon(),
                               hintText: '0',
                               suffixText:
                                   _typeMiel == 'Cire' ? 'CFA/sac' : 'CFA/kg',

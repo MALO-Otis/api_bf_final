@@ -325,8 +325,8 @@ class _NouvelleCollecteRecoltePageState
             for (int i = 0; i < contenants.length; i++) {
               final contenant = contenants[i];
               print(
-                  '🔄   - Contenant $i: ${contenant is Map ? (contenant as Map).keys.toList() : contenant.runtimeType}');
-              if (contenant is Map<String, dynamic>) {
+                  '🔄   - Contenant $i: ${contenant is Map ? contenant.keys.toList() : contenant.runtimeType}');
+              if (contenant is Map) {
                 print('🔄     * ID: ${contenant['id']}');
                 print(
                     '🔄     * ControlInfo présent: ${contenant.containsKey('controlInfo')}');
@@ -415,7 +415,7 @@ class _NouvelleCollecteRecoltePageState
     setState(() => isLoadingHistory = false);
   }
 
-  // Ajout ou édition d'un contenant avec validation stricte
+  // Ajout ou édition d'un contenant avec validation stricte et calculs automatiques
   void addOrEditContainer() {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
@@ -480,18 +480,44 @@ class _NouvelleCollecteRecoltePageState
         weight = null;
         unitPrice = null;
         statusMessage = null; // Effacer le message d'erreur
+
+        // 🔄 Force le recalcul et la mise à jour de l'interface
+        print(
+            '✅ Contenant ajouté/modifié - Total actuel: ${totalAmount.toStringAsFixed(0)} FCFA | ${totalWeight.toStringAsFixed(2)} kg');
+      });
+
+      // 🔄 Force un second setState pour garantir la mise à jour
+      Future.microtask(() {
+        if (mounted) {
+          setState(() {
+            // Trigger une mise à jour explicite de l'interface
+          });
+        }
       });
     }
   }
 
-  // Suppression d'un contenant
+  // Suppression d'un contenant avec calculs automatiques
   void removeContainer(String id) {
     setState(() {
       containers.removeWhere((c) => c.id == id);
+
+      // 🔄 Force le recalcul et la mise à jour de l'interface
+      print(
+          '✅ Contenant supprimé - Total actuel: ${totalAmount.toStringAsFixed(0)} FCFA | ${totalWeight.toStringAsFixed(2)} kg');
+    });
+
+    // 🔄 Force un second setState pour garantir la mise à jour
+    Future.microtask(() {
+      if (mounted) {
+        setState(() {
+          // Trigger une mise à jour explicite de l'interface
+        });
+      }
     });
   }
 
-  // Pré-remplir le formulaire pour édition
+  // Pré-remplir le formulaire pour édition avec mise à jour automatique
   void editContainer(HarvestContainer c) {
     setState(() {
       editingId = c.id;
@@ -499,6 +525,10 @@ class _NouvelleCollecteRecoltePageState
       containerType = c.containerType;
       weight = c.weight;
       unitPrice = c.unitPrice;
+
+      // 🔄 Log pour le debug
+      print(
+          '✏️ Édition du contenant: ${c.hiveType} - ${c.containerType} | ${c.weight} kg | ${c.unitPrice} FCFA');
     });
   }
 
@@ -1562,81 +1592,108 @@ class _NouvelleCollecteRecoltePageState
                 ),
               ),
             const SizedBox(height: 24),
-            // Totaux dans une section encadrée
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    kValidationColor.withOpacity(0.05),
-                    kValidationColor.withOpacity(0.1)
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+            // Totaux dans une section encadrée - Calculs automatiques améliorés
+            Builder(builder: (context) {
+              // 🔄 Recalcul en temps réel des totaux
+              final currentTotalWeight =
+                  containers.fold(0.0, (sum, c) => sum + c.weight);
+              final currentTotalAmount =
+                  containers.fold(0.0, (sum, c) => sum + c.total);
+
+              print(
+                  '🔄 Interface - Totaux recalculés: ${currentTotalAmount.toStringAsFixed(0)} FCFA | ${currentTotalWeight.toStringAsFixed(2)} kg');
+
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      kValidationColor.withOpacity(0.05),
+                      kValidationColor.withOpacity(0.1)
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                      color: kValidationColor.withOpacity(0.3), width: 2),
                 ),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                    color: kValidationColor.withOpacity(0.3), width: 2),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Total poids:',
-                          style:
-                              Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: kValidationColor,
-                                  )),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: kValidationColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Total poids:',
+                            style:
+                                Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: kValidationColor,
+                                    )),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: kValidationColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                              '${currentTotalWeight.toStringAsFixed(2)} kg',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: kValidationColor,
+                              )),
                         ),
-                        child: Text('${totalWeight.toStringAsFixed(2)} kg',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: kValidationColor,
-                            )),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Montant total:',
+                            style:
+                                Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: kValidationColor,
+                                    )),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                                color: Colors.green.withOpacity(0.3)),
+                          ),
+                          child: Text(
+                              '${currentTotalAmount.toStringAsFixed(0)} FCFA',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                                color: Colors.green,
+                              )),
+                        ),
+                      ],
+                    ),
+                    // 🆕 Indicateur du nombre de contenants
+                    if (containers.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '${containers.length} contenant${containers.length > 1 ? 's' : ''} ajouté${containers.length > 1 ? 's' : ''}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                          fontStyle: FontStyle.italic,
+                        ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Montant total:',
-                          style:
-                              Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: kValidationColor,
-                                  )),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border:
-                              Border.all(color: Colors.green.withOpacity(0.3)),
-                        ),
-                        child: Text('${totalAmount.toStringAsFixed(0)} FCFA',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                              color: Colors.green,
-                            )),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+                  ],
+                ),
+              );
+            }),
             const SizedBox(height: 24),
             // Bouton de finalisation amélioré
             Center(
@@ -2239,7 +2296,7 @@ class _NouvelleCollecteRecoltePageState
     for (int i = 0; i < contenants.length; i++) {
       final contenant = contenants[i];
       print(
-          '🎨 Contenant $i: ${contenant is Map ? (contenant as Map).keys.toList() : contenant.runtimeType}');
+          '🎨 Contenant $i: ${contenant is Map ? contenant.keys.toList() : contenant.runtimeType}');
       if (contenant is Map<String, dynamic>) {
         print('🎨   - ID: ${contenant['id']}');
         print('🎨   - ControlInfo: ${contenant['controlInfo']}');

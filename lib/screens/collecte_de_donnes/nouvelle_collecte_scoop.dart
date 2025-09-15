@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:apisavana_gestion/authentication/user_session.dart';
 
 class NouvelleCollecteScoopPage extends StatefulWidget {
@@ -54,6 +55,10 @@ class _NouvelleCollecteScoopPageState extends State<NouvelleCollecteScoopPage> {
 
   // État de chargement
   bool isSaving = false;
+  bool isGettingLocation = false;
+
+  // Données de géolocalisation
+  Map<String, dynamic>? _geolocationData;
 
   @override
   void initState() {
@@ -183,8 +188,74 @@ class _NouvelleCollecteScoopPageState extends State<NouvelleCollecteScoopPage> {
       selectedDate = DateTime.now();
       selectedQualite = 'Standard';
       produits.clear();
+      _geolocationData = null;
       _addNewProduit();
     });
+  }
+
+  // Obtenir la géolocalisation GPS
+  Future<void> _getCurrentLocation() async {
+    setState(() => isGettingLocation = true);
+
+    try {
+      // Vérifier les permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw Exception('Permission de géolocalisation refusée');
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        throw Exception(
+            'Permission de géolocalisation définitivement refusée. Activez-la dans les paramètres.');
+      }
+
+      // Obtenir la position GPS
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      String address =
+          'Lat: ${position.latitude.toStringAsFixed(6)}, Lng: ${position.longitude.toStringAsFixed(6)}';
+
+      setState(() {
+        _geolocationData = {
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'accuracy': position.accuracy,
+          'altitude': position.altitude,
+          'heading': position.heading,
+          'speed': position.speed,
+          'timestamp': position.timestamp,
+          'address': address,
+        };
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Position GPS obtenue avec une précision de ${position.accuracy.toStringAsFixed(1)} m',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Erreur géolocalisation: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur de géolocalisation: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => isGettingLocation = false);
+    }
   }
 
   // Sauvegarder la collecte
@@ -266,6 +337,8 @@ class _NouvelleCollecteScoopPageState extends State<NouvelleCollecteScoopPage> {
         'status': 'en_attente',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
+        // 🆕 Données de géolocalisation GPS
+        if (_geolocationData != null) 'geolocationData': _geolocationData,
       };
 
       print(
@@ -432,6 +505,11 @@ class _NouvelleCollecteScoopPageState extends State<NouvelleCollecteScoopPage> {
 
             // Résumé
             _buildSummaryCard(),
+
+            const SizedBox(height: 20),
+
+            // 🆕 Section Géolocalisation GPS
+            _buildGeolocationSection(),
 
             const SizedBox(height: 20),
 
@@ -735,7 +813,7 @@ class _NouvelleCollecteScoopPageState extends State<NouvelleCollecteScoopPage> {
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
                       labelText: 'Prix unitaire (FCFA/kg)',
-                      prefixIcon: const Icon(Icons.attach_money),
+                      prefixIcon: const Icon(Icons.text_fields),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -828,7 +906,7 @@ class _NouvelleCollecteScoopPageState extends State<NouvelleCollecteScoopPage> {
             _buildSummaryItem(
               'Montant total',
               '${totals['totalAmount']!.toStringAsFixed(0)} FCFA',
-              Icons.attach_money,
+              Icons.text_fields,
               kPrimaryColor,
             ),
           ],
@@ -861,5 +939,250 @@ class _NouvelleCollecteScoopPageState extends State<NouvelleCollecteScoopPage> {
         ),
       ],
     );
+  }
+
+  // 🆕 Section Géolocalisation GPS
+  Widget _buildGeolocationSection() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.location_on, color: Colors.green.shade600),
+                const SizedBox(width: 8),
+                Text(
+                  'Géolocalisation GPS',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green.shade600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Bouton de géolocalisation
+            Container(
+              width: double.infinity,
+              height: 120,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.blue.shade400,
+                    Colors.green.shade400,
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.blue.shade200,
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: isGettingLocation ? null : _getCurrentLocation,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (isGettingLocation)
+                          const CircularProgressIndicator(
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              _geolocationData == null
+                                  ? Icons.my_location
+                                  : Icons.location_on,
+                              size: 32,
+                              color: Colors.white,
+                            ),
+                          ),
+                        const SizedBox(height: 12),
+                        Text(
+                          isGettingLocation
+                              ? 'Obtention de la position...'
+                              : _geolocationData == null
+                                  ? 'Obtenir ma position GPS'
+                                  : 'Position GPS obtenue ✓',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            if (_geolocationData != null) ...[
+              const SizedBox(height: 16),
+
+              // Affichage des données GPS
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.check_circle, color: Colors.green.shade600),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Données GPS enregistrées',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green.shade800,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Grille des informations GPS
+                    GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                      childAspectRatio: 3,
+                      children: [
+                        _buildGPSInfoCard(
+                          'Latitude',
+                          _geolocationData!['latitude'].toStringAsFixed(6),
+                          Icons.north,
+                        ),
+                        _buildGPSInfoCard(
+                          'Longitude',
+                          _geolocationData!['longitude'].toStringAsFixed(6),
+                          Icons.east,
+                        ),
+                        _buildGPSInfoCard(
+                          'Précision',
+                          '${_geolocationData!['accuracy'].toStringAsFixed(1)} m',
+                          Icons.center_focus_strong,
+                        ),
+                        _buildGPSInfoCard(
+                          'Horodatage',
+                          _formatTimestamp(_geolocationData!['timestamp']),
+                          Icons.access_time,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            if (_geolocationData == null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.orange.shade600),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'La géolocalisation GPS est recommandée pour tracer précisément le lieu de collecte.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.orange.shade800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGPSInfoCard(String title, String value, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: Colors.grey.shade600, size: 16),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatTimestamp(DateTime? timestamp) {
+    if (timestamp == null) return 'N/A';
+    return '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}';
   }
 }

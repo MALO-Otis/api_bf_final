@@ -252,6 +252,8 @@ class CollecteIndividuelleModel {
   final String collecteurNom;
   final String observations;
   final Timestamp createdAt;
+  // Champs de géolocalisation
+  final Map<String, dynamic>? geolocationData;
 
   CollecteIndividuelleModel({
     required this.idCollecte,
@@ -268,6 +270,7 @@ class CollecteIndividuelleModel {
     required this.collecteurNom,
     required this.observations,
     required this.createdAt,
+    this.geolocationData,
   });
 
   factory CollecteIndividuelleModel.fromFirestore(DocumentSnapshot doc) {
@@ -303,11 +306,12 @@ class CollecteIndividuelleModel {
       collecteurNom: data['collecteur_nom']?.toString() ?? '',
       observations: data['observations']?.toString() ?? '',
       createdAt: data['created_at'] as Timestamp? ?? Timestamp.now(),
+      geolocationData: data['geolocation_data'] as Map<String, dynamic>?,
     );
   }
 
   Map<String, dynamic> toFirestore() {
-    return {
+    final data = {
       'date_achat': dateAchat,
       'periode_collecte': periodeCollecte,
       'poids_total': poidsTotal,
@@ -322,6 +326,33 @@ class CollecteIndividuelleModel {
       'observations': observations,
       'created_at': createdAt,
     };
+
+    // Ajouter les données de géolocalisation si disponibles
+    if (geolocationData != null && geolocationData!.isNotEmpty) {
+      data['geolocation_data'] = geolocationData!;
+    }
+
+    return data;
+  }
+
+  /// Retourne la localisation formatée à partir des données GPS
+  String get localisationFormatee {
+    if (geolocationData == null) return 'Non spécifié';
+
+    final latitude = geolocationData!['latitude'];
+    final longitude = geolocationData!['longitude'];
+    final accuracy = geolocationData!['accuracy'];
+
+    if (latitude != null && longitude != null) {
+      final latStr = latitude.toStringAsFixed(6);
+      final lngStr = longitude.toStringAsFixed(6);
+      final accuracyStr =
+          accuracy != null ? '±${accuracy.toStringAsFixed(1)}m' : '';
+
+      return 'GPS: $latStr, $lngStr $accuracyStr';
+    }
+
+    return 'Non spécifié';
   }
 }
 

@@ -153,82 +153,83 @@ class _UserManagementPageState extends State<UserManagementPage>
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // Statistiques en haut
-          UserStatisticsWidget(
-            userService: _userService,
-            isMobile: isMobile,
-          ),
-
-          // Onglets
-          Container(
-            color: Colors.white,
-            child: TabBar(
-              controller: _tabController,
-              indicatorColor: const Color(0xFF2196F3),
-              labelColor: const Color(0xFF2196F3),
-              unselectedLabelColor: Colors.grey[600],
-              tabs: [
-                Tab(
-                  icon: const Icon(Icons.people, size: 20),
-                  text: isMobile ? '' : 'Utilisateurs',
-                ),
-                Tab(
-                  icon: const Icon(Icons.analytics, size: 20),
-                  text: isMobile ? '' : 'Statistiques',
-                ),
-                Tab(
-                  icon: const Icon(Icons.history, size: 20),
-                  text: isMobile ? '' : 'Historique',
-                ),
-                Tab(
-                  icon: const Icon(Icons.online_prediction, size: 20),
-                  text: isMobile ? '' : 'En ligne',
-                ),
-              ],
+      body: NestedScrollView(
+        headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
+          return <Widget>[
+            // Statistiques fixes en haut
+            SliverToBoxAdapter(
+              child: UserStatisticsWidget(
+                userService: _userService,
+                isMobile: isMobile,
+              ),
             ),
-          ),
-
-          // Contenu des onglets
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                // Onglet Utilisateurs
-                _buildUsersTab(isMobile, isTablet),
-
-                // Onglet Statistiques
-                _buildStatisticsTab(isMobile, isTablet),
-
-                // Onglet Historique
-                _buildHistoryTab(isMobile, isTablet),
-
-                // Onglet Utilisateurs en ligne
-                _buildOnlineUsersTab(isMobile, isTablet),
-              ],
+            // Onglets fixes
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _SliverAppBarDelegate(
+                TabBar(
+                  controller: _tabController,
+                  indicatorColor: const Color(0xFF2196F3),
+                  labelColor: const Color(0xFF2196F3),
+                  unselectedLabelColor: Colors.grey[600],
+                  tabs: [
+                    Tab(
+                      icon: const Icon(Icons.people, size: 20),
+                      text: isMobile ? '' : 'Utilisateurs',
+                    ),
+                    Tab(
+                      icon: const Icon(Icons.analytics, size: 20),
+                      text: isMobile ? '' : 'Statistiques',
+                    ),
+                    Tab(
+                      icon: const Icon(Icons.history, size: 20),
+                      text: isMobile ? '' : 'Historique',
+                    ),
+                    Tab(
+                      icon: const Icon(Icons.online_prediction, size: 20),
+                      text: isMobile ? '' : 'En ligne',
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
-        ],
+          ];
+        },
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            // Onglet Utilisateurs
+            _buildUsersTab(isMobile, isTablet),
+
+            // Onglet Statistiques
+            _buildStatisticsTab(isMobile, isTablet),
+
+            // Onglet Historique
+            _buildHistoryTab(isMobile, isTablet),
+
+            // Onglet Utilisateurs en ligne
+            _buildOnlineUsersTab(isMobile, isTablet),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildUsersTab(bool isMobile, bool isTablet) {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          // Filtres
-          UserFiltersWidget(
-            filters: _filters.value,
-            onFiltersChanged: _applyFilters,
-            availableRoles: _userService.availableRoles,
-            availableSites: _userService.availableSites,
-            isMobile: isMobile,
-          ),
+    return Column(
+      children: [
+        // Filtres
+        UserFiltersWidget(
+          filters: _filters.value,
+          onFiltersChanged: _applyFilters,
+          availableRoles: _userService.availableRoles,
+          availableSites: _userService.availableSites,
+          isMobile: isMobile,
+        ),
 
-          // Liste des utilisateurs
-          Obx(() => UserListWidget(
+        // Liste des utilisateurs
+        Expanded(
+          child: Obx(() => UserListWidget(
                 users: _users,
                 isLoading: _isLoading.value,
                 isMobile: isMobile,
@@ -240,41 +241,35 @@ class _UserManagementPageState extends State<UserManagementPage>
                 onUserResetPassword: _resetUserPassword,
                 onUserDelete: _deleteUser,
               )),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildStatisticsTab(bool isMobile, bool isTablet) {
-    return SingleChildScrollView(
-      child: UserStatisticsWidget(
-        userService: _userService,
-        isMobile: isMobile,
-      ),
+    return UserStatisticsWidget(
+      userService: _userService,
+      isMobile: isMobile,
     );
   }
 
   Widget _buildHistoryTab(bool isMobile, bool isTablet) {
-    return SingleChildScrollView(
-      child: Obx(() => UserActionsWidget(
-            actions: _recentActions,
-            isLoading: _isLoading.value,
-            isMobile: isMobile,
-          )),
-    );
+    return Obx(() => UserActionsWidget(
+          actions: _recentActions,
+          isLoading: _isLoading.value,
+          isMobile: isMobile,
+        ));
   }
 
   Widget _buildOnlineUsersTab(bool isMobile, bool isTablet) {
-    return SingleChildScrollView(
-      child: Obx(() {
-        final onlineUsers = _users.where((user) => user.isOnline).toList();
-        return UserOnlineWidget(
-          onlineUsers: onlineUsers,
-          isLoading: _isLoading.value,
-          isMobile: isMobile,
-        );
-      }),
-    );
+    return Obx(() {
+      final onlineUsers = _users.where((user) => user.isOnline).toList();
+      return UserOnlineWidget(
+        onlineUsers: onlineUsers,
+        isLoading: _isLoading.value,
+        isMobile: isMobile,
+      );
+    });
   }
 
   // Actions des utilisateurs
@@ -493,5 +488,31 @@ class _UserManagementPageState extends State<UserManagementPage>
         colorText: Colors.white,
       );
     }
+  }
+}
+
+/// Classe déléguée pour créer un header persistant
+class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
+  _SliverAppBarDelegate(this._tabBar);
+
+  final TabBar _tabBar;
+
+  @override
+  double get minExtent => _tabBar.preferredSize.height;
+  @override
+  double get maxExtent => _tabBar.preferredSize.height;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: Colors.white,
+      child: _tabBar,
+    );
+  }
+
+  @override
+  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
+    return false;
   }
 }

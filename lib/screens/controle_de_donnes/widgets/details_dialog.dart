@@ -388,7 +388,7 @@ class _DetailsDialogState extends State<DetailsDialog> {
                 StatMini(
                   label: 'Montant total',
                   value: Formatters.formatFCFA(widget.item!.totalAmount),
-                  icon: Icons.attach_money,
+                  icon: Icons.text_fields,
                   color: Colors.orange.shade600,
                 ),
                 StatMini(
@@ -1086,7 +1086,7 @@ class _DetailsDialogState extends State<DetailsDialog> {
                   context,
                   'Montant total',
                   Formatters.formatFCFA(widget.item!.totalAmount),
-                  Icons.attach_money,
+                  Icons.text_fields,
                   isVerySmall,
                 ),
               ),

@@ -1,8 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import '../../../data/models/collecte_models.dart';
 import '../../../data/services/stats_achats_individuels_service.dart';
+import '../../../data/services/collecte_protection_service.dart';
 
 class EditCollecteIndividuellePage extends StatefulWidget {
   final String documentPath; // ex: Sites/{site}/nos_achats_individuels/{id}
@@ -34,6 +36,9 @@ class _EditCollecteIndividuellePageState
   int _oldPots = 0;
   String _originalMonthKey = '';
 
+  // Données complètes de la collecte pour vérification protection
+  Map<String, dynamic> _collecteData = {};
+
   @override
   void initState() {
     super.initState();
@@ -48,6 +53,7 @@ class _EditCollecteIndividuellePageState
     try {
       final snap = await _docRef.get();
       final data = snap.data() ?? {};
+      _collecteData = data; // Sauvegarder les données complètes
       _id = snap.id;
       final ts = (data['date_achat'] as Timestamp?) ??
           data['created_at'] as Timestamp?;
@@ -116,6 +122,20 @@ class _EditCollecteIndividuellePageState
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
+      // Vérifier la protection avant de sauvegarder
+      final protectionStatus =
+          await CollecteProtectionService.checkCollecteModifiable(
+              _collecteData);
+      if (!protectionStatus.isModifiable) {
+        Get.snackbar(
+          'Modification impossible',
+          protectionStatus.userMessage,
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 4),
+        );
+        return;
+      }
       // Recalcul totaux
       double poidsTotal = 0;
       double montantTotal = 0;

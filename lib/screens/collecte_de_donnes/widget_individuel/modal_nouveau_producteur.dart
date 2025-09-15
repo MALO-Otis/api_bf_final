@@ -376,8 +376,8 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
                             const SizedBox(height: 12),
                             _buildTextField(
                               _numeroController,
-                              'Numéro unique *',
-                              Icons.tag,
+                              'Numéro de téléphone *',
+                              Icons.phone,
                               validator: (value) =>
                                   value?.isEmpty ?? true ? 'Obligatoire' : null,
                             ),
@@ -424,8 +424,8 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
                                 Expanded(
                                   child: _buildTextField(
                                     _numeroController,
-                                    'Numéro unique *',
-                                    Icons.tag,
+                                    'Numéro de téléphone *',
+                                    Icons.phone,
                                     validator: (value) => value?.isEmpty ?? true
                                         ? 'Obligatoire'
                                         : null,

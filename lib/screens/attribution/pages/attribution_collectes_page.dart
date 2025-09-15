@@ -1,3 +1,15 @@
+import 'package:get/get.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import '../widgets/collecte_attribution_card.dart';
+import '../../controle_de_donnes/models/collecte_models.dart';
+import '../../controle_de_donnes/services/firestore_data_service.dart';
+import '../services/attribution_collectes_service.dart' as attribution;
+import '../../controle_de_donnes/models/attribution_models_v2.dart' as models;
+import '../../controle_de_donnes/services/firestore_attribution_service_v2.dart';
+library;
+
+
 /// 🎯 PAGE D'ATTRIBUTION PAR COLLECTES - NOUVELLE GÉNÉRATION
 ///
 /// Cette page affiche les collectes avec leurs produits contrôlés organisés par cartes dépliantes :
@@ -8,23 +20,14 @@
 ///
 /// Fonctionnalités principales :
 /// ✅ Affichage des collectes avec informations détaillées
+
 /// ✅ Cards dépliantes avec produits contrôlés par collecte
 /// ✅ Statistiques précises : total reçu, contrôlé, restant
 /// ✅ Filtrage par type de collecte et statut
 /// ✅ Attribution directe depuis les cartes
 /// ✅ Synchronisation en temps réel
-library;
 
-import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:get/get.dart';
-import '../../controle_de_donnes/models/collecte_models.dart';
-import '../../controle_de_donnes/services/firestore_data_service.dart';
-import '../../controle_de_donnes/services/firestore_attribution_service_v2.dart';
-import '../../controle_de_donnes/models/attribution_models_v2.dart' as models;
-import '../../controle_de_donnes/models/quality_control_models.dart';
-import '../services/attribution_collectes_service.dart' as attribution;
-import '../widgets/collecte_attribution_card.dart';
+
 
 class AttributionCollectesPage extends StatefulWidget {
   const AttributionCollectesPage({super.key});
@@ -295,7 +298,7 @@ class _AttributionCollectesPageState extends State<AttributionCollectesPage>
             print('      - Contenants déclarés: ${collecte.containersCount}');
             print('      - Contenants contrôlés: ${info.controlledContainers}');
             print(
-                '      - Différence: ${collecte.containersCount - info.controlledContainers}');
+                '      - Différence: ${(collecte.containersCount ?? 0) - info.controlledContainers}');
 
             if (info.produitsConformesDisponibles.isNotEmpty) {
               print('   🎯 Détails des produits conformes:');
@@ -705,7 +708,7 @@ class _AttributionCollectesPageState extends State<AttributionCollectesPage>
   }
 
   void _handleAttributeProducts(
-      BaseCollecte collecte, List<attribution.ProductControle> produits) {
+      BaseCollecte collecte, List<models.ProductControle> produits) {
     _showAttributionDialog(collecte, produits);
   }
 
@@ -719,7 +722,7 @@ class _AttributionCollectesPageState extends State<AttributionCollectesPage>
 
   /// 🎯 DIALOGUE D'ATTRIBUTION AVEC NOUVELLE STRUCTURE V2
   void _showAttributionDialog(
-      BaseCollecte collecte, List<attribution.ProductControle> produits) {
+      BaseCollecte collecte, List<models.ProductControle> produits) {
     if (produits.isEmpty) {
       Get.snackbar(
         'Attention',
@@ -754,7 +757,7 @@ class _AttributionCollectesPageState extends State<AttributionCollectesPage>
 
   /// 🔄 DIALOGUE DE SÉLECTION DU TYPE DE PRODUIT (Filtrage/Cire)
   void _showProductTypeSelectionDialog(
-      BaseCollecte collecte, List<attribution.ProductControle> produits) {
+      BaseCollecte collecte, List<models.ProductControle> produits) {
     Get.dialog(
       AlertDialog(
         title: const Text('Type d\'attribution'),
@@ -796,7 +799,7 @@ class _AttributionCollectesPageState extends State<AttributionCollectesPage>
   /// 🏭 DIALOGUE DE SÉLECTION DU SITE RECEVEUR
   void _showSiteSelectionDialog(
       BaseCollecte collecte,
-      List<attribution.ProductControle> produits,
+      List<models.ProductControle> produits,
       models.AttributionType type,
       String description) {
     final sites = ['Koudougou', 'Bobo-Dioulasso', 'Ouagadougou', 'Banfora'];
@@ -875,7 +878,7 @@ class _AttributionCollectesPageState extends State<AttributionCollectesPage>
   /// 🔄 CONVERTIT LES PRODUITS DU SERVICE D'ATTRIBUTION VERS LE FORMAT V2
   List<models.ProductControle> _convertToV2Products(
     BaseCollecte collecte,
-    List<attribution.ProductControle> produitsAttribution,
+    List<models.ProductControle> produitsAttribution,
   ) {
     if (kDebugMode) {
       print('🔄 [Attribution Page] ===== CONVERSION PRODUITS VERS V2 =====');
@@ -886,85 +889,24 @@ class _AttributionCollectesPageState extends State<AttributionCollectesPage>
       // Détail des poids avant conversion
       double totalPoidsOrigine = 0.0;
       for (final produit in produitsAttribution) {
-        double poids = produit.quantity ?? 0.0;
+        double poids = produit.poidsTotal;
         totalPoidsOrigine += poids;
         if (kDebugMode) {
-          print(
-              '      - ${produit.containerCode}: ${poids}kg (contrôle: ${produit.qualityControl?.totalWeight ?? 'N/A'}kg)');
+          print('      - ${produit.codeContenant}: ${poids}kg');
         }
       }
       print(
           '   ⚖️ Poids total origine: ${totalPoidsOrigine.toStringAsFixed(2)} kg');
     }
 
-    return produitsAttribution.map((produit) {
-      return models.ProductControle(
-        id: '${collecte.id}_${produit.containerCode ?? 'unknown'}_${DateTime.now().millisecondsSinceEpoch}',
-        codeContenant: produit.containerCode ?? 'Code inconnu',
-        producteur: produit.technicien ?? 'Producteur inconnu',
-        village: _getVillageFromCollecte(collecte),
-        commune: _getCommuneFromCollecte(collecte),
-        quartier: '', // Non disponible dans l'ancien format
-        siteOrigine: collecte.site,
-        collecteId: collecte.id,
-        typeCollecte: _getSectionName(_determineSection(collecte)),
-        dateCollecte: collecte.date,
-        dateReception: produit.dateReception ?? DateTime.now(),
-        typeContenant: 'Standard', // Valeur par défaut
-        numeroContenant: produit.containerCode ?? 'N/A',
-        poidsTotal: produit.quantity ?? 0.0,
-        poidsMiel: (produit.quantity ?? 0.0) * 0.9, // Estimation 90% de miel
-        qualite: produit.qualityControl?.quality ?? 'Non défini',
-        teneurEau: produit.qualityControl?.waterContent ?? 0.0,
-        predominanceFlorale:
-            produit.qualityControl?.floralPredominance ?? 'Non défini',
-        nature: models.ProductNature.brut, // Valeur par défaut
-        estConforme: produit.qualityControl?.conformityStatus ==
-            ConformityStatus.conforme,
-        causeNonConformite: produit.qualityControl?.nonConformityCause,
-        observations: produit.qualityControl?.observations ?? '',
-        dateControle: produit.qualityControl?.createdAt ?? DateTime.now(),
-        controleur: produit.qualityControl?.controllerName ?? 'Non défini',
-        metadata: {
-          'source': 'attribution_collectes_service',
-          'originalId': produit.id ?? '',
-          'convertedAt': DateTime.now().toIso8601String(),
-        },
-      );
-    }).toList();
-  }
-
-  String _getVillageFromCollecte(BaseCollecte collecte) {
-    if (collecte is Recolte) return collecte.village ?? '';
-    if (collecte is Scoop) return collecte.village ?? '';
-    if (collecte is Individuel) return collecte.village ?? '';
-    return '';
-  }
-
-  String _getCommuneFromCollecte(BaseCollecte collecte) {
-    if (collecte is Recolte) return collecte.commune ?? '';
-    if (collecte is Scoop) return collecte.commune ?? '';
-    if (collecte is Individuel) return collecte.commune ?? '';
-    return '';
-  }
-
-  String _getSectionName(Section section) {
-    switch (section) {
-      case Section.recoltes:
-        return 'recoltes';
-      case Section.scoop:
-        return 'scoop';
-      case Section.individuel:
-        return 'individuel';
-      case Section.miellerie:
-        return 'miellerie';
-    }
+    // Les produits sont déjà au format correct, retourner directement
+    return produitsAttribution;
   }
 
   /// ✅ EXÉCUTION DE L'ATTRIBUTION AVEC LE SERVICE V2
   Future<void> _executeAttribution(
     BaseCollecte collecte,
-    List<attribution.ProductControle> produits,
+    List<models.ProductControle> produits,
     models.AttributionType type,
     String siteReceveur,
     String commentaires,
@@ -986,15 +928,14 @@ class _AttributionCollectesPageState extends State<AttributionCollectesPage>
         for (int i = 0; i < produits.length && i < 5; i++) {
           final produit = produits[i];
           print(
-              '      - ${produit.containerCode}: ${produit.quantity}kg (${produit.qualityControl?.conformityStatus})');
+              '      - ${produit.codeContenant}: ${produit.poidsTotal}kg (${produit.estConforme ? 'Conforme' : 'Non conforme'})');
         }
         if (produits.length > 5) {
           print('      ... et ${produits.length - 5} autres produits');
         }
 
         // Calcul du poids total à attribuer
-        double poidsTotal =
-            produits.fold(0.0, (sum, p) => sum + (p.quantity ?? 0.0));
+        double poidsTotal = produits.fold(0.0, (sum, p) => sum + p.poidsTotal);
         print(
             '   ⚖️ Poids total à attribuer: ${poidsTotal.toStringAsFixed(2)} kg');
         print('   🕐 Timestamp: ${DateTime.now()}');

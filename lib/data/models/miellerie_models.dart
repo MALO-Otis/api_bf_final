@@ -56,7 +56,7 @@ class MiellerieModel {
 // Types de collecte pour Miellerie (compatible système SCOOP)
 enum TypeCollecteMiellerie {
   liquide('Liquide'),
-  brute('Brute'), 
+  brute('Brute'),
   cire('Cire');
 
   const TypeCollecteMiellerie(this.label);
@@ -95,13 +95,25 @@ enum TypeContenantMiellerie {
   bidon('Bidon'),
   pot('Pot'),
   fut('Fût'),
-  seau('Seau');
+  seau('Seau'),
+  sac('Sac'); // 🆕 Ajout du sac pour la cire
 
   const TypeContenantMiellerie(this.label);
   final String label;
 
   static List<String> get typesList =>
       TypeContenantMiellerie.values.map((e) => e.label).toList();
+
+  /// Retourne les types de contenants disponibles selon le type de miel
+  static List<String> getTypesForMiel(String typeMiel) {
+    if (typeMiel == 'Cire') {
+      // 🆕 Pour la cire, seul le sac est autorisé
+      return ['Sac'];
+    } else {
+      // Pour les autres types (Liquide, Brute), tous les contenants sont disponibles
+      return ['Bidon', 'Pot', 'Fût', 'Seau', 'Sac'];
+    }
+  }
 }
 
 // Modèle pour un contenant de collecte Miellerie (compatible système SCOOP)

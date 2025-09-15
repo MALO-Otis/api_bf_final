@@ -187,6 +187,7 @@ class _NouvelAchatScoopContenantsPageState
         collecteurNom: _userSession.nom ?? '',
         site: _userSession.site ?? '',
         createdAt: DateTime.now(),
+        geolocationData: _geolocationData, // Inclure les données GPS
       );
 
       await StatsScoopContenantsService.saveCollecteScoop(collecte);

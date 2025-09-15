@@ -1,8 +1,6 @@
 /// Script de debugging pour vérifier l'historique des filtrages
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import '../lib/services/filtrage_service_complete.dart';
-import '../lib/authentication/user_session.dart';
 import 'package:get/get.dart';
 
 void main() async {

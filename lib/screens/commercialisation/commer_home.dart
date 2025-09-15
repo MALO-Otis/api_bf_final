@@ -8,7 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart'; // Ajoute cette ligne
+import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -46,7 +46,7 @@ class _CommercialisationHomePageState extends State<CommercialisationHomePage>
     myTabs = [
       const Tab(icon: Icon(Icons.store), text: "Magazinier"),
       const Tab(icon: Icon(Icons.person), text: "Commercial(e)"),
-      const Tab(icon: Icon(Icons.attach_money), text: "Caissier"),
+      const Tab(icon: Icon(Icons.text_fields), text: "Caissier"),
       const Tab(
           icon: Icon(Icons.admin_panel_settings),
           text: "Gestionnaire Commercial"),
@@ -1227,8 +1227,7 @@ class _MagazinierPageState extends State<MagazinierPage> {
                                   ),
                                   Row(
                                     children: [
-                                      Icon(Icons.attach_money,
-                                          color: Colors.green, size: 18),
+                                      const Icon(Icons.text_fields, size: 18),
                                       const SizedBox(width: 6),
                                       Text(
                                         "Prix total: ${prixTotal < 0 ? 0 : prixTotal.toStringAsFixed(0)} FCFA",
@@ -2064,7 +2063,7 @@ class _MagazinierPageState extends State<MagazinierPage> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    Icon(Icons.attach_money, size: 16, color: Colors.orange),
+                    const Icon(Icons.text_fields, size: 16),
                     Flexible(
                       child: Text(
                         " $montantTotal FCFA",
@@ -2576,7 +2575,7 @@ class _MagazinierPageState extends State<MagazinierPage> {
                       ),
                       Row(
                         children: [
-                          const Icon(Icons.attach_money,
+                          const Icon(Icons.text_fields,
                               color: Colors.orange, size: 18),
                           const SizedBox(width: 4),
                           Text("Valeur : ${d['prixTotalEstime']} FCFA",
@@ -2732,8 +2731,7 @@ class _MagazinierPageState extends State<MagazinierPage> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            Icon(Icons.attach_money,
-                                size: 16, color: Colors.orange),
+                            const Icon(Icons.text_fields, size: 16),
                             Flexible(
                               child: Text(
                                 " $montantTotal FCFA",
@@ -5846,7 +5844,7 @@ class _CaissierPageState extends State<CaissierPage> {
                                                                       child: ElevatedButton
                                                                           .icon(
                                                                         icon: const Icon(
-                                                                            Icons.attach_money),
+                                                                            Icons.text_fields),
                                                                         label: Text(typeVente ==
                                                                                 "Crédit"
                                                                             ? "Solder le crédit"

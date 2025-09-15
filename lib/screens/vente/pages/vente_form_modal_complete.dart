@@ -1,14 +1,16 @@
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import '../models/vente_models.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../services/vente_service.dart';
+import '../../../widgets/location_picker.dart';
+import '../../../widgets/money_icon_widget.dart';
+import '../controllers/espace_commercial_controller.dart';
+
 /// 🛒 MODAL DE FORMULAIRE DE VENTE COMPLET
 ///
 /// Interface complète pour enregistrer une nouvelle vente
-
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:get/get.dart';
-import 'package:intl/intl.dart';
-
-import '../models/vente_models.dart';
-import '../services/vente_service.dart';
 
 class VenteFormModalComplete extends StatefulWidget {
   final Prelevement prelevement;
@@ -32,6 +34,7 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
   final _clientNomController = TextEditingController();
   final _clientTelephoneController = TextEditingController();
   final _clientAdresseController = TextEditingController();
+  final _clientBoutiqueController = TextEditingController();
   final _montantPayeController = TextEditingController();
   final _observationsController = TextEditingController();
 
@@ -43,6 +46,14 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
   Client? _clientSelectionne;
   bool _isNouveauClient = true;
   bool _isLoading = false;
+
+  // Nouveaux champs pour client étendu
+  TypeClient _typeClient = TypeClient.particulier;
+  bool _clientActif = true;
+  double? _latitude;
+  double? _longitude;
+  double? _altitude;
+  double? _precision;
 
   // Données calculées
   double _montantTotal = 0.0;
@@ -61,6 +72,7 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
     _clientNomController.dispose();
     _clientTelephoneController.dispose();
     _clientAdresseController.dispose();
+    _clientBoutiqueController.dispose();
     _montantPayeController.dispose();
     _observationsController.dispose();
     super.dispose();
@@ -286,7 +298,7 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
             const SizedBox(height: 16),
 
             if (_isNouveauClient) ...[
-              // Nouveau client
+              // Nouveau client - Nom et téléphone
               TextFormField(
                 controller: _clientNomController,
                 decoration: InputDecoration(
@@ -322,10 +334,10 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: TextFormField(
-                      controller: _clientAdresseController,
+                      controller: _clientBoutiqueController,
                       decoration: InputDecoration(
-                        labelText: 'Adresse',
-                        prefixIcon: const Icon(Icons.location_on),
+                        labelText: 'Nom boutique',
+                        prefixIcon: const Icon(Icons.storefront),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -333,6 +345,92 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 16),
+              // Adresse traditionnelle
+              TextFormField(
+                controller: _clientAdresseController,
+                decoration: InputDecoration(
+                  labelText: 'Adresse',
+                  prefixIcon: const Icon(Icons.location_on),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Type de client
+              DropdownButtonFormField<TypeClient>(
+                value: _typeClient,
+                decoration: InputDecoration(
+                  labelText: 'Type de client',
+                  prefixIcon: const Icon(Icons.category),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                items: TypeClient.values.map((type) {
+                  return DropdownMenuItem<TypeClient>(
+                    value: type,
+                    child: Text(_getTypeClientLabel(type)),
+                  );
+                }).toList(),
+                onChanged: (value) => setState(() => _typeClient = value!),
+              ),
+              const SizedBox(height: 16),
+              // Switch Actif
+              SwitchListTile(
+                title: const Text('Client actif'),
+                subtitle: const Text('Le client peut effectuer des achats'),
+                value: _clientActif,
+                onChanged: (value) => setState(() => _clientActif = value),
+                secondary: const Icon(Icons.toggle_on),
+              ),
+              const SizedBox(height: 16),
+              // Localisation GPS
+              Card(
+                elevation: 1,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.map, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          const Text('Localisation GPS',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          const Spacer(),
+                          ElevatedButton.icon(
+                            onPressed: _openLocationPicker,
+                            icon:
+                                const Icon(Icons.location_searching, size: 16),
+                            label: const Text('Choisir'),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (_latitude != null && _longitude != null) ...[
+                        Text('Latitude: ${_latitude!.toStringAsFixed(6)}'),
+                        Text('Longitude: ${_longitude!.toStringAsFixed(6)}'),
+                        if (_altitude != null)
+                          Text('Altitude: ${_altitude!.toStringAsFixed(1)} m'),
+                        if (_precision != null)
+                          Text(
+                              'Précision: ±${_precision!.toStringAsFixed(1)} m'),
+                      ] else
+                        const Text('Aucune localisation sélectionnée',
+                            style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                ),
               ),
             ] else ...[
               // Client existant
@@ -678,7 +776,7 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
                     controller: _montantPayeController,
                     decoration: InputDecoration(
                       labelText: 'Montant payé *',
-                      prefixIcon: const Icon(Icons.attach_money),
+                      prefixIcon: const SimpleMoneyIcon(),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -890,6 +988,38 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
     }
   }
 
+  String _getTypeClientLabel(TypeClient type) {
+    switch (type) {
+      case TypeClient.particulier:
+        return '👤 Particulier';
+      case TypeClient.professionnel:
+        return '🏢 Professionnel';
+      case TypeClient.revendeur:
+        return '🏪 Revendeur';
+      case TypeClient.grossiste:
+        return '🏭 Grossiste';
+    }
+  }
+
+  Future<void> _openLocationPicker() async {
+    final result = await Navigator.of(context).push<LocationResult>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialLat: _latitude,
+          initialLng: _longitude,
+        ),
+      ),
+    );
+    if (result != null) {
+      setState(() {
+        _latitude = result.latitude;
+        _longitude = result.longitude;
+        _altitude = result.altitude;
+        _precision = result.accuracy;
+      });
+    }
+  }
+
   Future<void> _enregistrerVente() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -936,7 +1066,7 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
             ? _clientAdresseController.text.trim()
             : null;
 
-        // Créer le nouveau client
+        // Créer le nouveau client étendu
         final nouveauClient = Client(
           id: clientId,
           nom: clientNom,
@@ -944,11 +1074,19 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
           email: null,
           adresse: clientAdresse,
           ville: null,
-          type: TypeClient.particulier,
+          nomBoutique: _clientBoutiqueController.text.trim().isNotEmpty
+              ? _clientBoutiqueController.text.trim()
+              : null,
+          site: null, // sera injecté par le service
+          type: _typeClient,
           dateCreation: DateTime.now(),
           totalAchats: _montantTotal,
           nombreAchats: 1,
-          estActif: true,
+          estActif: _clientActif,
+          latitude: _latitude,
+          longitude: _longitude,
+          altitude: _altitude,
+          precision: _precision,
         );
 
         await _service.creerClient(nouveauClient);
@@ -991,8 +1129,10 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
         montantPaye: _montantPaye,
         montantRestant: _montantRestant,
         modePaiement: _modePaiement,
-        statut:
-            _montantRestant > 0 ? StatutVente.enAttente : StatutVente.terminee,
+        // Nouveau mapping des statuts : crédit vs payé directement
+        statut: _montantRestant > 0
+            ? StatutVente.creditEnAttente
+            : StatutVente.payeeEnTotalite,
         observations: _observationsController.text.trim().isNotEmpty
             ? _observationsController.text.trim()
             : null,
@@ -1002,6 +1142,71 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
       final success = await _service.enregistrerVente(vente);
 
       if (success) {
+        // Génération et affichage du reçu immédiatement
+        try {
+          final service = VenteService();
+          final recu = service.generateReceipt(vente);
+          await Clipboard.setData(ClipboardData(text: recu));
+          // Afficher un dialog léger avec le reçu et options
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Reçu de Vente'),
+                content: SizedBox(
+                  width: 420,
+                  child: SingleChildScrollView(
+                    child: SelectableText(recu,
+                        style: const TextStyle(
+                            fontFamily: 'monospace', fontSize: 12)),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                      onPressed: () {
+                        Navigator.of(ctx).pop();
+                      },
+                      child: const Text('Fermer')),
+                  TextButton(
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: recu));
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content:
+                                    Text('Reçu copié dans le presse-papiers')),
+                          );
+                        }
+                      },
+                      child: const Text('Copier')),
+                ],
+              ),
+            );
+          }
+        } catch (e) {
+          debugPrint('Erreur génération reçu: $e');
+        }
+        // Fallback / Optimistic update : ajouter immédiatement la vente à la liste réactive
+        // si le listener temps réel Firestore n'a pas encore propagé l'événement.
+        try {
+          if (Get.isRegistered<EspaceCommercialController>()) {
+            final espaceCtrl = Get.find<EspaceCommercialController>();
+            final already = espaceCtrl.ventes.any((v) => v.id == vente.id);
+            if (!already) {
+              // Insertion en tête pour visibilité instantanée
+              espaceCtrl.ventes.insert(0, vente);
+              espaceCtrl.ventes.refresh();
+              // DEBUG: log optimistic insertion
+              // ignore: avoid_print
+              print(
+                  '[OPTIMISTIC_VENTE] Insertion immédiate vente ${vente.id} montant=${vente.montantTotal}');
+              // Note: la réconciliation des prélèvements sera recalculée automatiquement
+              // par le listener temps réel quand il arrivera. Ici on évite d'appeler loadAll() (trop lourd).
+            }
+          }
+        } catch (_) {
+          // Ignore discrètement : fallback purement UX, le listener reprendra derrière
+        }
         Get.back();
         Get.snackbar(
           'Succès',

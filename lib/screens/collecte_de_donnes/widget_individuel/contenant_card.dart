@@ -108,7 +108,7 @@ class ContenantCard extends StatelessWidget {
                       _buildDetailItem(
                         'Prix unitaire',
                         '${contenant.prixUnitaire.toStringAsFixed(0)} CFA/kg',
-                        Icons.monetization_on,
+                        Icons.text_fields,
                       ),
                     ],
                   ),

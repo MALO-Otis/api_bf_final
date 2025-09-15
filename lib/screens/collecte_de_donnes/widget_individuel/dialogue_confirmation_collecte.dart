@@ -487,7 +487,7 @@ class DialogueConfirmationCollecte extends StatelessWidget {
                 child: _buildContenantDetail(
                     'Prix unitaire',
                     '${contenant.prixUnitaire.toStringAsFixed(0)} FCFA/kg',
-                    Icons.attach_money,
+                    Icons.text_fields,
                     isSmallScreen),
               ),
             ],
@@ -599,7 +599,7 @@ class DialogueConfirmationCollecte extends StatelessWidget {
                   child: _buildTotalCard(
                     'Montant total',
                     '${montantTotal.toStringAsFixed(0)} FCFA',
-                    Icons.monetization_on,
+                    Icons.text_fields,
                     Colors.white,
                     isSmallScreen,
                   ),
@@ -889,7 +889,7 @@ class DialogueConfirmationCollecte extends StatelessWidget {
                 _buildQuickStat('Contenants', '${contenants.length}',
                     Icons.inventory, isSmallScreen),
                 _buildQuickStat('Total', '${montantTotal.toStringAsFixed(0)} F',
-                    Icons.monetization_on, isSmallScreen),
+                    Icons.text_fields, isSmallScreen),
               ],
             ),
           ),

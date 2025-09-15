@@ -1,15 +1,17 @@
-import 'dart:convert';
 import 'dart:io';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
+import 'dart:convert';
 import 'package:get/get.dart';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../widgets/location_picker.dart';
+import '../vente/services/vente_service.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:apisavana_gestion/utils/smart_appbar.dart';
+
 
 class ClientFormPage extends StatefulWidget {
   final String commercialId;
@@ -38,7 +40,11 @@ class _ClientFormPageState extends State<ClientFormPage> {
   String? telephone1;
   String? telephone2;
   String? photoUrl;
-  Position? localisation; // Geolocator.Position
+  Position? localisation; // position brute
+  double? latitude;
+  double? longitude;
+  double? altitude;
+  double? precision;
   bool isUploading = false;
 
   XFile? _pickedImage;
@@ -135,9 +141,7 @@ class _ClientFormPageState extends State<ClientFormPage> {
         .where('role', isEqualTo: 'Commercial(e)')
         .get();
     setState(() {
-      commerciaux = snapCom.docs
-          .map((d) => {"id": d.id, ...d.data() as Map<String, dynamic>})
-          .toList();
+      commerciaux = snapCom.docs.map((d) => {"id": d.id, ...d.data()}).toList();
     });
   }
 
@@ -207,61 +211,57 @@ class _ClientFormPageState extends State<ClientFormPage> {
     }
   }
 
-  Future<void> _getCurrentLocation() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      Get.snackbar("Erreur", "Activez la localisation de votre appareil.");
-      return;
+  Future<void> _openLocationPicker() async {
+    final result = await Navigator.of(context).push<LocationResult>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialLat: latitude ?? localisation?.latitude,
+          initialLng: longitude ?? localisation?.longitude,
+        ),
+      ),
+    );
+    if (result != null) {
+      setState(() {
+        latitude = result.latitude;
+        longitude = result.longitude;
+        altitude = result.altitude;
+        precision = result.accuracy;
+        localisation = Position(
+          longitude: result.longitude,
+          latitude: result.latitude,
+          timestamp: DateTime.now(),
+          accuracy: result.accuracy ?? 0,
+          altitude: result.altitude ?? 0,
+          heading: 0,
+          speed: 0,
+          speedAccuracy: 0,
+          altitudeAccuracy: 0,
+          headingAccuracy: 0,
+        );
+      });
+      await _updateAddressFromPosition(localisation!);
     }
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        Get.snackbar("Erreur", "Permission de localisation refusée.");
-        return;
-      }
-    }
-    if (permission == LocationPermission.deniedForever) {
-      Get.snackbar(
-          "Erreur", "Permission de localisation refusée définitivement.");
-      return;
-    }
-    final pos = await Geolocator.getCurrentPosition();
-    setState(() {
-      localisation = pos;
-    });
-    await _updateAddressFromPosition(pos);
   }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    if (localisation == null) {
+    if (latitude == null || longitude == null) {
       Get.snackbar("Erreur", "Sélectionnez la localisation du client !");
       return;
     }
     setState(() => isUploading = true);
-    String? url;
     if (_pickedImage != null) {
-      url = await _uploadImage(_pickedImage!);
+      await _uploadImage(_pickedImage!); // futur usage stockage
     }
-    await FirebaseFirestore.instance.collection('clients').add({
-      "dateVente": dateVente,
-      "commercialId": widget.commercialId,
-      "commercialNom": nomCommercial ?? "",
-      "nomBoutique": nomBoutique,
-      "region": region,
-      "province": province,
-      "nomLocalite": nomLocalite,
-      "nomGerant": nomGerant,
-      "telephone1": telephone1,
-      "telephone2": telephone2 ?? "",
-      "photoUrl": url ?? "",
-      "localisation": localisation != null
-          ? GeoPoint(localisation!.latitude, localisation!.longitude)
-          : null,
-      "adresse": _selectedAddress ?? "",
-      "createdAt": FieldValue.serverTimestamp(),
-    });
+    await VenteService().creerClientRapide(
+      nom: nomGerant ?? nomBoutique ?? 'Client',
+      telephone: telephone1 ?? '',
+      nomBoutique: nomBoutique ?? '',
+      latitude: latitude,
+      longitude: longitude,
+      altitude: altitude,
+      precision: precision,
+    );
     setState(() {
       isUploading = false;
       // Reset all fields after save!
@@ -275,6 +275,10 @@ class _ClientFormPageState extends State<ClientFormPage> {
       telephone2 = null;
       photoUrl = null;
       localisation = null;
+      latitude = null;
+      longitude = null;
+      altitude = null;
+      precision = null;
       _selectedAddress = null;
       _pickedImage = null;
     });
@@ -474,27 +478,28 @@ class _ClientFormPageState extends State<ClientFormPage> {
               const SizedBox(height: 12),
               // Géolocalisation
               GestureDetector(
-                onTap: _getCurrentLocation,
+                onTap: _openLocationPicker,
                 child: ListTile(
                   tileColor: const Color(0xFFFFF3E0),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                   leading: const Icon(Icons.map, color: Colors.orange),
-                  title: localisation != null
+                  title: latitude != null
                       ? (_selectedAddress != null &&
                               _selectedAddress!.isNotEmpty)
                           ? Text(
                               "Localisation sélectionnée :\n$_selectedAddress")
                           : Text(
-                              "Localisation sélectionnée :\n${localisation!.latitude}, ${localisation!.longitude}")
-                      : const Text(
-                          "Ajouter ma position actuelle (cliquer ici)"),
-                  trailing: Icon(Icons.my_location, color: Colors.green),
-                  subtitle: localisation == null
-                      ? const Text(
-                          "Clique ici pour enregistrer ta position actuelle",
+                              "Localisation :\n${latitude!.toStringAsFixed(6)}, ${longitude!.toStringAsFixed(6)}")
+                      : const Text("Sélectionner une localisation (carte)"),
+                  trailing: const Icon(Icons.my_location, color: Colors.green),
+                  subtitle: latitude == null
+                      ? const Text("Clique pour choisir sur la carte",
                           style: TextStyle(color: Colors.red))
-                      : null,
+                      : (precision != null
+                          ? Text(
+                              'Précision ±${precision!.toStringAsFixed(1)} m')
+                          : null),
                 ),
               ),
               const SizedBox(height: 18),

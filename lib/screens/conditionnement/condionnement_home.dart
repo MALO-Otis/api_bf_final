@@ -1018,6 +1018,13 @@ class _ConditionnementHomePageState extends State<ConditionnementHomePage>
 
   /// Démarre le conditionnement d'un lot
   void _startConditioning(LotFiltre lot) {
+    print('\n🚀🚀🚀 NAVIGATION VERS CONDITIONNEMENT EDIT PAGE ! 🚀🚀🚀');
+    print('📍 Depuis: ConditionnementHomePage');
+    print(
+        '📍 Vers: ConditionnementEditPage (avec améliorations ultra-réactives)');
+    print('🎯 Lot sélectionné: ${lot.lotOrigine}');
+    print('✅ Navigation en cours...');
+
     Get.to(
       () => ConditionnementEditPage(lotFiltrageData: lot.toMap()),
       transition: Transition.rightToLeftWithFade,

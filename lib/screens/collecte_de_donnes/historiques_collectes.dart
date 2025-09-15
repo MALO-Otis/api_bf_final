@@ -15,7 +15,10 @@ import 'nouvelle_collecte_individuelle.dart';
 import 'nos_collectes_individuels/edit_collecte_individuelle.dart';
 import '../dashboard/dashboard.dart';
 import 'nos_achats_scoop_contenants/nouvel_achat_scoop_contenants.dart';
+import 'nos_achats_scoop_contenants/edit_achat_scoop.dart';
 import 'nos_collecte_mielleurie/nouvelle_collecte_miellerie.dart';
+import 'widgets/rapport_modal.dart';
+import '../../data/services/collecte_protection_service.dart';
 
 class HistoriquesCollectesPage extends StatefulWidget {
   const HistoriquesCollectesPage({Key? key}) : super(key: key);
@@ -72,9 +75,110 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
   // Contrôleur de recherche
   final TextEditingController _searchController = TextEditingController();
 
+  // Cache pour les statuts de protection des collectes
+  final Map<String, CollecteProtectionStatus> _protectionCache = {};
+
+  /// Vérifie si une collecte peut être modifiée (avec cache)
+  Future<CollecteProtectionStatus> _checkCollecteProtection(
+      Map<String, dynamic> collecte) async {
+    final String collecteId = collecte['id']?.toString() ?? '';
+
+    // Vérifier le cache d'abord
+    if (_protectionCache.containsKey(collecteId)) {
+      return _protectionCache[collecteId]!;
+    }
+
+    // Vérifier le statut de protection
+    final status =
+        await CollecteProtectionService.checkCollecteModifiable(collecte);
+
+    // Mettre en cache
+    _protectionCache[collecteId] = status;
+
+    return status;
+  }
+
+  /// Affiche une alerte de protection pour une action interdite
+  void _showProtectionAlert(
+    Map<String, dynamic> collecte,
+    CollecteProtectionStatus protectionStatus,
+    String action,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.lock, color: Colors.red.shade700),
+            const SizedBox(width: 8),
+            Text('Impossible de $action'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Cette collecte ne peut pas être ${action}e car certains de ses contenants ont déjà été traités dans les modules suivants :',
+              style: TextStyle(color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 12),
+            ...protectionStatus.traitedContainers.map(
+              (container) => Container(
+                margin: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _getModuleColor(container.module).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: _getModuleColor(container.module).withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _getModuleIcon(container.module),
+                      size: 16,
+                      color: _getModuleColor(container.module),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${container.containerId} → ${container.module}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _getModuleColor(container.module),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Compris'),
+          ),
+          OutlinedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _showProtectionDetails(collecte, protectionStatus);
+            },
+            child: const Text('Voir détails'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
+    print('🏠 HISTORIQUE: Initialisation de la page historique principale');
     _initAnimations();
     _initializeUserData();
     _searchController.addListener(_onSearchChanged);
@@ -82,11 +186,13 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
 
   // Initialisation des données utilisateur
   Future<void> _initializeUserData() async {
+    print('👤 HISTORIQUE: Début initialisation données utilisateur');
     setState(() => isLoadingUserData = true);
 
     try {
       // Récupérer l'utilisateur connecté
       final user = FirebaseAuth.instance.currentUser;
+      print('👤 HISTORIQUE: Utilisateur Firebase: ${user?.uid}');
       if (user == null) {
         throw Exception('Utilisateur non connecté');
       }
@@ -102,18 +208,23 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
       }
 
       currentUserData = userDoc.data()!;
+      print(
+          '👤 HISTORIQUE: Données utilisateur chargées - Site: ${currentUserData?['site']}');
 
       // Récupérer la session utilisateur depuis GetX
       try {
         userSession = Get.find<UserSession>();
+        print('👤 HISTORIQUE: Session GetX trouvée: ${userSession?.site}');
       } catch (e) {
         // Si la session n'existe pas encore, la créer
-        print('Session utilisateur non trouvée, création...');
+        print('⚠️ HISTORIQUE: Session utilisateur non trouvée, création...');
       }
 
       // Charger les collectes
+      print('📊 HISTORIQUE: Début chargement des collectes');
       await _loadCollectes();
     } catch (e) {
+      print('❌ HISTORIQUE: Erreur initialisation: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content:
@@ -173,11 +284,13 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
   }
 
   Future<void> _loadCollectes() async {
+    print('📊 HISTORIQUE: _loadCollectes() appelée');
     setState(() => isLoading = true);
 
     try {
       // Récupérer le site de l'utilisateur
       final userSite = currentUserData?['site'] ?? userSession?.site;
+      print('🏢 HISTORIQUE: Site utilisateur: $userSite');
 
       if (userSite == null || userSite.isEmpty) {
         throw Exception('Site utilisateur non défini');
@@ -186,15 +299,19 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
       final List<Map<String, dynamic>> allCollectes = [];
 
       // 1. Charger les collectes de récolte depuis la collection du site
+      print('🌾 HISTORIQUE: Chargement collectes Récolte...');
       await _loadCollectesRecolte(userSite, allCollectes);
 
       // 2. Charger les collectes SCOOP
+      print('🥄 HISTORIQUE: Chargement collectes SCOOP...');
       await _loadCollectesSCOOP(userSite, allCollectes);
 
       // 3. Charger les collectes Individuelles
+      print('👤 HISTORIQUE: Chargement collectes Individuelles...');
       await _loadCollectesIndividuel(userSite, allCollectes);
 
       // 4. Charger les collectes Miellerie
+      print('🏭 HISTORIQUE: Chargement collectes Miellerie...');
       await _loadCollectesMiellerie(userSite, allCollectes);
 
       // Extraire les sites, techniciens distincts pour les filtres
@@ -207,6 +324,21 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
           technicians.add(collecte['technicien_nom'].toString());
         }
       }
+
+      print(
+          '✅ HISTORIQUE: Chargement terminé - ${allCollectes.length} collectes trouvées');
+      print(
+          '   🌾 Récoltes: ${allCollectes.where((c) => c['type'] == 'Récoltes').length}');
+      print(
+          '   🥄 SCOOP (SCOOP Contenants): ${allCollectes.where((c) => c['type'] == 'SCOOP Contenants').length}');
+      print(
+          '   🥄 SCOOP (Achat SCOOP): ${allCollectes.where((c) => c['type'] == 'Achat SCOOP').length}');
+      print(
+          '   👤 Individuelles: ${allCollectes.where((c) => c['type'] == 'Achat Individuel').length}');
+      print(
+          '   🏭 Mielleries: ${allCollectes.where((c) => c['type'] == 'Achat dans miellerie').length}');
+      print(
+          '🔍 HISTORIQUE: Tous les types trouvés: ${allCollectes.map((c) => c['type']).toSet().toList()}');
 
       setState(() {
         collectes = allCollectes;
@@ -229,8 +361,11 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
   // Charger les collectes de récolte
   Future<void> _loadCollectesRecolte(
       String userSite, List<Map<String, dynamic>> allCollectes) async {
+    print('🌾 HISTORIQUE: _loadCollectesRecolte() pour site: $userSite');
     try {
       // Essayer la nouvelle architecture d'abord : Sites/{site}/nos_collectes_recoltes
+      print(
+          '🌾 HISTORIQUE: Tentative nouveau chemin Sites/$userSite/nos_collectes_recoltes');
       try {
         final recoltesSnapshot = await FirebaseFirestore.instance
             .collection('Sites') // Collection principale Sites
@@ -262,8 +397,10 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
             ...data,
           });
         }
+        print(
+            '🌾 HISTORIQUE: Nouveau chemin OK - ${recoltesSnapshot.docs.length} récoltes trouvées');
       } catch (e) {
-        print('Erreur chargement Récoltes depuis Sites/$userSite : $e');
+        print('🌾 HISTORIQUE: Erreur nouveau chemin: $e');
 
         // Fallback : essayer l'ancienne architecture pour les données existantes
         try {
@@ -343,21 +480,29 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
   // Charger les collectes SCOOP
   Future<void> _loadCollectesSCOOP(
       String userSite, List<Map<String, dynamic>> allCollectes) async {
+    print('🥄 HISTORIQUE: _loadCollectesSCOOP() pour site: $userSite');
     try {
       // Nouveau chemin prioritaire
+      print(
+          '🥄 HISTORIQUE: Tentative nouveau chemin Sites/$userSite/nos_achats_scoop_contenants');
       try {
         final snap = await FirebaseFirestore.instance
             .collection('Sites')
             .doc(userSite)
-            .collection('nos_achats_scoop')
+            .collection('nos_achats_scoop_contenants')
             .orderBy('created_at', descending: true)
             .get();
+        print('🥄 HISTORIQUE: ${snap.docs.length} documents SCOOP trouvés');
         for (final doc in snap.docs) {
           final data = doc.data();
+          print(
+              '🥄 HISTORIQUE: Document SCOOP ${doc.id}: ${data.keys.toList()}');
+          print(
+              '🥄 HISTORIQUE: Contenants: ${data['contenants']?.length ?? 0}');
           allCollectes.add({
             'id': doc.id,
             'type': 'Achat SCOOP',
-            'collection': 'Sites/$userSite/nos_achats_scoop',
+            'collection': 'Sites/$userSite/nos_achats_scoop_contenants',
             'date': (data['date_achat'] as Timestamp?)?.toDate() ??
                 (data['created_at'] as Timestamp?)?.toDate() ??
                 DateTime.now(),
@@ -367,12 +512,16 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
             'totalWeight': data['poids_total'] ?? 0,
             'totalAmount': data['montant_total'] ?? 0,
             'status': data['statut'] ?? 'collecte_terminee',
+            'contenants': data['contenants'] ?? [],
             'details': data['contenants'] ?? [],
             ...data,
           });
         }
+        print(
+            '🥄 HISTORIQUE: SCOOP nouveau chemin OK - ${snap.docs.length} collectes ajoutées');
       } catch (e) {
-        print('Erreur chargement nos_achats_scoop: $e');
+        print('❌ HISTORIQUE: Erreur chargement SCOOP nouveau chemin: $e');
+        print('❌ HISTORIQUE: Type erreur: ${e.runtimeType}');
         // Anciens chemins fallback
         try {
           final scoopSnapshot = await FirebaseFirestore.instance
@@ -523,13 +672,13 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
   Future<void> _loadCollectesMiellerie(
       String userSite, List<Map<String, dynamic>> allCollectes) async {
     try {
-      // Essayer depuis la collection du site d'abord
+      // Nouveau chemin prioritaire : Sites/{site}/nos_collecte_mielleries
       try {
         final miellerieSnapshot = await FirebaseFirestore.instance
-            .collection(userSite)
-            .doc('collectes_miellerie')
-            .collection('collectes_miellerie')
-            .orderBy('createdAt', descending: true)
+            .collection('Sites')
+            .doc(userSite)
+            .collection('nos_collecte_mielleries')
+            .orderBy('created_at', descending: true)
             .get();
 
         for (final doc in miellerieSnapshot.docs) {
@@ -537,29 +686,33 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
           allCollectes.add({
             'id': doc.id,
             'type': 'Achat dans miellerie',
-            'collection': '$userSite/collectes_miellerie/collectes_miellerie',
-            'date':
-                (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-            'site': data['site'] ?? userSite,
-            'technicien_nom':
-                data['technicien_nom'] ?? data['nom_technicien'] ?? '',
-            'miellerie_nom':
-                data['miellerie_nom'] ?? data['nom_miellerie'] ?? '',
-            'totalWeight': data['totalWeight'] ?? data['quantite_totale'] ?? 0,
-            'totalAmount': data['totalAmount'] ?? data['montant_total'] ?? 0,
-            'status': data['status'] ?? 'en_attente',
-            'details': data['details'] ?? data['produits'] ?? [],
+            'collection': 'Sites/$userSite/nos_collecte_mielleries',
+            'date': (data['date_collecte'] as Timestamp?)?.toDate() ??
+                (data['created_at'] as Timestamp?)?.toDate() ??
+                DateTime.now(),
+            'site': userSite,
+            'technicien_nom': data['collecteur_nom'] ?? '',
+            'miellerie_nom': data['miellerie_nom'] ?? '',
+            'totalWeight': data['poids_total'] ?? 0,
+            'totalAmount': data['montant_total'] ?? 0,
+            'status': data['statut'] ?? 'collecte_terminee',
+            'details': data['contenants'] ?? [],
+            'cooperative_nom': data['cooperative_nom'] ?? '',
+            'repondant': data['repondant'] ?? '',
+            'localite': data['localite'] ?? '',
+            'observations': data['observations'] ?? '',
             ...data,
           });
         }
       } catch (e) {
-        print('Erreur chargement Miellerie depuis $userSite : $e');
+        print('Erreur chargement Miellerie depuis Sites/$userSite : $e');
 
-        // Fallback : essayer depuis une collection globale si elle existe
+        // Fallback 1 : essayer l'ancienne architecture {site}/collectes_miellerie/collectes_miellerie
         try {
           final miellerieSnapshot = await FirebaseFirestore.instance
+              .collection(userSite)
+              .doc('collectes_miellerie')
               .collection('collectes_miellerie')
-              .where('site', isEqualTo: userSite)
               .orderBy('createdAt', descending: true)
               .get();
 
@@ -567,22 +720,55 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
             final data = doc.data();
             allCollectes.add({
               'id': doc.id,
-              'type': 'Achat dans miellerie',
-              'collection': 'collectes_miellerie',
+              'type': 'Achat dans miellerie (Ancien)',
+              'collection': '$userSite/collectes_miellerie/collectes_miellerie',
               'date':
                   (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
               'site': data['site'] ?? userSite,
-              'technicien_nom': data['technicien_nom'] ?? '',
-              'miellerie_nom': data['miellerie_nom'] ?? '',
-              'totalWeight': data['totalWeight'] ?? 0,
-              'totalAmount': data['totalAmount'] ?? 0,
+              'technicien_nom':
+                  data['technicien_nom'] ?? data['nom_technicien'] ?? '',
+              'miellerie_nom':
+                  data['miellerie_nom'] ?? data['nom_miellerie'] ?? '',
+              'totalWeight':
+                  data['totalWeight'] ?? data['quantite_totale'] ?? 0,
+              'totalAmount': data['totalAmount'] ?? data['montant_total'] ?? 0,
               'status': data['status'] ?? 'en_attente',
-              'details': data['details'] ?? [],
+              'details': data['details'] ?? data['produits'] ?? [],
               ...data,
             });
           }
-        } catch (fallbackError) {
-          print('Erreur fallback miellerie : $fallbackError');
+        } catch (fallback1Error) {
+          print('Erreur fallback 1 miellerie : $fallback1Error');
+
+          // Fallback 2 : essayer depuis une collection globale si elle existe
+          try {
+            final miellerieSnapshot = await FirebaseFirestore.instance
+                .collection('collectes_miellerie')
+                .where('site', isEqualTo: userSite)
+                .orderBy('createdAt', descending: true)
+                .get();
+
+            for (final doc in miellerieSnapshot.docs) {
+              final data = doc.data();
+              allCollectes.add({
+                'id': doc.id,
+                'type': 'Achat dans miellerie',
+                'collection': 'collectes_miellerie',
+                'date': (data['createdAt'] as Timestamp?)?.toDate() ??
+                    DateTime.now(),
+                'site': data['site'] ?? userSite,
+                'technicien_nom': data['technicien_nom'] ?? '',
+                'miellerie_nom': data['miellerie_nom'] ?? '',
+                'totalWeight': data['totalWeight'] ?? 0,
+                'totalAmount': data['totalAmount'] ?? 0,
+                'status': data['status'] ?? 'en_attente',
+                'details': data['details'] ?? [],
+                ...data,
+              });
+            }
+          } catch (fallback2Error) {
+            print('Erreur fallback 2 miellerie : $fallback2Error');
+          }
         }
       }
     } catch (e) {
@@ -1069,6 +1255,27 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
     final type = collecte['type'] ?? '';
     final isAchat = type.contains('Achat');
 
+    return FutureBuilder<CollecteProtectionStatus>(
+      future: _checkCollecteProtection(collecte),
+      builder: (context, snapshot) {
+        final protectionStatus = snapshot.data;
+
+        return _buildCollecteCardContent(
+            collecte, index, type, isAchat, protectionStatus);
+      },
+    );
+  }
+
+  Widget _buildCollecteCardContent(
+    Map<String, dynamic> collecte,
+    int index,
+    String type,
+    bool isAchat,
+    CollecteProtectionStatus? protectionStatus,
+  ) {
+    final isProtected =
+        protectionStatus != null && !protectionStatus.isModifiable;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       child: Card(
@@ -1122,7 +1329,15 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
                         ],
                       ),
                     ),
-                    _buildStatusChip(collecte['status']),
+                    Column(
+                      children: [
+                        _buildStatusChip(collecte['status']),
+                        if (isProtected) ...[
+                          const SizedBox(height: 4),
+                          _buildProtectionChip(),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -1180,7 +1395,7 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
                             child: _buildMetricItem(
                               'Montant',
                               '${(collecte['totalAmount'] ?? 0).toStringAsFixed(0)} FCFA',
-                              Icons.attach_money,
+                              Icons.text_fields,
                               Colors.green,
                             ),
                           ),
@@ -1213,24 +1428,25 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.edit),
-                            label: const Text('Modifier'),
-                            onPressed: () => _editCollecte(collecte),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: kPrimaryColor,
-                              side: BorderSide(color: kPrimaryColor),
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.analytics, size: 18),
+                            label: const Text('Rapports'),
+                            onPressed: () =>
+                                _showRapportsModal(context, collecte),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF4CAF50),
+                              foregroundColor: Colors.white,
+                              elevation: 2,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.delete),
-                          color: Colors.red,
-                          onPressed: () => _deleteCollecte(collecte),
-                        ),
                       ],
                     ),
+
+                    const SizedBox(height: 8),
+
+                    // Actions secondaires avec protection
+                    _buildSecondaryActions(collecte, protectionStatus),
                   ],
                 ),
               ),
@@ -1239,6 +1455,271 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
         ),
       ),
     );
+  }
+
+  /// Construit les actions secondaires avec protection
+  Widget _buildSecondaryActions(
+    Map<String, dynamic> collecte,
+    CollecteProtectionStatus? protectionStatus,
+  ) {
+    final isProtected =
+        protectionStatus != null && !protectionStatus.isModifiable;
+
+    if (isProtected) {
+      // Collecte protégée - afficher message d'information
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.orange.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.orange.shade200),
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Icon(Icons.lock, color: Colors.orange.shade700, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Modification impossible',
+                    style: TextStyle(
+                      color: Colors.orange.shade700,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              protectionStatus.userMessage,
+              style: TextStyle(
+                color: Colors.orange.shade600,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.info_outline, size: 16),
+                label: const Text('Voir détails'),
+                onPressed: () =>
+                    _showProtectionDetails(collecte, protectionStatus),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.orange.shade700,
+                  side: BorderSide(color: Colors.orange.shade300),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // Collecte modifiable - afficher boutons normaux
+      return Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.edit),
+              label: const Text('Modifier'),
+              onPressed: () => _editCollecte(collecte),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: kPrimaryColor,
+                side: BorderSide(color: kPrimaryColor),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.delete),
+              label: const Text('Supprimer'),
+              onPressed: () => _deleteCollecte(collecte),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                side: const BorderSide(color: Colors.red),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+  }
+
+  /// Construit le chip de protection
+  Widget _buildProtectionChip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade100,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade300),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.lock,
+            size: 12,
+            color: Colors.orange.shade700,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'Protégée',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: Colors.orange.shade700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Affiche les détails de protection d'une collecte
+  void _showProtectionDetails(
+    Map<String, dynamic> collecte,
+    CollecteProtectionStatus protectionStatus,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.lock, color: Colors.orange.shade700),
+            const SizedBox(width: 8),
+            const Text('Collecte Protégée'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Cette collecte ne peut pas être modifiée car certains de ses contenants ont déjà été traités.',
+                style: TextStyle(color: Colors.grey.shade700),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Contenants traités :',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...protectionStatus.traitedContainers.map(
+                (container) => Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            _getModuleIcon(container.module),
+                            size: 16,
+                            color: _getModuleColor(container.module),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Contenant ${container.containerId}',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Module: ${container.module}',
+                        style: TextStyle(
+                          color: _getModuleColor(container.module),
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        'Statut: ${container.status}',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        'Date: ${container.dateFormatee}',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Obtient l'icône pour un module
+  IconData _getModuleIcon(String module) {
+    switch (module.toLowerCase()) {
+      case 'contrôle':
+        return Icons.verified;
+      case 'attribution':
+        return Icons.assignment_ind;
+      case 'extraction':
+        return Icons.science;
+      case 'filtrage':
+        return Icons.filter_alt;
+      case 'conditionnement':
+        return Icons.inventory;
+      case 'commercialisation':
+        return Icons.shopping_cart;
+      default:
+        return Icons.settings;
+    }
+  }
+
+  /// Obtient la couleur pour un module
+  Color _getModuleColor(String module) {
+    switch (module.toLowerCase()) {
+      case 'contrôle':
+        return Colors.blue;
+      case 'attribution':
+        return Colors.purple;
+      case 'extraction':
+        return Colors.green;
+      case 'filtrage':
+        return Colors.teal;
+      case 'conditionnement':
+        return Colors.orange;
+      case 'commercialisation':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
   }
 
   List<Color> _getTypeGradient(String type) {
@@ -1613,8 +2094,7 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
                   color: Colors.purple,
                   onTap: () {
                     Navigator.pop(context);
-                    _navigateInDashboard('COLLECTE',
-                        subModule: 'Achats SCOOPS - Contenants');
+                    _navigateInDashboard('COLLECTE', subModule: 'Achat Scoop');
                   },
                 ),
                 const SizedBox(height: 12),
@@ -2007,40 +2487,7 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
                                   .toList(),
                             ),
                           ],
-                          if (collecte['contenants'] != null &&
-                              collecte['contenants'].isNotEmpty) ...[
-                            const SizedBox(height: 16),
-                            Text('Contenants',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
-                                    ?.copyWith(color: kPrimaryColor)),
-                            const SizedBox(height: 8),
-                            ...((collecte['contenants'] as List)
-                                .asMap()
-                                .entries
-                                .map((entry) {
-                              final idx = entry.key;
-                              final contenant = entry.value;
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    child: Text('${idx + 1}'),
-                                    backgroundColor:
-                                        kPrimaryColor.withOpacity(0.1),
-                                  ),
-                                  title: Text(
-                                      '${contenant['hiveType']} - ${contenant['containerType']}'),
-                                  subtitle: Text(
-                                      '${contenant['weight']} kg à ${contenant['unitPrice']} FCFA/kg'),
-                                  trailing: Text('${contenant['total']} FCFA',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold)),
-                                ),
-                              );
-                            }).toList()),
-                          ],
+                          ..._buildContenantsSection(collecte),
                         ],
                         if (collecte['type'] == 'Achat SCOOP') ...[
                           const SizedBox(height: 16),
@@ -2134,64 +2581,9 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
                               ],
                             ),
                           ),
-                          if (collecte['contenants'] != null &&
-                              collecte['contenants'].isNotEmpty) ...[
-                            const SizedBox(height: 16),
-                            Text(
-                                'Contenants (${collecte['contenants'].length})',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
-                                    ?.copyWith(color: kPrimaryColor)),
-                            const SizedBox(height: 8),
-                            ...((collecte['contenants'] as List)
-                                .asMap()
-                                .entries
-                                .map((entry) {
-                              final idx = entry.key;
-                              final contenant = entry.value;
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                elevation: 1,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor:
-                                        kPrimaryColor.withOpacity(0.1),
-                                    child: Text('${idx + 1}'),
-                                  ),
-                                  title: Text(
-                                      '${contenant['type_contenant'] ?? 'N/A'} - ${contenant['type_miel'] ?? 'N/A'}'),
-                                  subtitle: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                          'Quantité: ${contenant['quantite'] ?? 0} kg'),
-                                      Text(
-                                          'Prix unitaire: ${contenant['prix_unitaire'] ?? 0} CFA/kg'),
-                                      if (contenant['predominance_florale'] !=
-                                              null &&
-                                          contenant['predominance_florale']
-                                              .toString()
-                                              .isNotEmpty)
-                                        Text(
-                                            'Florale: ${contenant['predominance_florale']}'),
-                                    ],
-                                  ),
-                                  trailing: Text(
-                                    '${contenant['montant_total'] ?? (contenant['quantite'] ?? 0) * (contenant['prix_unitaire'] ?? 0)} CFA',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.green,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }).toList()),
-                          ],
+
+                          // Contenants SCOOP
+                          ..._buildContenantsSection(collecte),
                         ],
                         if (collecte['type'] == 'Achat Individuel') ...[
                           const SizedBox(height: 12),
@@ -2268,7 +2660,7 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
                                         _buildMetricItem(
                                             'Montant',
                                             '${(collecte['totalAmount'] ?? 0).toStringAsFixed(0)} FCFA',
-                                            Icons.attach_money,
+                                            Icons.text_fields,
                                             Colors.green),
                                       ],
                                     );
@@ -2301,7 +2693,7 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
                                         child: _buildMetricItem(
                                             'Montant',
                                             '${(collecte['totalAmount'] ?? 0).toStringAsFixed(0)} FCFA',
-                                            Icons.attach_money,
+                                            Icons.text_fields,
                                             Colors.green),
                                       ),
                                     ],
@@ -2321,22 +2713,8 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
                             final details =
                                 (collecte['details'] as List<dynamic>? ??
                                     const []);
-                            double sommeMontant = 0;
-                            double sommePoids = 0;
-                            for (final d in details) {
-                              final m = d as Map<String, dynamic>;
-                              final qte = (m['quantite'] ?? m['weight'] ?? 0)
-                                  .toDouble();
-                              final pu =
-                                  (m['prix_unitaire'] ?? m['unitPrice'] ?? 0)
-                                      .toDouble();
-                              final mt = (m['montant_total'] ??
-                                      m['total'] ??
-                                      (qte * pu))
-                                  .toDouble();
-                              sommePoids += qte;
-                              sommeMontant += mt;
-                            }
+                            // Parcourir les détails pour l'affichage
+                            // Note: Les totaux sont déjà calculés et stockés dans les champs de la collecte
                             return Column(
                               children: [
                                 // Sur mobile étroit, afficher chaque ligne en carte compacte
@@ -2470,6 +2848,42 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
                             );
                           }),
                         ],
+
+                        // Section Miellerie
+                        if (collecte['type'] == 'Achat dans miellerie') ...[
+                          const SizedBox(height: 16),
+                          Text('Informations Miellerie',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(color: kPrimaryColor)),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.purple.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.purple.shade200),
+                            ),
+                            child: Column(
+                              children: [
+                                _buildDetailItem('Miellerie',
+                                    collecte['miellerie_nom'] ?? 'Non définie'),
+                                _buildDetailItem('Localité',
+                                    collecte['localite'] ?? 'Non définie'),
+                                if (collecte['cooperative_nom'] != null)
+                                  _buildDetailItem('Coopérative',
+                                      collecte['cooperative_nom']),
+                                if (collecte['repondant'] != null)
+                                  _buildDetailItem(
+                                      'Répondant', collecte['repondant']),
+                              ],
+                            ),
+                          ),
+
+                          // Contenants Miellerie
+                          ..._buildContenantsSection(collecte),
+                        ],
                       ],
                     ),
                   ),
@@ -2516,7 +2930,7 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
           Get.to(() => NouvelleCollecteRecoltePage());
         } else if (subModule == 'Achats Individuels') {
           Get.to(() => const NouvelleCollecteIndividuellePage());
-        } else if (subModule == 'Achats SCOOPS - Contenants') {
+        } else if (subModule == 'Achat Scoop') {
           Get.to(() => const NouvelAchatScoopContenantsPage());
         } else if (subModule == 'Collecte Mielleries') {
           Get.to(() => const NouvelleCollecteMielleriePage());
@@ -2525,13 +2939,42 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
     }
   }
 
-  void _editCollecte(Map<String, dynamic> collecte) {
+  void _editCollecte(Map<String, dynamic> collecte) async {
+    // Vérifier la protection avant de modifier
+    final protectionStatus = await _checkCollecteProtection(collecte);
+
+    if (!protectionStatus.isModifiable) {
+      _showProtectionAlert(collecte, protectionStatus, 'modifier');
+      return;
+    }
+
     if (collecte['type'] == 'Récoltes') {
-      Get.to(() => EditCollecteRecoltePage(collecteId: collecte['id']));
+      // Utiliser le bon chemin pour les récoltes selon la vraie structure
+      final docPath =
+          'Sites/${collecte['site']}/nos_collectes_recoltes/${collecte['id']}';
+      Get.to(() => EditCollecteRecoltePage(
+            collecteId: collecte['id'],
+            collection: docPath,
+            siteId: collecte['site']?.toString(),
+          ));
     } else if (collecte['type'] == 'Achat Individuel') {
       final docPath =
           'Sites/${collecte['site']}/nos_achats_individuels/${collecte['id']}';
       Get.to(() => EditCollecteIndividuellePage(documentPath: docPath));
+    } else if (collecte['type'] == 'Achat SCOOP') {
+      final docPath =
+          'Sites/${collecte['site']}/nos_achats_scoop_contenants/${collecte['id']}';
+      Get.to(() => EditAchatScoopPage(documentPath: docPath));
+    } else if (collecte['type'] == 'Achat dans miellerie') {
+      // Pour le moment, l'édition des collectes miellerie n'est pas disponible
+      // car nous utilisons maintenant une version simplifiée
+      Get.snackbar(
+        'Information',
+        'L\'édition des collectes miellerie sera disponible prochainement.\nVeuillez créer une nouvelle collecte si nécessaire.',
+        backgroundColor: Colors.blue,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 4),
+      );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -2543,7 +2986,15 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
     }
   }
 
-  void _deleteCollecte(Map<String, dynamic> collecte) {
+  void _deleteCollecte(Map<String, dynamic> collecte) async {
+    // Vérifier la protection avant de supprimer
+    final protectionStatus = await _checkCollecteProtection(collecte);
+
+    if (!protectionStatus.isModifiable) {
+      _showProtectionAlert(collecte, protectionStatus, 'supprimer');
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -2593,6 +3044,166 @@ class _HistoriquesCollectesPageState extends State<HistoriquesCollectesPage>
         ),
       );
     }
+  }
+
+  /// Affiche le modal des rapports pour une collecte
+  void _showRapportsModal(BuildContext context, Map<String, dynamic> collecte) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => RapportModal(collecteData: collecte),
+    );
+  }
+
+  /// Construit la section des contenants avec mapping intelligent
+  List<Widget> _buildContenantsSection(Map<String, dynamic> collecte) {
+    final type = collecte['type'] ?? '';
+
+    print('🔍 DÉTAILS DIALOG: Type=$type');
+    print('🔍 DÉTAILS DIALOG: Clés disponibles: ${collecte.keys.toList()}');
+    print('🔍 DÉTAILS DIALOG: collecte[contenants]: ${collecte['contenants']}');
+    print('🔍 DÉTAILS DIALOG: collecte[details]: ${collecte['details']}');
+
+    // Récupérer les contenants selon le type
+    List<dynamic>? contenants;
+    if (type == 'SCOOP Contenants' || type == 'Achat SCOOP') {
+      contenants =
+          collecte['details'] as List? ?? collecte['contenants'] as List?;
+      print(
+          '🥄 DÉTAILS DIALOG: SCOOP contenants - details: ${collecte['details']?.length}, contenants: ${collecte['contenants']?.length}');
+    } else {
+      contenants = collecte['contenants'] as List?;
+    }
+
+    print(
+        '📦 DÉTAILS DIALOG: Type=$type, Contenants trouvés: ${contenants?.length}');
+
+    if (contenants == null || contenants.isEmpty) {
+      return [];
+    }
+
+    return [
+      const SizedBox(height: 16),
+      Text('Contenants (${contenants.length})',
+          style: Theme.of(context)
+              .textTheme
+              .titleMedium
+              ?.copyWith(color: kPrimaryColor)),
+      const SizedBox(height: 8),
+      ...contenants.asMap().entries.map((entry) {
+        final idx = entry.key;
+        final contenant = entry.value as Map<String, dynamic>;
+        return _buildContenantDialogCard(contenant, idx + 1, type);
+      }).toList(),
+    ];
+  }
+
+  /// Construit une carte de contenant pour le dialog de détails
+  Widget _buildContenantDialogCard(
+      Map<String, dynamic> contenant, int numero, String type) {
+    print('🔍 CONTENANT $numero: Données brutes: $contenant');
+    print('🔍 CONTENANT $numero: Clés disponibles: ${contenant.keys.toList()}');
+
+    // Mapping intelligent des champs selon le type
+    String getTypeInfo() {
+      switch (type) {
+        case 'SCOOP Contenants':
+        case 'Achat SCOOP':
+          final typeInfo = contenant['typeContenant'] ??
+              contenant['type_contenant'] ??
+              contenant['containerType'] ??
+              'Contenant';
+          print(
+              '🔍 CONTENANT $numero: Type trouvé: $typeInfo (typeContenant=${contenant['typeContenant']}, type_contenant=${contenant['type_contenant']}, containerType=${contenant['containerType']})');
+          return typeInfo;
+        case 'Récoltes':
+          return contenant['type_ruche'] ?? contenant['hiveType'] ?? 'Ruche';
+        case 'Achat Individuel':
+          return contenant['type_contenant'] ??
+              contenant['containerType'] ??
+              'Contenant';
+        case 'Achat dans miellerie':
+          return contenant['typeContenant'] ??
+              contenant['type_contenant'] ??
+              'Contenant';
+        default:
+          return 'Contenant';
+      }
+    }
+
+    String getMielInfo() {
+      switch (type) {
+        case 'SCOOP Contenants':
+        case 'Achat SCOOP':
+          final mielInfo = contenant['typeMiel'] ??
+              contenant['type_miel'] ??
+              contenant['hiveType'] ??
+              'Miel';
+          print(
+              '🔍 CONTENANT $numero: Miel trouvé: $mielInfo (typeMiel=${contenant['typeMiel']}, type_miel=${contenant['type_miel']}, hiveType=${contenant['hiveType']})');
+          return mielInfo;
+        case 'Récoltes':
+          return contenant['type_ruche'] ?? contenant['hiveType'] ?? 'Ruche';
+        case 'Achat Individuel':
+          return contenant['type_miel'] ?? contenant['hiveType'] ?? 'Miel';
+        case 'Achat dans miellerie':
+          return contenant['typeMiel'] ?? contenant['type_miel'] ?? 'Miel';
+        default:
+          return 'Miel';
+      }
+    }
+
+    double getPoids() {
+      final poids = (contenant['poids'] ??
+              contenant['weight'] ??
+              contenant['quantite'] ??
+              contenant['quantite_kg'] ??
+              0.0)
+          .toDouble();
+      print(
+          '🔍 CONTENANT $numero: Poids trouvé: $poids (poids=${contenant['poids']}, weight=${contenant['weight']}, quantite=${contenant['quantite']})');
+      return poids;
+    }
+
+    double getPrix() {
+      final prix = (contenant['prix'] ??
+              contenant['unitPrice'] ??
+              contenant['prix_unitaire'] ??
+              0.0)
+          .toDouble();
+      print(
+          '🔍 CONTENANT $numero: Prix trouvé: $prix (prix=${contenant['prix']}, unitPrice=${contenant['unitPrice']}, prix_unitaire=${contenant['prix_unitaire']})');
+      return prix;
+    }
+
+    double getTotal() {
+      final total = (contenant['montantTotal'] ??
+              contenant['total'] ??
+              contenant['montant_total'] ??
+              (getPoids() * getPrix()))
+          .toDouble();
+      print(
+          '🔍 CONTENANT $numero: Total trouvé: $total (montantTotal=${contenant['montantTotal']}, total=${contenant['total']}, calculé=${getPoids() * getPrix()})');
+      return total;
+    }
+
+    print(
+        '📦 DÉTAILS DIALOG: Contenant $numero - Type: ${getTypeInfo()}, Miel: ${getMielInfo()}, Poids: ${getPoids()}, Prix: ${getPrix()}');
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: CircleAvatar(
+          child: Text('$numero'),
+          backgroundColor: kPrimaryColor.withOpacity(0.1),
+        ),
+        title: Text('${getTypeInfo()} - ${getMielInfo()}'),
+        subtitle: Text(
+            '${getPoids().toStringAsFixed(2)} kg à ${getPrix().toStringAsFixed(0)} FCFA/kg'),
+        trailing: Text('${getTotal().toStringAsFixed(0)} FCFA',
+            style: const TextStyle(fontWeight: FontWeight.bold)),
+      ),
+    );
   }
 
   // Méthodes utilitaires pour les statuts

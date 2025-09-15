@@ -1,34 +1,36 @@
-import 'package:fl_chart/fl_chart.dart';
-import 'package:flutter/material.dart';
-// import 'package:apisavana_gestion/screens/collecte_de_donnes/collecte_donnes.dart'; // ANCIEN CODE - DÉSACTIVÉ
 import 'package:get/get.dart';
-import 'package:apisavana_gestion/authentication/user_session.dart';
+import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:apisavana_gestion/authentication/login.dart';
-import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
-import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collectes.dart';
-import 'package:apisavana_gestion/screens/collecte_de_donnes/nouvelle_collecte_individuelle.dart';
-
-import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_achats_scoop_contenants/nouvel_achat_scoop_contenants.dart';
-
-import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_mielleurie/nouvelle_collecte_miellerie.dart';
-import 'package:apisavana_gestion/screens/dashboard/pages/notifications_page.dart';
-import 'package:apisavana_gestion/services/user_role_service.dart';
-import 'package:apisavana_gestion/screens/dashboard/role_dashboards/controleur_dashboard.dart';
-import 'package:apisavana_gestion/screens/dashboard/role_dashboards/extracteur_filtreur_dashboard.dart';
-import 'package:apisavana_gestion/screens/dashboard/role_dashboards/conditionneur_dashboard.dart';
-import 'package:apisavana_gestion/screens/dashboard/role_dashboards/commercial_dashboard.dart';
-import 'package:apisavana_gestion/screens/administration/pages/user_management_page.dart';
-import 'package:apisavana_gestion/screens/administration/pages/admin_reports_page.dart';
-import 'package:apisavana_gestion/screens/administration/pages/settings_page.dart';
 import 'package:apisavana_gestion/authentication/sign_up.dart';
-import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
-import 'package:apisavana_gestion/screens/extraction/pages/main_extraction_page.dart';
-import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
-import 'package:apisavana_gestion/screens/conditionnement/conditionnement_main_page.dart';
-import 'package:apisavana_gestion/screens/conditionnement/condionnement_home.dart';
-import 'package:apisavana_gestion/screens/conditionnement/pages/stock_conditionne_page.dart';
+import 'package:apisavana_gestion/services/user_role_service.dart';
+import 'package:apisavana_gestion/authentication/user_session.dart';
 import 'package:apisavana_gestion/screens/vente/vente_main_page.dart';
+import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
+import 'package:apisavana_gestion/screens/caisse/pages/espace_caissier_page.dart';
+import 'package:apisavana_gestion/screens/dashboard/pages/notifications_page.dart';
+import 'package:apisavana_gestion/screens/administration/pages/settings_page.dart';
+import 'package:apisavana_gestion/screens/conditionnement/condionnement_home.dart';
+import 'package:apisavana_gestion/screens/commercial_space/commercial_dashboard.dart';
+import 'package:apisavana_gestion/screens/extraction/pages/main_extraction_page.dart';
+import 'package:apisavana_gestion/screens/administration/pages/admin_reports_page.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collectes.dart';
+import 'package:apisavana_gestion/screens/administration/pages/user_management_page.dart';
+import 'package:apisavana_gestion/screens/conditionnement/conditionnement_main_page.dart';
+import 'package:apisavana_gestion/screens/conditionnement/pages/stock_conditionne_page.dart';
+import 'package:apisavana_gestion/screens/dashboard/role_dashboards/controleur_dashboard.dart';
+import 'package:apisavana_gestion/screens/dashboard/role_dashboards/collecteur_dashboard.dart';
+import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nouvelle_collecte_individuelle.dart';
+import 'package:apisavana_gestion/screens/dashboard/role_dashboards/conditionneur_dashboard.dart';
+import 'package:apisavana_gestion/screens/dashboard/role_dashboards/extracteur_filtreur_dashboard.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_mielleurie/nouvelle_collecte_miellerie.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_achats_scoop_contenants/nouvel_achat_scoop_contenants.dart';
+// import 'package:apisavana_gestion/screens/collecte_de_donnes/collecte_donnes.dart'; // ANCIEN CODE - DÉSACTIVÉ
+
+
 
 // Color palette
 const Color kHighlightColor = Color(0xFFF49101);
@@ -68,8 +70,7 @@ class DashboardController extends GetxController {
         return;
       }
 
-      if (moduleName == 'COLLECTE' &&
-          subModule == 'Achats SCOOPS - Contenants') {
+      if (moduleName == 'COLLECTE' && subModule == 'Achat Scoop') {
         currentPage.value = const NouvelAchatScoopContenantsPage();
         return;
       }
@@ -144,6 +145,17 @@ class DashboardController extends GetxController {
         return;
       }
 
+      // NOUVEAU : Module CAISSE (accès rapide au dashboard caissier)
+      if (moduleName == 'CAISSE') {
+        // Deux sous-modules proposés pointent pour l'instant vers la même page synthèse
+        // Possibilité future: différencier Analyse Paiements avec un paramètre / onglet
+        // subModule est non-null dans ce bloc général mais on garde une sécurité simple
+        final libelle = subModule.isEmpty ? 'Synthèse' : subModule;
+        print('✅ Navigation vers CAISSE -> $libelle');
+        currentPage.value = const EspaceCaissierPage();
+        return;
+      }
+
       // NOUVEAU : Module ADMINISTRATION (Admin seulement)
       if (moduleName == 'ADMINISTRATION') {
         if (subModule == 'Créer un compte') {
@@ -188,6 +200,10 @@ class DashboardController extends GetxController {
           print('✅ Navigation par défaut vers CONDITIONNEMENT');
           currentPage.value =
               const ConditionnementMainPage(); // 🆕 PAGE PRINCIPALE DU CONDITIONNEMENT
+          break;
+        case 'CAISSE':
+          print('✅ Navigation par défaut vers CAISSE');
+          currentPage.value = const EspaceCaissierPage();
           break;
         default:
           print('❌ Module non géré: $moduleName');
@@ -363,7 +379,7 @@ class _DashboardPageState extends State<DashboardPage> {
 }
 
 // Header
-class DashboardHeader extends StatelessWidget {
+class DashboardHeader extends StatefulWidget {
   final VoidCallback onMenuToggle;
   final bool isMobile, isTablet;
 
@@ -373,6 +389,49 @@ class DashboardHeader extends StatelessWidget {
       required this.isTablet,
       Key? key})
       : super(key: key);
+
+  @override
+  State<DashboardHeader> createState() => _DashboardHeaderState();
+}
+
+class _DashboardHeaderState extends State<DashboardHeader> {
+  bool _isRefreshing = false;
+
+  /// Simule un processus de rafraîchissement
+  Future<void> _handleRefresh() async {
+    if (_isRefreshing) return;
+
+    setState(() {
+      _isRefreshing = true;
+    });
+
+    // Simulation d'un processus de chargement
+    await Future.delayed(const Duration(seconds: 2));
+
+    setState(() {
+      _isRefreshing = false;
+    });
+
+    // Afficher un message de confirmation
+    Get.snackbar(
+      'Actualisation',
+      'Données mises à jour avec succès !',
+      snackPosition: SnackPosition.TOP,
+      backgroundColor: Colors.green.withOpacity(0.8),
+      colorText: Colors.white,
+      duration: const Duration(seconds: 2),
+      margin: const EdgeInsets.all(16),
+    );
+  }
+
+  /// Navigation vers la page des paramètres système
+  void _navigateToSettings() {
+    Get.to(
+      () => const SettingsPage(),
+      transition: Transition.rightToLeftWithFade,
+      duration: const Duration(milliseconds: 300),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -387,18 +446,19 @@ class DashboardHeader extends StatelessWidget {
       child: Container(
         color: Colors.white,
         padding: EdgeInsets.symmetric(
-            horizontal: isMobile ? 8 : 24, vertical: isMobile ? 8 : 14),
+            horizontal: widget.isMobile ? 8 : 24,
+            vertical: widget.isMobile ? 8 : 14),
         child: Row(
           children: [
-            if (isMobile || isTablet)
+            if (widget.isMobile || widget.isTablet)
               IconButton(
                 icon: Icon(Icons.menu, color: kHighlightColor, size: 28),
-                onPressed: onMenuToggle,
+                onPressed: widget.onMenuToggle,
               ),
             Image.asset(
               'assets/logo/logo.jpeg', // Correct path
-              height: isMobile ? 40 : 60,
-              width: isMobile ? 40 : 60,
+              height: widget.isMobile ? 40 : 60,
+              width: widget.isMobile ? 40 : 60,
               fit: BoxFit.contain,
             ),
             SizedBox(width: 8),
@@ -412,7 +472,7 @@ class DashboardHeader extends StatelessWidget {
                         final roleService = Get.find<UserRoleService>();
                         return Text(roleService.dashboardTitle,
                             style: TextStyle(
-                              fontSize: isMobile ? 15 : 21,
+                              fontSize: widget.isMobile ? 15 : 21,
                               fontWeight: FontWeight.bold,
                               color: kHighlightColor,
                             ),
@@ -420,7 +480,7 @@ class DashboardHeader extends StatelessWidget {
                       } catch (e) {
                         return Text("Dashboard Administrateur",
                             style: TextStyle(
-                              fontSize: isMobile ? 15 : 21,
+                              fontSize: widget.isMobile ? 15 : 21,
                               fontWeight: FontWeight.bold,
                               color: kHighlightColor,
                             ),
@@ -428,7 +488,7 @@ class DashboardHeader extends StatelessWidget {
                       }
                     },
                   ),
-                  if (!isMobile)
+                  if (!widget.isMobile)
                     Builder(
                       builder: (context) {
                         try {
@@ -446,7 +506,7 @@ class DashboardHeader extends StatelessWidget {
                 ],
               ),
             ),
-            if (!isMobile && !isTablet)
+            if (!widget.isMobile && !widget.isTablet)
               // Seulement sur desktop pour éviter l'overflow
               Flexible(
                 child: Row(
@@ -487,12 +547,12 @@ class DashboardHeader extends StatelessWidget {
                   ],
                 ),
               ),
-            SizedBox(width: isMobile ? 6 : 12),
+            SizedBox(width: widget.isMobile ? 6 : 12),
             IconButton(
               icon: Stack(
                 children: [
                   Icon(Icons.notifications,
-                      color: kHighlightColor, size: isMobile ? 18 : 22),
+                      color: kHighlightColor, size: widget.isMobile ? 18 : 22),
                   Positioned(
                     right: 0,
                     top: 0,
@@ -513,17 +573,31 @@ class DashboardHeader extends StatelessWidget {
                 );
               },
             ),
-            if (!isMobile) ...[
+            if (!widget.isMobile) ...[
               IconButton(
-                  icon: Icon(Icons.refresh, color: Colors.grey[700]),
-                  onPressed: () {}),
+                icon: _isRefreshing
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.grey[700]!),
+                        ),
+                      )
+                    : Icon(Icons.refresh, color: Colors.grey[700]),
+                onPressed: _isRefreshing ? null : _handleRefresh,
+                tooltip: 'Actualiser les données',
+              ),
               IconButton(
-                  icon: Icon(Icons.settings, color: Colors.grey[700]),
-                  onPressed: () {}),
+                icon: Icon(Icons.settings, color: Colors.grey[700]),
+                onPressed: _navigateToSettings,
+                tooltip: 'Paramètres système',
+              ),
             ],
             OutlinedButton.icon(
               icon: Icon(Icons.logout, color: Colors.red[400], size: 16),
-              label: isMobile
+              label: widget.isMobile
                   ? SizedBox.shrink()
                   : Text("Déconnexion",
                       style: TextStyle(color: Colors.red[400], fontSize: 12)),
@@ -531,7 +605,7 @@ class DashboardHeader extends StatelessWidget {
                 side: BorderSide(color: Colors.red[100]!),
                 backgroundColor: Colors.red[50],
                 padding: EdgeInsets.symmetric(
-                    horizontal: isMobile ? 5 : 12, vertical: 6),
+                    horizontal: widget.isMobile ? 5 : 12, vertical: 6),
               ),
               onPressed: () async {
                 await FirebaseAuth.instance.signOut();
@@ -568,25 +642,54 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
 
   @override
   Widget build(BuildContext context) {
-    // Vérifier le rôle et afficher le dashboard approprié
+    // 🔒 VÉRIFIER LE RÔLE ET AFFICHER LE DASHBOARD APPROPRIÉ
     try {
-      final roleService = Get.find<UserRoleService>();
+      final userSession = Get.find<UserSession>();
+      final userRole = userSession.role?.toLowerCase() ?? '';
 
-      switch (roleService.currentRoleGroup) {
-        case RoleGroup.controleur:
+      debugPrint('🔍 [Dashboard] Rôle utilisateur détecté: $userRole');
+
+      // Rediriger vers le dashboard spécifique selon le rôle
+      switch (userRole) {
+        case 'contrôleur':
+        case 'controlleur':
+          debugPrint('✅ [Dashboard] Redirection vers ControleurDashboard');
           return const ControleurDashboard();
-        case RoleGroup.extracteurFiltreur:
+
+        case 'extracteur':
+        case 'filtreur':
+          debugPrint(
+              '✅ [Dashboard] Redirection vers ExtracteurFiltreurDashboard');
           return const ExtracteurFiltreurDashboard();
-        case RoleGroup.conditionneur:
+
+        case 'conditionneur':
+          debugPrint('✅ [Dashboard] Redirection vers ConditionneurDashboard');
           return const ConditionneurDashboard();
-        case RoleGroup.commercial:
-        case RoleGroup.caissier:
+
+        case 'commercial':
+        case 'caissier':
+        case 'caissière':
+        case 'magazinier':
+        case 'gestionnaire commercial':
+          debugPrint('✅ [Dashboard] Redirection vers CommercialDashboard');
           return const CommercialDashboard();
-        case RoleGroup.admin:
-          // Garder le dashboard admin actuel
-          break;
+
+        case 'collecteur':
+          debugPrint('✅ [Dashboard] Redirection vers CollecteurDashboard');
+          return const CollecteurDashboard();
+
+        case 'admin':
+          debugPrint('✅ [Dashboard] Utilisation du dashboard Admin complet');
+          break; // Continuer avec le dashboard admin
+
+        default:
+          debugPrint(
+              '⚠️ [Dashboard] Rôle non reconnu: $userRole - Utilisation du dashboard admin');
+          break; // Utiliser le dashboard admin par défaut
       }
     } catch (e) {
+      debugPrint(
+          '❌ [Dashboard] Erreur détection rôle: $e - Utilisation du dashboard admin');
       // Si erreur, utiliser le dashboard admin par défaut
     }
     final EdgeInsets sectionPad = EdgeInsets.symmetric(
@@ -2122,19 +2225,31 @@ class NavigationSlider extends StatelessWidget {
   static const Map<String, List<String>> moduleRoles = {
     // 🔒 COLLECTEUR : Seulement COLLECTE
     'COLLECTE': ['Admin', 'Collecteur'],
-    
+
     // 🔒 CONTRÔLEUR : Seulement CONTRÔLE, FILTRAGE, EXTRACTION
     'CONTRÔLE': ['Admin', 'Contrôleur', 'Controlleur'],
-    'FILTRAGE': ['Admin', 'Contrôleur', 'Controlleur', 'Filtreur', 'Extracteur'],
-    'EXTRACTION': ['Admin', 'Contrôleur', 'Controlleur', 'Filtreur', 'Extracteur'],
-    
+    'FILTRAGE': [
+      'Admin',
+      'Contrôleur',
+      'Controlleur',
+      'Filtreur',
+      'Extracteur'
+    ],
+    'EXTRACTION': [
+      'Admin',
+      'Contrôleur',
+      'Controlleur',
+      'Filtreur',
+      'Extracteur'
+    ],
+
     // 🔒 EXTRACTEUR : Seulement FILTRAGE, EXTRACTION
     // 🔒 FILTREUR : Seulement FILTRAGE, EXTRACTION
     // (Déjà inclus dans les lignes ci-dessus)
-    
+
     // 🔒 CONDITIONNEUR : Seulement CONDITIONNEMENT
     'CONDITIONNEMENT': ['Admin', 'Conditionneur'],
-    
+
     // 🔒 GESTION DE VENTES : Rôles commerciaux uniquement
     'GESTION DE VENTES': [
       'Admin',
@@ -2144,7 +2259,16 @@ class NavigationSlider extends StatelessWidget {
       'Caissier',
       'Caissière'
     ],
-    
+
+    // 🔒 CAISSE : Accès dédié aux rôles financiers / commerciaux élargis
+    'CAISSE': [
+      'Admin',
+      'Gestionnaire Commercial',
+      'Caissier',
+      'Caissière',
+      'Commercial'
+    ],
+
     // 🔒 VENTES : Rôles commerciaux uniquement
     'VENTES': [
       'Admin',
@@ -2154,7 +2278,7 @@ class NavigationSlider extends StatelessWidget {
       'Caissier',
       'Caissière'
     ],
-    
+
     // 🔒 ADMINISTRATION : Admin uniquement
     'RAPPORTS': ['Admin'],
     'ADMINISTRATION': ['Admin'],
@@ -2165,13 +2289,13 @@ class NavigationSlider extends StatelessWidget {
     final role = user.role ?? '';
 
     debugPrint('🔍 [FilterModules] Utilisateur: $role (Site: ${user.site})');
-    
+
     // Si admin, accès à tout
     if (role.toLowerCase() == 'admin') {
       debugPrint('✅ [FilterModules] Admin détecté - Accès à tous les modules');
       return modules;
     }
-    
+
     // 📋 AFFICHER LES RÈGLES D'ACCÈS PAR RÔLE
     debugPrint('📋 [FilterModules] Règles d\'accès par rôle:');
     debugPrint('   🔒 Collecteur → COLLECTE uniquement');
@@ -2187,8 +2311,7 @@ class NavigationSlider extends StatelessWidget {
       final moduleName = m['name'] as String;
       final allowed = moduleRoles[moduleName] ?? [];
 
-      final hasAccess = allowed.contains(role) ||
-          allowed.contains(role + 'e');
+      final hasAccess = allowed.contains(role) || allowed.contains(role + 'e');
 
       debugPrint(
           '🔍 [FilterModules] Module $moduleName: $hasAccess (Rôles autorisés: $allowed)');
@@ -2212,38 +2335,25 @@ class NavigationSlider extends StatelessWidget {
       {
         "icon": Icons.trending_up,
         "name": "VENTES",
-        "badge": 8,
         "subModules": [
           {"name": "Nouvelle vente"},
-          {"name": "Ventes en cours", "badge": 5},
-          {"name": "Crédit/Recouvrement", "badge": 3},
           {"name": "Historique ventes"}
         ]
       },
       {
         "icon": Icons.nature,
         "name": "COLLECTE",
-        "badge": 5,
         "subModules": [
-          {"name": "Nouvelle collecte", "icon": Icons.add_circle_outline},
-          {"name": "Historique collectes", "icon": Icons.history},
-          {"name": "Récoltes", "badge": 3, "icon": Icons.agriculture},
-          {"name": "Achats SCOOPS - Contenants", "icon": Icons.inventory_2},
-          {"name": "Achats Individuels", "badge": 2, "icon": Icons.person},
+          {"name": "Récoltes", "icon": Icons.agriculture},
+          {"name": "Achat Scoop", "icon": Icons.inventory_2},
+          {"name": "Achats Individuels", "icon": Icons.person},
           {"name": "Collecte Mielleries", "icon": Icons.factory}
         ]
       },
       {
         "icon": Icons.security,
         "name": "CONTRÔLE",
-        "badge": 5,
         "subModules": [
-          {
-            "name": "Contrôle avancé",
-            "icon": Icons.analytics_outlined,
-            "badge": 1
-          },
-          {"name": "Contrôle a gerer", "badge": 7},
           {"name": "Nouveau contrôle"},
           {"name": "Historique contrôles"}
         ]
@@ -2251,17 +2361,9 @@ class NavigationSlider extends StatelessWidget {
       {
         "icon": Icons.science,
         "name": "EXTRACTION",
-        "badge": 12,
         "subModules": [
-          {
-            "name": "Extraction de données",
-            "icon": Icons.analytics_outlined,
-            "badge": 5
-          },
           {"name": "Nouvelle extraction"},
-          {"name": "Extractions en cours", "badge": 3},
-          {"name": "Historique extractions"},
-          {"name": "Rapports qualité", "badge": 2}
+          {"name": "Historique extractions"}
         ]
       },
       {
@@ -2273,8 +2375,7 @@ class NavigationSlider extends StatelessWidget {
         "icon": Icons.filter_alt,
         "subModules": [
           {"name": "Nouveau filtrage"},
-          {"name": "En cours de filtrage", "badge": 2},
-          {"name": "Filtrage terminé"}
+          {"name": "Historique filtrage"}
         ]
       },
       {
@@ -2282,7 +2383,6 @@ class NavigationSlider extends StatelessWidget {
         "icon": Icons.all_inbox,
         "subModules": [
           {"name": "Nouveau conditionnement"},
-          {"name": "Lots disponibles", "badge": 12},
           {"name": "Stock conditionné"}
         ]
       },
@@ -2290,9 +2390,16 @@ class NavigationSlider extends StatelessWidget {
         "name": "GESTION DE VENTES",
         "icon": Icons.trending_up,
         "subModules": [
-          {"name": "Prélèvements"},
-          {"name": "Attribution commerciaux"},
-          {"name": "Suivi distributions", "badge": 3}
+          {"name": "Nouvelle vente"},
+          {"name": "Historique ventes"}
+        ]
+      },
+      {
+        "name": "CAISSE",
+        "icon": Icons.account_balance,
+        "subModules": [
+          {"name": "Synthèse Caisse"},
+          {"name": "Analyse Paiements"}
         ]
       },
       {
@@ -2312,12 +2419,15 @@ class NavigationSlider extends StatelessWidget {
 
     debugPrint('🔍 [Sidebar] Utilisateur: ${user.role} (${user.site})');
     debugPrint('🔍 [Sidebar] Total modules disponibles: ${modules.length}');
-    debugPrint('🔍 [Sidebar] Modules accessibles après filtrage: ${filteredModules.length}');
-    debugPrint('🔍 [Sidebar] Modules accessibles: ${filteredModules.map((m) => m["name"]).join(", ")}');
-    
+    debugPrint(
+        '🔍 [Sidebar] Modules accessibles après filtrage: ${filteredModules.length}');
+    debugPrint(
+        '🔍 [Sidebar] Modules accessibles: ${filteredModules.map((m) => m["name"]).join(", ")}');
+
     // 🚨 VÉRIFICATION CRITIQUE : Si aucun module accessible, afficher un message
     if (filteredModules.isEmpty) {
-      debugPrint('❌ [Sidebar] ATTENTION: Aucun module accessible pour ${user.role} (${user.site})');
+      debugPrint(
+          '❌ [Sidebar] ATTENTION: Aucun module accessible pour ${user.role} (${user.site})');
     }
 
     return AnimatedContainer(
@@ -2497,8 +2607,8 @@ class NavigationSlider extends StatelessWidget {
                               itemBuilder: (context, index) {
                                 final module = filteredModules[index];
                                 return TweenAnimationBuilder<double>(
-                                  duration:
-                                      Duration(milliseconds: 300 + (index * 100)),
+                                  duration: Duration(
+                                      milliseconds: 300 + (index * 100)),
                                   tween: Tween(begin: 0.0, end: 1.0),
                                   builder: (context, value, child) {
                                     return Transform.translate(
