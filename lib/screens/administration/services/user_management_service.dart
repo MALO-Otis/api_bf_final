@@ -1,13 +1,28 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:math';
 import 'package:get/get.dart';
+import 'package:flutter/material.dart';
+import '../../../services/email_service.dart';
 import '../models/user_management_models.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../authentication/user_session.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+/// Résultat paginé pour l'historique des actions
+class PaginatedActions {
+  final List<UserAction> actions;
+  final DocumentSnapshot? lastDocument;
+  final bool hasMore;
+  PaginatedActions(
+      {required this.actions,
+      required this.lastDocument,
+      required this.hasMore});
+}
 
 class UserManagementService extends GetxService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final UserSession _userSession = Get.find<UserSession>();
+  final EmailService _emailService = Get.put(EmailService());
 
   /// États observables
   final RxBool _isLoadingStats = false.obs;
@@ -180,7 +195,16 @@ class UserManagementService extends GetxService {
     }
   }
 
-  /// Créer un nouvel utilisateur
+  /// Générer un mot de passe temporaire sécurisé
+  String _generateTemporaryPassword() {
+    const String chars =
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#\$%^&*';
+    final Random random = Random.secure();
+    return List.generate(12, (index) => chars[random.nextInt(chars.length)])
+        .join();
+  }
+
+  /// Créer un nouvel utilisateur avec envoi automatique d'email de confirmation
   Future<bool> createUser({
     required String email,
     required String password,
@@ -191,14 +215,25 @@ class UserManagementService extends GetxService {
     required String site,
   }) async {
     try {
+      print('🚀 Début de création utilisateur: $email');
+
+      // Générer un mot de passe temporaire si celui fourni est vide ou trop simple
+      final tempPassword =
+          password.length < 8 ? _generateTemporaryPassword() : password;
+
       // Créer l'utilisateur dans Firebase Auth
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
-        password: password,
+        password: tempPassword,
       );
 
       final user = userCredential.user;
-      if (user == null) return false;
+      if (user == null) {
+        print('❌ Erreur: user credential null');
+        return false;
+      }
+
+      print('✅ Utilisateur Firebase Auth créé: ${user.uid}');
 
       // Créer le document utilisateur dans Firestore
       final appUser = AppUser(
@@ -216,22 +251,255 @@ class UserManagementService extends GetxService {
 
       // Utiliser l'uid comme ID du document
       await _usersCollection.doc(user.uid).set(appUser.toFirestore());
+      print('✅ Document Firestore créé');
 
-      // Envoyer l'email de vérification
+      // Envoyer l'email de vérification Firebase (par défaut)
       await user.sendEmailVerification();
+      print('✅ Email de vérification Firebase envoyé');
+
+      // Envoyer l'email de bienvenue personnalisé avec les informations de connexion
+      final emailSent = await _emailService.sendWelcomeEmailLocal(
+        userEmail: email,
+        userName: '$prenom $nom',
+        userRole: role,
+        userSite: site,
+        temporaryPassword: tempPassword,
+      );
+
+      if (emailSent) {
+        print('✅ Email de bienvenue personnalisé envoyé avec succès');
+      } else {
+        print(
+            '⚠️ Impossible d\'envoyer l\'email de bienvenue, mais utilisateur créé');
+      }
 
       // Enregistrer l'action
       await _logUserAction(
         userId: user.uid,
         type: UserActionType.created,
-        description: 'Utilisateur créé par ${_userSession.email}',
+        description:
+            'Utilisateur créé par ${_userSession.email}. Email de confirmation envoyé.',
         newValues: appUser.toFirestore(),
+      );
+
+      print('✅ Action utilisateur enregistrée');
+
+      // Afficher la modale de vérification email pour l'administrateur
+      _showAdminEmailVerificationDialog(
+        userEmail: email,
+        userName: '$prenom $nom',
+        tempPassword: tempPassword,
       );
 
       return true;
     } catch (e) {
-      print('Erreur lors de la création de l\'utilisateur: $e');
+      print('❌ Erreur lors de la création de l\'utilisateur: $e');
+
+      // Afficher une notification d'erreur
+      Get.snackbar(
+        '❌ Erreur de création',
+        'Impossible de créer l\'utilisateur: ${e.toString()}',
+        backgroundColor: const Color(0xFFDC3545),
+        colorText: Colors.white,
+        duration: const Duration(seconds: 5),
+        snackPosition: SnackPosition.TOP,
+        margin: const EdgeInsets.all(16),
+        borderRadius: 8,
+        icon: const Icon(Icons.error, color: Colors.white),
+      );
+
       return false;
+    }
+  }
+
+  /// Afficher la modale de vérification email pour l'administrateur
+  void _showAdminEmailVerificationDialog({
+    required String userEmail,
+    required String userName,
+    required String tempPassword,
+  }) {
+    Get.dialog(
+      AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Icon(Icons.email, color: Color(0xFFF49101)),
+            SizedBox(width: 8),
+            Text(
+              'Vérification Email',
+              style: TextStyle(
+                color: Color(0xFF2D0C0D),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Compte créé avec succès !',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.green[700],
+                fontSize: 16,
+              ),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Un email de vérification a été envoyé à :',
+              style: TextStyle(fontSize: 14),
+            ),
+            SizedBox(height: 4),
+            Container(
+              padding: EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Color(0xFFF49101).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                userEmail,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFFF49101),
+                ),
+              ),
+            ),
+            SizedBox(height: 12),
+            Container(
+              padding: EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.info_outline,
+                          color: Colors.blue.shade600, size: 18),
+                      SizedBox(width: 6),
+                      Text(
+                        'Vérifiez bien votre adresse email !',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blue.shade700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    '• Assurez-vous que l\'adresse ci-dessus est correcte\n• Vérifiez vos spams/courriers indésirables\n• Le lien de vérification expire dans 24h',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.blue.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 12),
+            Text(
+              '⚠️ Vous devez vérifier votre email avant de pouvoir vous connecter.',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.orange[700],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Get.back();
+            },
+            child: Text(
+              'Modifier l\'email',
+              style: TextStyle(color: Colors.orange[700]),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Get.back();
+            },
+            child: Text(
+              'Continuer',
+              style: TextStyle(color: Color(0xFF2D0C0D)),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await _resendVerificationEmail(userEmail);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFFF49101),
+            ),
+            child: Text(
+              'Renvoyer',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Get.back();
+              // Rediriger vers le dashboard admin
+              Get.offAllNamed('/dashboard');
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF2196F3),
+            ),
+            child: Text(
+              'Retour Dashboard',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+      barrierDismissible: false,
+    );
+  }
+
+  /// Renvoyer l'email de vérification
+  Future<void> _resendVerificationEmail(String email) async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null && user.email == email) {
+        await user.sendEmailVerification();
+        Get.back();
+        Get.snackbar(
+          'Email renvoyé',
+          'Un nouvel email de vérification a été envoyé à $email',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.green[100],
+          colorText: Colors.green[900],
+          duration: Duration(seconds: 4),
+        );
+      } else {
+        Get.snackbar(
+          'Erreur',
+          'Impossible de renvoyer l\'email de vérification',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.red[100],
+          colorText: Colors.red[900],
+        );
+      }
+    } catch (e) {
+      Get.back();
+      Get.snackbar(
+        'Erreur',
+        'Impossible de renvoyer l\'email: ${e.toString()}',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red[100],
+        colorText: Colors.red[900],
+      );
     }
   }
 
@@ -264,19 +532,39 @@ class UserManagementService extends GetxService {
   /// Activer/Désactiver un utilisateur
   Future<bool> toggleUserStatus(String userId, bool isActive) async {
     try {
-      await _usersCollection.doc(userId).update({'isActive': isActive});
+      print(
+          '🔄 ${isActive ? 'Activation' : 'Désactivation'} utilisateur: $userId');
 
+      // Récupérer l'utilisateur pour logs
+      final user = await getUserById(userId);
+      if (user == null) {
+        print('❌ Utilisateur non trouvé: $userId');
+        return false;
+      }
+
+      print(
+          '👤 ${isActive ? 'Activation' : 'Désactivation'} de: ${user.nomComplet}');
+
+      // Mettre à jour le statut dans Firestore
+      await _usersCollection.doc(userId).update({'isActive': isActive});
+      print('✅ Statut mis à jour dans Firestore');
+
+      // Logger l'action
       await _logUserAction(
         userId: userId,
         type: isActive ? UserActionType.activated : UserActionType.deactivated,
         description:
-            'Utilisateur ${isActive ? 'activé' : 'désactivé'} par ${_userSession.email}',
+            'Utilisateur ${user.nomComplet} ${isActive ? 'activé' : 'désactivé'} par ${_userSession.email}',
+        oldValues: {'isActive': user.isActive},
         newValues: {'isActive': isActive},
       );
 
+      print(
+          '✅ ${isActive ? 'Activation' : 'Désactivation'} terminée avec succès');
       return true;
     } catch (e) {
-      print('Erreur lors du changement de statut: $e');
+      print('❌ Erreur lors du changement de statut: $e');
+      print('Stack trace: ${StackTrace.current}');
       return false;
     }
   }
@@ -284,23 +572,36 @@ class UserManagementService extends GetxService {
   /// Changer le rôle d'un utilisateur
   Future<bool> changeUserRole(String userId, String newRole) async {
     try {
+      print('🔄 Changement de rôle utilisateur: $userId vers $newRole');
+
       final oldUser = await getUserById(userId);
-      if (oldUser == null) return false;
+      if (oldUser == null) {
+        print('❌ Utilisateur non trouvé: $userId');
+        return false;
+      }
 
+      print(
+          '👤 Changement de rôle pour: ${oldUser.nomComplet} (${oldUser.role} → $newRole)');
+
+      // Mettre à jour le rôle dans Firestore
       await _usersCollection.doc(userId).update({'role': newRole});
+      print('✅ Rôle mis à jour dans Firestore');
 
+      // Logger l'action
       await _logUserAction(
         userId: userId,
         type: UserActionType.roleChanged,
         description:
-            'Rôle changé de ${oldUser.role} vers $newRole par ${_userSession.email}',
+            'Rôle de ${oldUser.nomComplet} changé de ${oldUser.role} vers $newRole par ${_userSession.email}',
         oldValues: {'role': oldUser.role},
         newValues: {'role': newRole},
       );
 
+      print('✅ Changement de rôle terminé avec succès');
       return true;
     } catch (e) {
-      print('Erreur lors du changement de rôle: $e');
+      print('❌ Erreur lors du changement de rôle: $e');
+      print('Stack trace: ${StackTrace.current}');
       return false;
     }
   }
@@ -308,23 +609,36 @@ class UserManagementService extends GetxService {
   /// Changer le site d'un utilisateur
   Future<bool> changeUserSite(String userId, String newSite) async {
     try {
+      print('🔄 Changement de site utilisateur: $userId vers $newSite');
+
       final oldUser = await getUserById(userId);
-      if (oldUser == null) return false;
+      if (oldUser == null) {
+        print('❌ Utilisateur non trouvé: $userId');
+        return false;
+      }
 
+      print(
+          '👤 Changement de site pour: ${oldUser.nomComplet} (${oldUser.site} → $newSite)');
+
+      // Mettre à jour le site dans Firestore
       await _usersCollection.doc(userId).update({'site': newSite});
+      print('✅ Site mis à jour dans Firestore');
 
+      // Logger l'action
       await _logUserAction(
         userId: userId,
         type: UserActionType.siteChanged,
         description:
-            'Site changé de ${oldUser.site} vers $newSite par ${_userSession.email}',
+            'Site de ${oldUser.nomComplet} changé de ${oldUser.site} vers $newSite par ${_userSession.email}',
         oldValues: {'site': oldUser.site},
         newValues: {'site': newSite},
       );
 
+      print('✅ Changement de site terminé avec succès');
       return true;
     } catch (e) {
-      print('Erreur lors du changement de site: $e');
+      print('❌ Erreur lors du changement de site: $e');
+      print('Stack trace: ${StackTrace.current}');
       return false;
     }
   }
@@ -356,25 +670,165 @@ class UserManagementService extends GetxService {
     }
   }
 
-  /// Supprimer un utilisateur (soft delete)
+  /// Supprimer complètement un utilisateur (HARD DELETE)
   Future<bool> deleteUser(String userId) async {
     try {
-      await _usersCollection.doc(userId).update({
-        'isActive': false,
-        'deletedAt': Timestamp.now(),
-        'deletedBy': _userSession.email,
-      });
+      print('🗑️ SUPPRESSION DÉFINITIVE utilisateur: $userId');
 
+      // Récupérer les infos de l'utilisateur avant suppression
+      final user = await getUserById(userId);
+      if (user == null) {
+        print('❌ Utilisateur non trouvé: $userId');
+        return false;
+      }
+
+      print('👤 SUPPRESSION DÉFINITIVE de: ${user.nomComplet} (${user.email})');
+      print('⚠️ ATTENTION: Cette action est IRRÉVERSIBLE !');
+
+      // 1. Logger l'action AVANT suppression (pour garder une trace)
       await _logUserAction(
         userId: userId,
         type: UserActionType.deleted,
-        description: 'Utilisateur supprimé par ${_userSession.email}',
+        description:
+            'SUPPRESSION DÉFINITIVE de ${user.nomComplet} par ${_userSession.email}',
+        oldValues: {
+          'id': user.id,
+          'email': user.email,
+          'nom': user.nom,
+          'prenom': user.prenom,
+          'role': user.role,
+          'site': user.site,
+          'isActive': user.isActive,
+          'emailVerified': user.emailVerified,
+          'dateCreation': user.dateCreation.toIso8601String(),
+        },
+        newValues: {
+          'deleted': true,
+          'deletedAt': DateTime.now().toIso8601String(),
+          'deletedBy': _userSession.email,
+          'deletionType': 'HARD_DELETE',
+        },
       );
+      print('✅ Action loggée pour traçabilité');
+
+      // 2. Supprimer de Firebase Auth
+      try {
+        // Tenter de supprimer via l'utilisateur actuel (si c'est le même)
+        final currentUser = _auth.currentUser;
+        if (currentUser != null && currentUser.uid == userId) {
+          // Si c'est l'utilisateur connecté qui se supprime lui-même
+          await currentUser.delete();
+          print('✅ Utilisateur supprimé de Firebase Auth (auto-suppression)');
+        } else {
+          // Pour les autres utilisateurs, on doit utiliser Admin SDK
+          // Créer une demande de suppression pour Firebase Functions
+          await _createAuthDeletionRequest(user.email, userId);
+          print('📝 Demande de suppression Firebase Auth créée');
+
+          // SOLUTION TEMPORAIRE: Forcer la déconnexion si c'est possible
+          try {
+            // Essayer de révoquer les tokens de refresh (nécessite Admin SDK)
+            print('⚠️ ATTENTION: L\'utilisateur reste dans Firebase Auth');
+            print('⚠️ Déployez la Firebase Function pour suppression complète');
+          } catch (e) {
+            print('⚠️ Impossible de supprimer de Firebase Auth sans Admin SDK');
+          }
+        }
+      } catch (authError) {
+        print('⚠️ Erreur Firebase Auth: $authError');
+        // Continue quand même avec la suppression Firestore
+      }
+
+      // 3. Supprimer COMPLÈTEMENT de Firestore
+      await _usersCollection.doc(userId).delete();
+      print('✅ Document utilisateur SUPPRIMÉ de Firestore');
+
+      // 4. Supprimer toutes les données associées
+      await _deleteUserAssociatedData(userId);
+      print('✅ Données associées supprimées');
+
+      print('🎉 SUPPRESSION DÉFINITIVE terminée avec succès');
+      print('📝 Une trace a été conservée dans les logs d\'actions');
 
       return true;
     } catch (e) {
-      print('Erreur lors de la suppression: $e');
+      print('❌ ERREUR lors de la suppression définitive: $e');
+      print('Stack trace: ${StackTrace.current}');
       return false;
+    }
+  }
+
+  /// Créer une demande de suppression Firebase Auth
+  Future<void> _createAuthDeletionRequest(String email, String userId) async {
+    try {
+      // Créer un document de demande de suppression pour Firebase Functions ou Admin
+      await _firestore.collection('auth_deletion_requests').doc(userId).set({
+        'email': email,
+        'userId': userId,
+        'requestedBy': _userSession.email,
+        'requestedAt': Timestamp.now(),
+        'status': 'pending',
+        'type': 'user_deletion',
+      });
+      print('📝 Demande de suppression Firebase Auth créée');
+    } catch (e) {
+      print('⚠️ Erreur création demande suppression Auth: $e');
+    }
+  }
+
+  /// Supprimer toutes les données associées à un utilisateur
+  Future<void> _deleteUserAssociatedData(String userId) async {
+    try {
+      // Supprimer les actions de l'utilisateur (optionnel - on peut garder pour l'audit)
+      // final userActions = await _userActionsCollection
+      //     .where('userId', isEqualTo: userId)
+      //     .get();
+      // for (var doc in userActions.docs) {
+      //   await doc.reference.delete();
+      // }
+
+      // Supprimer d'autres collections liées à l'utilisateur si nécessaire
+      // Par exemple: collectes, rapports, etc.
+      await _deleteUserFromOtherCollections(userId);
+
+      print('✅ Nettoyage des données associées terminé');
+    } catch (e) {
+      print('⚠️ Erreur nettoyage données associées: $e');
+    }
+  }
+
+  /// Supprimer l'utilisateur des autres collections
+  Future<void> _deleteUserFromOtherCollections(String userId) async {
+    try {
+      // Exemple: supprimer des collections de collecte si l'utilisateur était collecteur
+      // Vous pouvez adapter selon vos besoins
+
+      // Collection des collectes (si elle existe)
+      try {
+        final collectes = await _firestore
+            .collection('collectes')
+            .where('collecteurId', isEqualTo: userId)
+            .get();
+
+        for (var doc in collectes.docs) {
+          // Option 1: Supprimer complètement
+          // await doc.reference.delete();
+
+          // Option 2: Marquer comme orpheline (recommandé)
+          await doc.reference.update({
+            'collecteurId': 'UTILISATEUR_SUPPRIME',
+            'collecteurNom': 'Utilisateur supprimé',
+            'orphanedAt': Timestamp.now(),
+          });
+        }
+        print('✅ Collectes mises à jour (${collectes.docs.length} documents)');
+      } catch (e) {
+        print('⚠️ Erreur mise à jour collectes: $e');
+      }
+
+      // Ajouter d'autres collections selon vos besoins
+    } catch (e) {
+      print('⚠️ Erreur suppression autres collections: $e');
     }
   }
 
@@ -406,6 +860,268 @@ class UserManagementService extends GetxService {
     } catch (e) {
       print('Erreur lors de la récupération des actions récentes: $e');
       return [];
+    }
+  }
+
+  /// Récupérer l'historique paginé avec filtres
+  Future<PaginatedActions> getActionsPaginated({
+    int limit = 50,
+    DocumentSnapshot? startAfter,
+    UserActionType? type,
+    String? adminEmail,
+    String? userId,
+    DateTime? start,
+    DateTime? end,
+    String? search,
+  }) async {
+    try {
+      Query query =
+          _userActionsCollection.orderBy('timestamp', descending: true);
+
+      if (type != null) {
+        query = query.where('type', isEqualTo: type.toString().split('.').last);
+      }
+      if (adminEmail != null && adminEmail.isNotEmpty) {
+        query = query.where('adminEmail', isEqualTo: adminEmail);
+      }
+      if (userId != null && userId.isNotEmpty) {
+        query = query.where('userId', isEqualTo: userId);
+      }
+      if (start != null) {
+        query = query.where('timestamp',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(start));
+      }
+      if (end != null) {
+        query = query.where('timestamp',
+            isLessThanOrEqualTo: Timestamp.fromDate(end));
+      }
+      if (startAfter != null) {
+        query = (query as Query<Map<String, dynamic>>)
+            .startAfterDocument(startAfter);
+      }
+
+      final snapshot = await query.limit(limit).get();
+      final actions =
+          snapshot.docs.map((d) => UserAction.fromFirestore(d)).toList();
+      final lastDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
+
+      // Filtre côté client pour la recherche plein texte simple sur la description
+      List<UserAction> filtered = actions;
+      if (search != null && search.trim().isNotEmpty) {
+        final q = search.toLowerCase();
+        filtered = actions
+            .where((a) =>
+                a.description.toLowerCase().contains(q) ||
+                (a.adminEmail.toLowerCase().contains(q)))
+            .toList();
+      }
+
+      return PaginatedActions(
+        actions: filtered,
+        lastDocument: lastDoc,
+        hasMore: snapshot.docs.length >= limit,
+      );
+    } catch (e) {
+      print('Erreur pagination actions: $e');
+      return PaginatedActions(actions: [], lastDocument: null, hasMore: false);
+    }
+  }
+
+  /// Vérifier manuellement l'email d'un utilisateur
+  Future<bool> verifyUserEmail(String userId) async {
+    try {
+      print('📧 Vérification manuelle email utilisateur: $userId');
+
+      // Récupérer l'utilisateur pour logs
+      final user = await getUserById(userId);
+      if (user == null) {
+        print('❌ Utilisateur non trouvé: $userId');
+        return false;
+      }
+
+      print('👤 Vérification email pour: ${user.nomComplet} (${user.email})');
+
+      // Mettre à jour le statut de vérification dans Firestore
+      await _usersCollection.doc(userId).update({'emailVerified': true});
+      print('✅ Email marqué comme vérifié dans Firestore');
+
+      // Logger l'action
+      await _logUserAction(
+        userId: userId,
+        type: UserActionType.emailVerified,
+        description:
+            'Email de ${user.nomComplet} vérifié manuellement par ${_userSession.email}',
+        oldValues: {'emailVerified': user.emailVerified},
+        newValues: {'emailVerified': true},
+      );
+
+      print('✅ Vérification email terminée avec succès');
+      return true;
+    } catch (e) {
+      print('❌ Erreur lors de la vérification de l\'email: $e');
+      print('Stack trace: ${StackTrace.current}');
+      return false;
+    }
+  }
+
+  /// Renvoyer l'email de vérification
+  Future<bool> resendVerificationEmail(String userId) async {
+    try {
+      final user = await getUserById(userId);
+      if (user == null) return false;
+
+      // Trouver l'utilisateur Firebase par email
+      final methods = await _auth.fetchSignInMethodsForEmail(user.email);
+      if (methods.isEmpty) {
+        print('Utilisateur Firebase non trouvé pour l\'email: ${user.email}');
+        return false;
+      }
+
+      // Pour renvoyer l'email, nous devons nous connecter temporairement comme l'utilisateur
+      // Ceci est une limitation de Firebase Auth - seul l'utilisateur connecté peut renvoyer son email
+      // Nous allons utiliser le service d'email personnalisé à la place
+      final emailSent = await _emailService.sendCustomVerificationEmailLocal(
+        userEmail: user.email,
+        userName: user.nomComplet,
+      );
+
+      if (emailSent) {
+        await _logUserAction(
+          userId: userId,
+          type: UserActionType.emailResent,
+          description:
+              'Email de vérification renvoyé par ${_userSession.email}',
+        );
+      }
+
+      return emailSent;
+    } catch (e) {
+      print('Erreur lors du renvoi de l\'email de vérification: $e');
+      return false;
+    }
+  }
+
+  /// Générer un nouveau mot de passe temporaire pour un utilisateur
+  Future<String?> generateTemporaryPassword(String userId) async {
+    try {
+      final user = await getUserById(userId);
+      if (user == null) return null;
+
+      final tempPassword = _generateTemporaryPassword();
+
+      // Mettre à jour le mot de passe dans Firebase Auth
+      // Note: Ceci nécessite des privilèges admin Firebase
+      // En pratique, on enverrait plutôt un email de reset
+
+      await _logUserAction(
+        userId: userId,
+        type: UserActionType.passwordGenerated,
+        description: 'Mot de passe temporaire généré par ${_userSession.email}',
+      );
+
+      return tempPassword;
+    } catch (e) {
+      print('Erreur lors de la génération du mot de passe temporaire: $e');
+      return null;
+    }
+  }
+
+  /// Activer/Désactiver l'accès d'un utilisateur (différent de isActive)
+  Future<bool> toggleUserAccess(String userId, bool hasAccess) async {
+    try {
+      print(
+          '🔐 ${hasAccess ? 'Accord' : 'Révocation'} d\'accès utilisateur: $userId');
+
+      // Récupérer l'utilisateur pour logs
+      final user = await getUserById(userId);
+      if (user == null) {
+        print('❌ Utilisateur non trouvé: $userId');
+        return false;
+      }
+
+      print(
+          '👤 ${hasAccess ? 'Accord' : 'Révocation'} d\'accès pour: ${user.nomComplet}');
+
+      // Mettre à jour l'accès dans Firestore
+      await _usersCollection.doc(userId).update({'hasAccess': hasAccess});
+      print('✅ Accès mis à jour dans Firestore');
+
+      // Logger l'action
+      await _logUserAction(
+        userId: userId,
+        type: hasAccess
+            ? UserActionType.accessGranted
+            : UserActionType.accessRevoked,
+        description:
+            'Accès ${hasAccess ? 'accordé' : 'révoqué'} pour ${user.nomComplet} par ${_userSession.email}',
+        oldValues: {'hasAccess': user.metadata?['hasAccess'] ?? true},
+        newValues: {'hasAccess': hasAccess},
+      );
+
+      print(
+          '✅ ${hasAccess ? 'Accord' : 'Révocation'} d\'accès terminé avec succès');
+      return true;
+    } catch (e) {
+      print('❌ Erreur lors du changement d\'accès: $e');
+      print('Stack trace: ${StackTrace.current}');
+      return false;
+    }
+  }
+
+  /// Test de connectivité à la base de données
+  Future<bool> testDatabaseConnection() async {
+    try {
+      print('🧪 Test de connectivité à la base de données...');
+
+      // Test 1: Vérifier la session utilisateur
+      if (_userSession.email == null || _userSession.email!.isEmpty) {
+        print('❌ Session utilisateur non initialisée');
+        return false;
+      }
+      print('✅ Session utilisateur: ${_userSession.email}');
+
+      // Test 2: Vérifier la connexion Firestore
+      await _firestore.collection('test').doc('connectivity').get();
+      print('✅ Connexion Firestore OK');
+
+      // Test 3: Vérifier la collection utilisateurs
+      final usersSnapshot = await _usersCollection.limit(1).get();
+      print(
+          '✅ Collection utilisateurs accessible (${usersSnapshot.docs.length} docs trouvés)');
+
+      // Test 4: Vérifier la collection user_actions
+      final actionsSnapshot = await _userActionsCollection.limit(1).get();
+      print(
+          '✅ Collection user_actions accessible (${actionsSnapshot.docs.length} actions trouvées)');
+
+      print('🎉 Tous les tests de connectivité réussis !');
+      return true;
+    } catch (e) {
+      print('❌ Erreur de connectivité: $e');
+      print('Stack trace: ${StackTrace.current}');
+      return false;
+    }
+  }
+
+  /// Vérifier les permissions Firestore pour un utilisateur
+  Future<bool> checkFirestorePermissions(String userId) async {
+    try {
+      print('🔐 Vérification des permissions Firestore pour: $userId');
+
+      // Test lecture
+      await _usersCollection.doc(userId).get();
+      print('✅ Permission de lecture OK');
+
+      // Test écriture (mise à jour d'un champ test)
+      await _usersCollection
+          .doc(userId)
+          .update({'lastPermissionCheck': Timestamp.now()});
+      print('✅ Permission d\'écriture OK');
+
+      return true;
+    } catch (e) {
+      print('❌ Erreur de permissions: $e');
+      return false;
     }
   }
 

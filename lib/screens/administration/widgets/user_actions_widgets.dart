@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:flutter/material.dart';
 import '../models/user_management_models.dart';
 import '../services/user_management_service.dart';
 
@@ -19,43 +19,161 @@ class UserActionsWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (actions.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.history,
-              size: 64,
-              color: Colors.grey[400],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Aucune action récente',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey[600],
+      return Container(
+        height: 400,
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2196F3)),
               ),
-            ),
-          ],
+              SizedBox(height: 16),
+              Text('Chargement de l\'historique...'),
+            ],
+          ),
         ),
       );
     }
 
-    return Container(
-      color: Colors.white,
-      child: ListView.separated(
-        padding: EdgeInsets.all(isMobile ? 12 : 16),
-        itemCount: actions.length,
-        separatorBuilder: (context, index) => const Divider(height: 24),
-        itemBuilder: (context, index) {
-          final action = actions[index];
-          return _buildActionCard(action);
-        },
-      ),
+    if (actions.isEmpty) {
+      return Container(
+        height: 400,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.history,
+                size: 64,
+                color: Colors.grey[400],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Aucune action récente',
+                style: TextStyle(
+                  fontSize: 18,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Les actions des utilisateurs apparaîtront ici',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[500],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header avec statistiques rapides
+        Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Color(0xFF2196F3).withOpacity(0.3),
+                blurRadius: 8,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.analytics, color: Colors.white, size: 32),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Historique des Actions',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${actions.length} actions récentes',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  'Temps réel',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Filtres rapides
+        Container(
+          height: 60,
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              _buildFilterChip('Toutes', true),
+              _buildFilterChip('Créations', false),
+              _buildFilterChip('Modifications', false),
+              _buildFilterChip('Suppressions', false),
+              _buildFilterChip('Connexions', false),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Liste des actions
+        Expanded(
+          child: Container(
+            color: Colors.white,
+            child: ListView.separated(
+              padding: EdgeInsets.all(isMobile ? 12 : 16),
+              itemCount: actions.length,
+              separatorBuilder: (context, index) => const Divider(height: 24),
+              itemBuilder: (context, index) {
+                final action = actions[index];
+                return _buildActionCard(action);
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -292,6 +410,14 @@ class UserActionsWidget extends StatelessWidget {
         return Colors.amber;
       case UserActionType.emailVerified:
         return Colors.teal;
+      case UserActionType.emailResent:
+        return Colors.tealAccent;
+      case UserActionType.passwordGenerated:
+        return Colors.amberAccent;
+      case UserActionType.accessGranted:
+        return Colors.lightGreen;
+      case UserActionType.accessRevoked:
+        return Colors.deepOrange;
       case UserActionType.deleted:
         return Colors.red;
       case UserActionType.other:
@@ -312,6 +438,28 @@ class UserActionsWidget extends StatelessWidget {
     } else {
       return '${timestamp.day}/${timestamp.month}/${timestamp.year} à ${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}';
     }
+  }
+
+  Widget _buildFilterChip(String label, bool isSelected) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      child: FilterChip(
+        label: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Color(0xFF2196F3),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        selected: isSelected,
+        selectedColor: Color(0xFF2196F3),
+        backgroundColor: Colors.grey[100],
+        checkmarkColor: Colors.white,
+        onSelected: (selected) {
+          // TODO: Implémenter le filtrage
+        },
+      ),
+    );
   }
 }
 
@@ -357,6 +505,19 @@ class _CreateUserModalState extends State<CreateUserModal> {
     super.dispose();
   }
 
+  void _clearForm() {
+    _emailController.clear();
+    _passwordController.clear();
+    _nomController.clear();
+    _prenomController.clear();
+    _telephoneController.clear();
+    setState(() {
+      _selectedRole = null;
+      _selectedSite = null;
+      _showPassword = false;
+    });
+  }
+
   Future<void> _createUser() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedRole == null || _selectedSite == null) {
@@ -398,6 +559,7 @@ class _CreateUserModalState extends State<CreateUserModal> {
       );
 
       if (success) {
+        _clearForm(); // Vider les champs du formulaire
         Get.snackbar(
           'Succès',
           'Utilisateur créé avec succès',
@@ -431,6 +593,7 @@ class _CreateUserModalState extends State<CreateUserModal> {
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 600;
+    final screenHeight = MediaQuery.of(context).size.height;
 
     return Dialog(
       shape: RoundedRectangleBorder(
@@ -438,201 +601,232 @@ class _CreateUserModalState extends State<CreateUserModal> {
       ),
       child: Container(
         width: isMobile ? null : 500,
-        padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // En-tête
-              Row(
+        constraints: BoxConstraints(
+          maxHeight: screenHeight * 0.9, // Maximum 90% de la hauteur de l'écran
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // En-tête fixe
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+              child: Row(
                 children: [
                   const Icon(Icons.person_add, color: Color(0xFF2196F3)),
                   const SizedBox(width: 8),
-                  const Text(
-                    'Créer un nouvel utilisateur',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Text(
+                      'Créer un nouvel utilisateur',
+                      style: TextStyle(
+                        fontSize: isMobile ? 16 : 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                  const Spacer(),
                   IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () => Get.back(),
                   ),
                 ],
               ),
+            ),
 
-              const SizedBox(height: 24),
+            // Contenu scrollable
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Formulaire
+                      TextFormField(
+                        controller: _emailController,
+                        decoration: const InputDecoration(
+                          labelText: 'Email *',
+                          prefixIcon: Icon(Icons.email),
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(
+                              vertical: 12, horizontal: 16),
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'L\'email est requis';
+                          }
+                          if (!GetUtils.isEmail(value)) {
+                            return 'Email invalide';
+                          }
+                          return null;
+                        },
+                      ),
 
-              // Formulaire
-              TextFormField(
-                controller: _emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email *',
-                  prefixIcon: Icon(Icons.email),
-                  border: OutlineInputBorder(),
+                      const SizedBox(height: 12),
+
+                      TextFormField(
+                        controller: _passwordController,
+                        decoration: InputDecoration(
+                          labelText: 'Mot de passe *',
+                          prefixIcon: const Icon(Icons.lock),
+                          suffixIcon: IconButton(
+                            icon: Icon(_showPassword
+                                ? Icons.visibility_off
+                                : Icons.visibility),
+                            onPressed: () =>
+                                setState(() => _showPassword = !_showPassword),
+                          ),
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 12, horizontal: 16),
+                        ),
+                        obscureText: !_showPassword,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Le mot de passe est requis';
+                          }
+                          if (value.length < 6) {
+                            return 'Le mot de passe doit contenir au moins 6 caractères';
+                          }
+                          return null;
+                        },
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _prenomController,
+                              decoration: const InputDecoration(
+                                labelText: 'Prénom *',
+                                prefixIcon: Icon(Icons.person),
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
+                                    vertical: 12, horizontal: 16),
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Le prénom est requis';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _nomController,
+                              decoration: const InputDecoration(
+                                labelText: 'Nom *',
+                                prefixIcon: Icon(Icons.person_outline),
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
+                                    vertical: 12, horizontal: 16),
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Le nom est requis';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      TextFormField(
+                        controller: _telephoneController,
+                        decoration: const InputDecoration(
+                          labelText: 'Téléphone *',
+                          prefixIcon: Icon(Icons.phone),
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(
+                              vertical: 12, horizontal: 16),
+                        ),
+                        keyboardType: TextInputType.phone,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Le téléphone est requis';
+                          }
+                          return null;
+                        },
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _selectedRole,
+                              decoration: const InputDecoration(
+                                labelText: 'Rôle *',
+                                prefixIcon: Icon(Icons.work),
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
+                                    vertical: 12, horizontal: 16),
+                              ),
+                              items: widget.availableRoles
+                                  .map((role) => DropdownMenuItem(
+                                        value: role,
+                                        child: Text(role),
+                                      ))
+                                  .toList(),
+                              onChanged: (value) =>
+                                  setState(() => _selectedRole = value),
+                              validator: (value) {
+                                if (value == null) {
+                                  return 'Le rôle est requis';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _selectedSite,
+                              decoration: const InputDecoration(
+                                labelText: 'Site *',
+                                prefixIcon: Icon(Icons.location_on),
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
+                                    vertical: 12, horizontal: 16),
+                              ),
+                              items: widget.availableSites
+                                  .map((site) => DropdownMenuItem(
+                                        value: site,
+                                        child: Text(site),
+                                      ))
+                                  .toList(),
+                              onChanged: (value) =>
+                                  setState(() => _selectedSite = value),
+                              validator: (value) {
+                                if (value == null) {
+                                  return 'Le site est requis';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+                    ],
+                  ),
                 ),
-                keyboardType: TextInputType.emailAddress,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'L\'email est requis';
-                  }
-                  if (!GetUtils.isEmail(value)) {
-                    return 'Email invalide';
-                  }
-                  return null;
-                },
               ),
+            ),
 
-              const SizedBox(height: 16),
-
-              TextFormField(
-                controller: _passwordController,
-                decoration: InputDecoration(
-                  labelText: 'Mot de passe *',
-                  prefixIcon: const Icon(Icons.lock),
-                  suffixIcon: IconButton(
-                    icon: Icon(_showPassword
-                        ? Icons.visibility_off
-                        : Icons.visibility),
-                    onPressed: () =>
-                        setState(() => _showPassword = !_showPassword),
-                  ),
-                  border: const OutlineInputBorder(),
-                ),
-                obscureText: !_showPassword,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Le mot de passe est requis';
-                  }
-                  if (value.length < 6) {
-                    return 'Le mot de passe doit contenir au moins 6 caractères';
-                  }
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 16),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _prenomController,
-                      decoration: const InputDecoration(
-                        labelText: 'Prénom *',
-                        prefixIcon: Icon(Icons.person),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Le prénom est requis';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _nomController,
-                      decoration: const InputDecoration(
-                        labelText: 'Nom *',
-                        prefixIcon: Icon(Icons.person_outline),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Le nom est requis';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              TextFormField(
-                controller: _telephoneController,
-                decoration: const InputDecoration(
-                  labelText: 'Téléphone *',
-                  prefixIcon: Icon(Icons.phone),
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.phone,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Le téléphone est requis';
-                  }
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 16),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      value: _selectedRole,
-                      decoration: const InputDecoration(
-                        labelText: 'Rôle *',
-                        prefixIcon: Icon(Icons.work),
-                        border: OutlineInputBorder(),
-                      ),
-                      items: widget.availableRoles
-                          .map((role) => DropdownMenuItem(
-                                value: role,
-                                child: Text(role),
-                              ))
-                          .toList(),
-                      onChanged: (value) =>
-                          setState(() => _selectedRole = value),
-                      validator: (value) {
-                        if (value == null) {
-                          return 'Le rôle est requis';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      value: _selectedSite,
-                      decoration: const InputDecoration(
-                        labelText: 'Site *',
-                        prefixIcon: Icon(Icons.location_on),
-                        border: OutlineInputBorder(),
-                      ),
-                      items: widget.availableSites
-                          .map((site) => DropdownMenuItem(
-                                value: site,
-                                child: Text(site),
-                              ))
-                          .toList(),
-                      onChanged: (value) =>
-                          setState(() => _selectedSite = value),
-                      validator: (value) {
-                        if (value == null) {
-                          return 'Le site est requis';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              // Boutons
-              Row(
+            // Boutons fixes en bas
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
@@ -662,8 +856,8 @@ class _CreateUserModalState extends State<CreateUserModal> {
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

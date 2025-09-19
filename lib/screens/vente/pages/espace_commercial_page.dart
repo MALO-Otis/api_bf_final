@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
+import '../models/commercial_models.dart';
 import '../../../authentication/user_session.dart';
 import '../controllers/espace_commercial_controller.dart';
 import 'package:apisavana_gestion/screens/commercialisation/new_client_quick_form.dart';
@@ -169,12 +170,40 @@ class EspaceCommercialPage extends StatelessWidget {
       itemBuilder: (_, i) {
         final v = items[i];
         final vendeur = c.displayNameForEmail(v.commercialId);
+
+        // Calculer les quantités pour l'attribution liée à cette vente
+        AttributionPartielle? attribution;
+        try {
+          attribution =
+              c.attributions.firstWhere((a) => a.id == v.prelevementId);
+        } catch (e) {
+          attribution = null;
+        }
+
+        String quantiteInfo = '';
+        if (attribution != null) {
+          final restant = c.attributionRestant[attribution.id] ??
+              (attribution.quantiteAttribuee -
+                  (c.attributionConsomme[attribution.id] ?? 0));
+          final consomme = c.attributionConsomme[attribution.id] ?? 0;
+          quantiteInfo =
+              '\nAttribution: ${attribution.quantiteAttribuee} → $restant restantes (${consomme} vendues)';
+        }
+
         return ListTile(
           leading: const Icon(Icons.point_of_sale),
           title: Text(v.clientNom),
           subtitle: Text(
-              '${v.produits.length} produits • ${v.montantTotal.toStringAsFixed(0)} FCFA\nVendeur: $vendeur'),
-          trailing: Text(v.dateVente.toString().split(' ').first),
+              '${v.produits.length} produits • ${v.montantTotal.toStringAsFixed(0)} FCFA\nVendeur: $vendeur$quantiteInfo'),
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(v.dateVente.toString().split(' ').first),
+              if (v.montantRestant > 0)
+                Text('Reste: ${v.montantRestant.toStringAsFixed(0)} FCFA',
+                    style: const TextStyle(fontSize: 10, color: Colors.orange))
+            ],
+          ),
         );
       },
     );

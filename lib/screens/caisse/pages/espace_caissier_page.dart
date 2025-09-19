@@ -2,9 +2,11 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../utils/smart_appbar.dart';
+import '../models/caisse_cloture.dart';
 import '../../vente/models/vente_models.dart';
 import '../controllers/caisse_controller.dart';
+import '../../vente/services/vente_service.dart';
+import '../../../authentication/user_session.dart';
 import '../../vente/controllers/espace_commercial_controller.dart';
 
 /// 🏦 Espace Caissier (Version 1 - MVP)
@@ -42,29 +44,93 @@ class _EspaceCaissierPageState extends State<EspaceCaissierPage> {
     final isMobile = MediaQuery.of(context).size.width < 700;
     return Scaffold(
       backgroundColor: const Color(0xFFF1F5F9),
-      appBar: SmartAppBar(
-        title: '🏦 Espace Caissier',
-        backgroundColor: const Color(0xFF0EA5E9),
-        onBackPressed: () => Get.back(),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.file_download),
-            tooltip: 'Exporter CSV',
-            onPressed: _exportCsv,
+      // IMPORTANT: éviter un Obx global couvrant toute la page -> on fragmente
+      body: CustomScrollView(
+        slivers: [
+          // AppBar qui défile avec le contenu
+          SliverAppBar(
+            expandedHeight: 120,
+            floating: false,
+            pinned: false, // Le header défile complètement
+            backgroundColor: const Color(0xFF0EA5E9),
+            flexibleSpace: FlexibleSpaceBar(
+              titlePadding: const EdgeInsets.only(left: 16, bottom: 16),
+              title: const Text(
+                '🏦 Espace Caissier',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              background: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF0EA5E9), Color(0xFF0369A1)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+              ),
+            ),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Get.back(),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.file_download, color: Colors.white),
+                tooltip: 'Exporter CSV',
+                onPressed: _exportCsv,
+              ),
+              IconButton(
+                icon: const Icon(Icons.date_range, color: Colors.white),
+                tooltip: 'Changer période',
+                onPressed: _pickPeriode,
+              ),
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Colors.white),
+                onPressed: () =>
+                    caisseCtrl..setPeriode(caisseCtrl.periode.value),
+              ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.date_range),
-            tooltip: 'Changer période',
-            onPressed: _pickPeriode,
+          // Contenu scrollable
+          SliverPadding(
+            padding: EdgeInsets.all(isMobile ? 16 : 24),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                // Header réactif (période)
+                Obx(() => _buildHeader(isMobile)),
+                const SizedBox(height: 24),
+                Obx(() => _maybeLoadingBanner()),
+                Obx(() => espaceCtrl.isLoading.value
+                    ? const SizedBox(height: 12)
+                    : const SizedBox.shrink()),
+                // Grille KPI réactive
+                Obx(() => _buildKpiGrid(isMobile)),
+                const SizedBox(height: 32),
+                // Timeline réactive
+                Obx(() => _buildTimeline(isMobile)),
+                const SizedBox(height: 32),
+                // Carte reconciliation
+                Obx(() => _buildReconciliationCard(isMobile)),
+                const SizedBox(height: 32),
+                // Clôtures à valider
+                Obx(() => _buildCloturesSection(isMobile)),
+                const SizedBox(height: 32),
+                // Tables réactives
+                Obx(() => _buildTables(isMobile)),
+                const SizedBox(height: 32),
+                // Anomalies réactives
+                Obx(() => _buildAnomalies()),
+                const SizedBox(height: 40),
+                _buildFooterNote(),
+              ]),
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => caisseCtrl..setPeriode(caisseCtrl.periode.value),
-          )
         ],
       ),
-      // IMPORTANT: éviter un Obx global couvrant toute la page -> on fragmente
-      body: _buildContent(isMobile),
     );
   }
 
@@ -85,43 +151,131 @@ class _EspaceCaissierPageState extends State<EspaceCaissierPage> {
     }
   }
 
-  Widget _buildContent(bool isMobile) {
-    return LayoutBuilder(builder: (c, cons) {
-      return SingleChildScrollView(
-        padding: EdgeInsets.all(isMobile ? 16 : 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header réactif (période)
-            Obx(() => _buildHeader(isMobile)),
-            const SizedBox(height: 24),
-            Obx(() => _maybeLoadingBanner()),
-            Obx(() => espaceCtrl.isLoading.value
-                ? const SizedBox(height: 12)
-                : const SizedBox.shrink()),
-            // Grille KPI réactive
-            Obx(() => _buildKpiGrid(isMobile)),
-            const SizedBox(height: 32),
-            // Timeline réactive
-            Obx(() => _buildTimeline(isMobile)),
-            const SizedBox(height: 32),
-            // Carte reconciliation
-            Obx(() => _buildReconciliationCard(isMobile)),
-            const SizedBox(height: 32),
-            // Tables réactives
-            Obx(() => _buildTables(isMobile)),
-            const SizedBox(height: 32),
-            // Anomalies réactives
-            Obx(() => _buildAnomalies()),
-            const SizedBox(height: 40),
-            _buildFooterNote()
-          ],
-        ),
-      );
-    });
+  final Map<String, TextEditingController> _cashControllers = {};
+
+  Widget _buildCloturesSection(bool isMobile) {
+    final cls = espaceCtrl.clotures
+        .where((c) => c.statut == ClotureStatut.en_attente)
+        .toList();
+    if (cls.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(.05),
+              blurRadius: 10,
+              offset: const Offset(0, 5))
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.flag_circle, color: Color(0xFF0EA5E9)),
+              SizedBox(width: 8),
+              Text('Clôtures à valider',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...cls.map((c) => _buildClotureCard(c, isMobile)),
+        ],
+      ),
+    );
   }
 
-  final Map<String, TextEditingController> _cashControllers = {};
+  Widget _buildClotureCard(CaisseCloture c, bool isMobile) {
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('${c.commercialNom} — ${c.prelevementId}',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, color: Colors.black87)),
+              Text(DateFormat('dd/MM HH:mm').format(c.dateCreation),
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              _chip('Ventes', _fmt(c.totalVentes), Colors.green.shade600),
+              _chip('Payés', _fmt(c.totalPayes), Colors.teal.shade600),
+              _chip('Crédits', _fmt(c.totalCredits), Colors.orange.shade700),
+              _chip('Restitutions', _fmt(c.totalRestitutions),
+                  Colors.blueGrey.shade600),
+              _chip('Pertes', _fmt(c.totalPertes), Colors.red.shade700),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.verified),
+              label: const Text('Valider la clôture'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => _validerCloture(c),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(.1),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: color.withOpacity(.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label,
+              style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+          const SizedBox(width: 6),
+          Text(value, style: TextStyle(color: color)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _validerCloture(CaisseCloture c) async {
+    final site = espaceCtrl.effectiveSite;
+    final user = Get.find<UserSession>();
+    try {
+      await VenteService().validerCloture(
+        site: site,
+        clotureId: c.id,
+        validatorId: user.email ?? 'unknown',
+      );
+      Get.snackbar(
+          'Clôture validée', 'La clôture de ${c.commercialNom} a été validée.');
+    } catch (e) {
+      Get.snackbar('Erreur', 'Impossible de valider: $e');
+    }
+  }
 
   Widget _buildReconciliationCard(bool isMobile) {
     final lignes = caisseCtrl.reconciliationLines;
@@ -653,7 +807,7 @@ class _EspaceCaissierPageState extends State<EspaceCaissierPage> {
               style: const TextStyle(fontWeight: FontWeight.w600)),
           subtitle: Text(
               '${produits}p • ${DateFormat('dd/MM HH:mm').format(v.dateVente)}'),
-          trailing: Text(_money(v.montantTotal),
+          trailing: Text(_money(v.montantPaye),
               style: const TextStyle(fontWeight: FontWeight.bold)),
           onTap: () {},
         );
@@ -678,7 +832,7 @@ class _EspaceCaissierPageState extends State<EspaceCaissierPage> {
           title: Text(v.clientNom.isEmpty ? 'Client Libre' : v.clientNom,
               style: const TextStyle(fontWeight: FontWeight.w600)),
           subtitle: Text(DateFormat('dd/MM HH:mm').format(v.dateVente)),
-          trailing: Text(_money(v.montantTotal),
+          trailing: Text(_money(v.montantRestant),
               style: TextStyle(
                   fontWeight: FontWeight.bold, color: Colors.orange.shade700)),
         );

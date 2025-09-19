@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'firebase_options.dart';
 import 'utils/auth_wrapper.dart';
 import 'authentication/login.dart';
 import 'authentication/sign_up.dart';
@@ -11,6 +12,7 @@ import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
 import 'screens/conditionnement/services/conditionnement_db_service.dart';
 import 'package:apisavana_gestion/screens/extraction_page/extraction.dart';
 import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
+import 'screens/vente/utils/logo_loader.dart'; // Initialisation du logo PDF
 import 'package:apisavana_gestion/screens/commercialisation/commer_home.dart';
 import 'package:apisavana_gestion/screens/conditionnement/condionnement_home.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collectes.dart';
@@ -21,18 +23,14 @@ import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recolt
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
-    options: const FirebaseOptions(
-      apiKey: "AIzaSyCQVVqssk1aMPh5cgJi2a3XAqFJ2_cOXPc",
-      authDomain: "apisavana-bf-226.firebaseapp.com",
-      projectId: "apisavana-bf-226",
-      storageBucket: "apisavana-bf-226.firebasestorage.app",
-      messagingSenderId: "955408721623",
-      appId: "1:955408721623:web:e78c39e6801db32545b292",
-      measurementId: "G-NH4D0Q9NTS",
-    ),
+    options: DefaultFirebaseOptions.currentPlatform,
   );
 
   await initializeDateFormatting('fr_FR', null);
+
+  // Chargement du logo pour les PDF (doit précéder toute génération de PDF)
+  // Fournir le chemin exact si nécessaire, sinon il testera les candidats.
+  await ApiSavanaLogoLoader.ensureLoaded(assetPath: 'assets/logo/logo.jpeg');
 
   // Initialiser les services
   Get.put(UserSession());

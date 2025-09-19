@@ -8,6 +8,8 @@ import 'restitution_form_modal.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'vente_form_modal_complete.dart';
+import '../services/vente_service.dart';
+import '../models/commercial_models.dart';
 import '../../../utils/smart_appbar.dart';
 import '../../../authentication/user_session.dart';
 import '../../../utils/platform_download_helper.dart';
@@ -49,20 +51,26 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
         : Get.put(EspaceCommercialController(), permanent: true);
     _tabController = TabController(length: 4, vsync: this);
 
-    // Assurer que les prélèvements sont chargés (contournement refactor)
-    _loadPrelevementsData();
+    // 🎯 CHARGER LES VRAIES ATTRIBUTIONS
+    _loadAttributionsData();
+  }
+
+  Future<void> _loadAttributionsData() async {
+    setState(() => _isLoading = true);
+    try {
+      await _espaceCtrl.ensureAttributionsLoaded(forceRefresh: true);
+      debugPrint('✅ Attributions chargées dans VenteCommercialPage');
+    } catch (e) {
+      debugPrint('❌ Erreur chargement attributions: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
-  }
-
-  // Assurer le chargement des prélèvements (contournement refactor)
-  Future<void> _loadPrelevementsData() async {
-    await _espaceCtrl.loadAll(forceRefresh: true);
-    await _espaceCtrl.ensurePrelevementsLoaded(forceRefresh: true);
   }
   // _loadData supprimé (remplacé par les listeners temps réel)
 
@@ -105,40 +113,464 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
     );
   }
 
-  // ===== Interface PRÉLÈVEMENTS restaurée =====
+  // Variables de tri et filtrage
+  final RxString _sortBy = 'date_desc'.obs;
+  final RxString _filterByType = 'tous'.obs;
+  final RxString _filterByStatus = 'tous'.obs;
+  final RxDouble _minValue = 0.0.obs;
+  final RxDouble _maxValue = 1000000.0.obs;
+
+  // ===== Interface ATTRIBUTIONS avec tri avancé =====
   Widget _buildPrelevementsTab(bool isMobile) {
     return Obx(() {
-      final prelevements = _espaceCtrl.prelevements;
+      // 🎯 UTILISER LES VRAIES ATTRIBUTIONS au lieu des prélèvements
+      final attributions = _espaceCtrl.attributions;
 
-      if (prelevements.isEmpty) {
-        return _buildEmptyState(
-            icon: Icons.shopping_bag,
-            title: 'Aucun prélèvement',
-            message: 'Contactez votre gestionnaire pour obtenir des produits.');
+      debugPrint(
+          '🔍 _buildPrelevementsTab: ${attributions.length} attributions disponibles');
+
+      if (attributions.isEmpty) {
+        return ListView(
+          children: [
+            // Options de tri même si vide - maintenant dans le scroll
+            _buildSortingOptions(isMobile),
+            // Loading indicator ou état vide
+            if (_isLoading)
+              Container(
+                height: MediaQuery.of(context).size.height * 0.6,
+                child: const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(Colors.purple),
+                      ),
+                      SizedBox(height: 16),
+                      Text('Chargement des attributions...'),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Container(
+                height: MediaQuery.of(context).size.height * 0.6,
+                child: _buildEmptyState(
+                  icon: Icons.assignment_outlined,
+                  title: 'Aucune attribution dans cette section !',
+                  message:
+                      'Contactez votre gestionnaire commercial pour obtenir des produits.',
+                ),
+              ),
+          ],
+        );
       }
-      final sorted = prelevements.toList()
-        ..sort((a, b) => b.datePrelevement.compareTo(a.datePrelevement));
-      final enCours = sorted.where((p) {
-        final dyn = _espaceCtrl.prelevementStatutsDynamiques[p.id] ?? p.statut;
-        return dyn == StatutPrelevement.enCours ||
-            dyn == StatutPrelevement.partiel;
-      }).length;
-      final valeurTotale = sorted.fold<double>(0, (s, p) => s + p.valeurTotale);
-      final produitsTotaux =
-          sorted.fold<int>(0, (s, p) => s + p.produits.length);
+
+      // Appliquer filtres et tri
+      final filtered = _applyFiltersAndSort(attributions);
+
+      final valeurTotale =
+          filtered.fold<double>(0, (s, a) => s + a.valeurTotale);
+      final quantiteTotale =
+          filtered.fold<int>(0, (s, a) => s + a.quantiteAttribuee);
+
+      // Utiliser un seul ListView pour que tout défile ensemble
       return ListView(
-        padding: EdgeInsets.only(bottom: 24),
+        padding: const EdgeInsets.only(bottom: 24),
         children: [
-          _buildPrelevementsHeader(
-              isMobile, enCours, valeurTotale, produitsTotaux),
-          ...sorted.map((p) => _buildPrelevementLegacyCard(p, isMobile))
+          // Options de tri et filtrage
+          _buildSortingOptions(isMobile),
+
+          // Statistiques rapides - maintenant dans le scroll
+          _buildQuickStats(valeurTotale, quantiteTotale, filtered.length),
+
+          // Liste filtrée et triée - plus besoin d'Expanded
+          ...filtered.map(
+              (attribution) => _buildAttributionCard(attribution, isMobile)),
         ],
       );
     });
   }
 
-  Widget _buildPrelevementsHeader(
-      bool isMobile, int enCours, double valeurTotale, int produitsTotaux) {
+  /// Appliquer filtres et tri sur les attributions
+  List<AttributionPartielle> _applyFiltersAndSort(
+      List<AttributionPartielle> attributions) {
+    var filtered = attributions.where((attribution) {
+      // Filtre par type d'emballage
+      if (_filterByType.value != 'tous' &&
+          attribution.typeEmballage != _filterByType.value) {
+        return false;
+      }
+
+      // Filtre par valeur
+      if (attribution.valeurTotale < _minValue.value ||
+          attribution.valeurTotale > _maxValue.value) {
+        return false;
+      }
+
+      return true;
+    }).toList();
+
+    // Appliquer le tri
+    switch (_sortBy.value) {
+      case 'date_asc':
+        filtered.sort((a, b) => a.dateAttribution.compareTo(b.dateAttribution));
+        break;
+      case 'date_desc':
+        filtered.sort((a, b) => b.dateAttribution.compareTo(a.dateAttribution));
+        break;
+      case 'valeur_asc':
+        filtered.sort((a, b) => a.valeurTotale.compareTo(b.valeurTotale));
+        break;
+      case 'valeur_desc':
+        filtered.sort((a, b) => b.valeurTotale.compareTo(a.valeurTotale));
+        break;
+      case 'quantite_asc':
+        filtered
+            .sort((a, b) => a.quantiteAttribuee.compareTo(b.quantiteAttribuee));
+        break;
+      case 'quantite_desc':
+        filtered
+            .sort((a, b) => b.quantiteAttribuee.compareTo(a.quantiteAttribuee));
+        break;
+      case 'produit_asc':
+        filtered.sort((a, b) => a.typeEmballage.compareTo(b.typeEmballage));
+        break;
+      case 'produit_desc':
+        filtered.sort((a, b) => b.typeEmballage.compareTo(a.typeEmballage));
+        break;
+    }
+
+    return filtered;
+  }
+
+  /// Widget des options de tri et filtrage
+  Widget _buildSortingOptions(bool isMobile) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Icon(Icons.tune, color: Colors.purple[600], size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                'Options de Tri & Filtrage',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: _resetFilters,
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Réinitialiser'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.purple[600],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          if (isMobile)
+            _buildMobileSortingOptions()
+          else
+            _buildDesktopSortingOptions(),
+        ],
+      ),
+    );
+  }
+
+  /// Options de tri pour mobile (vertical)
+  Widget _buildMobileSortingOptions() {
+    return Column(
+      children: [
+        // Tri par
+        _buildSortDropdown(),
+        const SizedBox(height: 12),
+
+        // Filtre par type
+        _buildTypeFilter(),
+        const SizedBox(height: 12),
+
+        // Filtre par valeur
+        _buildValueRangeFilter(),
+      ],
+    );
+  }
+
+  /// Options de tri pour desktop (horizontal)
+  Widget _buildDesktopSortingOptions() {
+    return Row(
+      children: [
+        // Tri par
+        Expanded(child: _buildSortDropdown()),
+        const SizedBox(width: 16),
+
+        // Filtre par type
+        Expanded(child: _buildTypeFilter()),
+        const SizedBox(width: 16),
+
+        // Filtre par valeur
+        Expanded(flex: 2, child: _buildValueRangeFilter()),
+      ],
+    );
+  }
+
+  /// Dropdown de tri
+  Widget _buildSortDropdown() {
+    return Obx(() => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Trier par',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 4),
+            DropdownButtonFormField<String>(
+              value: _sortBy.value,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              items: const [
+                DropdownMenuItem(
+                    value: 'date_desc',
+                    child: Text('📅 Date (récent → ancien)')),
+                DropdownMenuItem(
+                    value: 'date_asc',
+                    child: Text('📅 Date (ancien → récent)')),
+                DropdownMenuItem(
+                    value: 'valeur_desc',
+                    child: Text('💰 Valeur (élevée → faible)')),
+                DropdownMenuItem(
+                    value: 'valeur_asc',
+                    child: Text('💰 Valeur (faible → élevée)')),
+                DropdownMenuItem(
+                    value: 'quantite_desc',
+                    child: Text('📦 Quantité (élevée → faible)')),
+                DropdownMenuItem(
+                    value: 'quantite_asc',
+                    child: Text('📦 Quantité (faible → élevée)')),
+                DropdownMenuItem(
+                    value: 'produit_asc', child: Text('🏷️ Produit (A → Z)')),
+                DropdownMenuItem(
+                    value: 'produit_desc', child: Text('🏷️ Produit (Z → A)')),
+              ],
+              onChanged: (value) {
+                if (value != null) _sortBy.value = value;
+              },
+            ),
+          ],
+        ));
+  }
+
+  /// Filtre par type de produit
+  Widget _buildTypeFilter() {
+    return Obx(() {
+      // Obtenir les types uniques depuis les attributions
+      final types = _espaceCtrl.attributions
+          .map((a) => a.typeEmballage)
+          .toSet()
+          .toList()
+        ..sort();
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Type de produit',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 4),
+          DropdownButtonFormField<String>(
+            value: _filterByType.value,
+            decoration: InputDecoration(
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+            items: [
+              const DropdownMenuItem(
+                  value: 'tous', child: Text('🔍 Tous les types')),
+              ...types.map((type) => DropdownMenuItem(
+                    value: type,
+                    child: Text('🏷️ $type'),
+                  )),
+            ],
+            onChanged: (value) {
+              if (value != null) _filterByType.value = value;
+            },
+          ),
+        ],
+      );
+    });
+  }
+
+  /// Filtre par plage de valeur
+  Widget _buildValueRangeFilter() {
+    return Obx(() {
+      final maxValueInData = _espaceCtrl.attributions.isEmpty
+          ? 1000000.0
+          : _espaceCtrl.attributions
+              .map((a) => a.valeurTotale)
+              .reduce((a, b) => a > b ? a : b);
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'Plage de valeur (FCFA)',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format(_minValue.value)} - ${NumberFormat.currency(locale: 'fr_FR', symbol: '').format(_maxValue.value)}',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.purple[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          RangeSlider(
+            values: RangeValues(_minValue.value, _maxValue.value),
+            min: 0,
+            max: maxValueInData,
+            divisions: 20,
+            activeColor: Colors.purple[600],
+            onChanged: (RangeValues values) {
+              _minValue.value = values.start;
+              _maxValue.value = values.end;
+            },
+          ),
+        ],
+      );
+    });
+  }
+
+  /// Statistiques rapides
+  Widget _buildQuickStats(
+      double valeurTotale, int quantiteTotale, int nombreItems) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.purple[600]!, Colors.purple[800]!],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildStatItem('📦', '$nombreItems', 'Articles'),
+          ),
+          Container(width: 1, height: 30, color: Colors.white.withOpacity(0.3)),
+          Expanded(
+            child: _buildStatItem('🔢', '$quantiteTotale', 'Quantité'),
+          ),
+          Container(width: 1, height: 30, color: Colors.white.withOpacity(0.3)),
+          Expanded(
+            child: _buildStatItem(
+                '💰',
+                NumberFormat.currency(locale: 'fr_FR', symbol: '')
+                    .format(valeurTotale),
+                'FCFA'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Item de statistique
+  Widget _buildStatItem(String emoji, String value, String label) {
+    return Column(
+      children: [
+        Text(
+          emoji,
+          style: const TextStyle(fontSize: 16),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.8),
+            fontSize: 10,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Réinitialiser les filtres
+  void _resetFilters() {
+    _sortBy.value = 'date_desc';
+    _filterByType.value = 'tous';
+    _filterByStatus.value = 'tous';
+    _minValue.value = 0.0;
+    _maxValue.value = 1000000.0;
+
+    Get.snackbar(
+      '🔄 Filtres réinitialisés',
+      'Tous les filtres ont été remis à zéro',
+      backgroundColor: Colors.purple[600],
+      colorText: Colors.white,
+      duration: const Duration(seconds: 2),
+    );
+  }
+
+  /// 🎯 NOUVEAU HEADER pour les attributions
+  Widget _buildAttributionsHeader(bool isMobile, int nombreAttributions,
+      double valeurTotale, int quantiteTotale) {
     return Container(
       margin: EdgeInsets.all(isMobile ? 16 : 24),
       padding: EdgeInsets.all(isMobile ? 20 : 24),
@@ -160,20 +592,20 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
               decoration: BoxDecoration(
                   color: Colors.white.withOpacity(.18),
                   borderRadius: BorderRadius.circular(16)),
-              child: const Text('📋', style: TextStyle(fontSize: 32)),
+              child: const Text('🎯', style: TextStyle(fontSize: 32)),
             ),
             const SizedBox(width: 18),
             Expanded(
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                  Text('Mes Prélèvements',
+                  Text('Mes Attributions',
                       style: TextStyle(
                           color: Colors.white,
                           fontSize: isMobile ? 18 : 22,
                           fontWeight: FontWeight.bold)),
                   const SizedBox(height: 6),
-                  Text('Produits attribués pour la vente',
+                  Text('Produits attribués par le gestionnaire commercial',
                       style: TextStyle(
                           color: Colors.white.withOpacity(.9),
                           fontSize: isMobile ? 12 : 14))
@@ -182,8 +614,8 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
           const SizedBox(height: 22),
           Row(children: [
             Expanded(
-                child: _prelevStatCard('En cours', enCours.toString(),
-                    Icons.shopping_cart, isMobile)),
+                child: _prelevStatCard('Attributions',
+                    nombreAttributions.toString(), Icons.assignment, isMobile)),
             SizedBox(width: isMobile ? 12 : 16),
             Expanded(
                 child: _prelevStatCard(
@@ -193,7 +625,7 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
                     isMobile)),
             SizedBox(width: isMobile ? 12 : 16),
             Expanded(
-                child: _prelevStatCard('Produits', produitsTotaux.toString(),
+                child: _prelevStatCard('Quantité', quantiteTotale.toString(),
                     Icons.inventory_2, isMobile)),
           ])
         ],
@@ -1201,7 +1633,12 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
       VenteFormModalComplete(
         prelevement: prelevement,
         onVenteEnregistree: () {
-          _tabController.animateTo(0); // Mise à jour temps réel via controller
+          // Force la mise à jour des quantités restantes
+          if (Get.isRegistered<EspaceCommercialController>()) {
+            final espaceCtrl = Get.find<EspaceCommercialController>();
+            espaceCtrl.forceRecalculQuantites();
+          }
+          _tabController.animateTo(0); // Retour à l'onglet attributions
         },
       ),
       barrierDismissible: false,
@@ -1230,5 +1667,517 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
       ),
       barrierDismissible: false,
     );
+  }
+
+  /// Convertit une attribution en prélèvement temporaire pour les modals existants
+  Prelevement _convertAttributionToPrelevement(
+      AttributionPartielle attribution) {
+    // Calculer la quantité restante réelle
+    final quantiteRestante = _espaceCtrl.attributionRestant[attribution.id] ??
+        (attribution.quantiteAttribuee -
+            (_espaceCtrl.attributionConsomme[attribution.id] ?? 0));
+
+    // DEBUG: Afficher les valeurs pour diagnostic
+    debugPrint('🔍 CONVERSION ATTRIBUTION -> PRÉLÈVEMENT:');
+    debugPrint('  ID: ${attribution.id}');
+    debugPrint('  Quantité attribuée: ${attribution.quantiteAttribuee}');
+    debugPrint(
+        '  Quantité consommée: ${_espaceCtrl.attributionConsomme[attribution.id] ?? 0}');
+    debugPrint('  Quantité restante calculée: $quantiteRestante');
+
+    // Créer un produit prélèvé à partir de l'attribution
+    final produitPreleve = ProduitPreleve(
+      produitId: attribution.lotId,
+      numeroLot: attribution.numeroLot,
+      typeEmballage: attribution.typeEmballage,
+      contenanceKg: attribution.contenanceKg,
+      quantitePreleve:
+          quantiteRestante, // Utiliser la quantité restante calculée
+      prixUnitaire: attribution.prixUnitaire,
+      valeurTotale: attribution.prixUnitaire * quantiteRestante,
+    );
+
+    // Créer un prélèvement temporaire
+    return Prelevement(
+      id: '${attribution.id}_prelevement_temp',
+      commercialId: attribution.commercialId,
+      commercialNom: attribution.commercialNom,
+      magazinierId: attribution.gestionnaire,
+      magazinierNom: attribution.gestionnaire,
+      datePrelevement: attribution.dateAttribution,
+      produits: [produitPreleve],
+      valeurTotale: produitPreleve.valeurTotale,
+      statut: StatutPrelevement.enCours,
+      observations: attribution.observations,
+    );
+  }
+
+  // 🎯 NOUVELLES MÉTHODES pour les attributions
+  void _showVenteDialog(AttributionPartielle attribution) {
+    // Convertir l'attribution en prélèvement temporaire pour réutiliser le modal existant
+    final prelevement = _convertAttributionToPrelevement(attribution);
+    Get.dialog(
+      VenteFormModalComplete(
+        prelevement: prelevement,
+        onVenteEnregistree: () {
+          _tabController.animateTo(0);
+          _espaceCtrl.ensureAttributionsLoaded(forceRefresh: true);
+        },
+      ),
+      barrierDismissible: false,
+    );
+  }
+
+  void _showRestitutionDialog(AttributionPartielle attribution) {
+    // Convertir l'attribution en prélèvement temporaire pour réutiliser le modal existant
+    final prelevement = _convertAttributionToPrelevement(attribution);
+    Get.dialog(
+      RestitutionFormModal(
+        prelevement: prelevement,
+        onRestitutionEnregistree: () {
+          _tabController.animateTo(0);
+          _espaceCtrl.ensureAttributionsLoaded(forceRefresh: true);
+        },
+      ),
+      barrierDismissible: false,
+    );
+  }
+
+  void _showPerteDialog(AttributionPartielle attribution) {
+    // Convertir l'attribution en prélèvement temporaire pour réutiliser le modal existant
+    final prelevement = _convertAttributionToPrelevement(attribution);
+    Get.dialog(
+      PerteFormModal(
+        prelevement: prelevement,
+        onPerteEnregistree: () {
+          _tabController.animateTo(0);
+          _espaceCtrl.ensureAttributionsLoaded(forceRefresh: true);
+        },
+      ),
+      barrierDismissible: false,
+    );
+  }
+
+  /// 🎯 NOUVELLE CARD pour afficher une attribution
+  Widget _buildAttributionCard(
+      AttributionPartielle attribution, bool isMobile) {
+    return Container(
+      margin: EdgeInsets.symmetric(
+        horizontal: isMobile ? 16 : 24,
+        vertical: 8,
+      ),
+      child: Card(
+        elevation: 4,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(isMobile ? 16 : 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header avec nom commercial et date
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      attribution.commercialNom,
+                      style: TextStyle(
+                        fontSize: isMobile ? 16 : 18,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF9C27B0),
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.green.shade200),
+                    ),
+                    child: Text(
+                      DateFormat('dd/MM/yyyy')
+                          .format(attribution.dateAttribution),
+                      style: TextStyle(
+                        color: Colors.green.shade700,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              // Détails du lot dans un container stylé
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Column(
+                  children: [
+                    _buildDetailRow('Lot:', attribution.numeroLot, isMobile),
+                    const SizedBox(height: 8),
+                    _buildDetailRow(
+                        'Type:', attribution.typeEmballage, isMobile),
+                    const SizedBox(height: 8),
+                    _buildDetailRow('Contenance:',
+                        '${attribution.contenanceKg} kg', isMobile),
+                    const SizedBox(height: 8),
+                    Obx(() {
+                      final quantiteRestante = _espaceCtrl
+                              .attributionRestant[attribution.id] ??
+                          (attribution.quantiteAttribuee -
+                              (_espaceCtrl
+                                      .attributionConsomme[attribution.id] ??
+                                  0));
+                      final quantiteConsommee =
+                          _espaceCtrl.attributionConsomme[attribution.id] ?? 0;
+
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            quantiteRestante > 0
+                                ? 'Quantité restante:'
+                                : 'Stock épuisé:',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: isMobile ? 12 : 14,
+                            ),
+                          ),
+                          Text(
+                            quantiteConsommee > 0
+                                ? '$quantiteRestante unités (${quantiteConsommee} vendues)'
+                                : '${quantiteRestante} unités',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                              color: quantiteRestante > 0
+                                  ? Colors.black87
+                                  : Colors.red,
+                              fontSize: isMobile ? 12 : 14,
+                            ),
+                          ),
+                        ],
+                      );
+                    }),
+                    const SizedBox(height: 8),
+                    _buildDetailRow(
+                        'Prix unitaire:',
+                        VenteUtils.formatPrix(attribution.prixUnitaire),
+                        isMobile),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      height: 1,
+                      color: Colors.grey.shade300,
+                    ),
+                    const SizedBox(height: 12),
+                    Obx(() {
+                      final quantiteRestante = _espaceCtrl
+                              .attributionRestant[attribution.id] ??
+                          (attribution.quantiteAttribuee -
+                              (_espaceCtrl
+                                      .attributionConsomme[attribution.id] ??
+                                  0));
+
+                      // Calcul de la valeur totale basée sur la quantité restante
+                      final valeurTotaleActuelle =
+                          quantiteRestante * attribution.prixUnitaire;
+
+                      return _buildDetailRow(
+                        'Valeur totale:',
+                        VenteUtils.formatPrix(valeurTotaleActuelle),
+                        isMobile,
+                        isTotal: true,
+                      );
+                    }),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Gestionnaire
+              Row(
+                children: [
+                  Icon(
+                    Icons.person,
+                    size: 16,
+                    color: Colors.grey.shade600,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Attribué par: ${attribution.gestionnaire}',
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+
+              // Observations si présentes
+              if (attribution.observations?.isNotEmpty == true) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: Colors.blue.shade700,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          attribution.observations!,
+                          style: TextStyle(
+                            color: Colors.blue.shade700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              // Boutons d'action
+              const SizedBox(height: 16),
+              Obx(() {
+                final quantiteRestante = _espaceCtrl
+                        .attributionRestant[attribution.id] ??
+                    (attribution.quantiteAttribuee -
+                        (_espaceCtrl.attributionConsomme[attribution.id] ?? 0));
+
+                final stockEpuise = quantiteRestante <= 0;
+
+                return Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: stockEpuise
+                            ? null
+                            : () => _showVenteDialog(attribution),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              stockEpuise ? Colors.grey : Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(
+                            vertical: isMobile ? 12 : 16,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        icon: Icon(
+                          Icons.point_of_sale,
+                          size: 18,
+                          color:
+                              stockEpuise ? Colors.grey.shade600 : Colors.white,
+                        ),
+                        label: Text(
+                          stockEpuise ? 'Stock épuisé' : 'Vendre',
+                          style: TextStyle(
+                            fontSize: isMobile ? 12 : 14,
+                            fontWeight: FontWeight.w600,
+                            color: stockEpuise
+                                ? Colors.grey.shade600
+                                : Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: stockEpuise
+                            ? null
+                            : () => _showRestitutionDialog(attribution),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              stockEpuise ? Colors.grey : Colors.orange,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(
+                            vertical: isMobile ? 12 : 16,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        icon: Icon(
+                          Icons.undo,
+                          size: 18,
+                          color:
+                              stockEpuise ? Colors.grey.shade600 : Colors.white,
+                        ),
+                        label: Text(
+                          'Restituer',
+                          style: TextStyle(
+                            fontSize: isMobile ? 12 : 14,
+                            fontWeight: FontWeight.w600,
+                            color: stockEpuise
+                                ? Colors.grey.shade600
+                                : Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: stockEpuise
+                            ? null
+                            : () => _showPerteDialog(attribution),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              stockEpuise ? Colors.grey : Colors.red,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(
+                            vertical: isMobile ? 12 : 16,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        icon: Icon(
+                          Icons.warning,
+                          size: 18,
+                          color:
+                              stockEpuise ? Colors.grey.shade600 : Colors.white,
+                        ),
+                        label: Text(
+                          'Perte',
+                          style: TextStyle(
+                            fontSize: isMobile ? 12 : 14,
+                            fontWeight: FontWeight.w600,
+                            color: stockEpuise
+                                ? Colors.grey.shade600
+                                : Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _terminerCloture(attribution),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0EA5E9),
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(
+                            vertical: isMobile ? 12 : 16,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        icon: const Icon(Icons.flag_circle, size: 18),
+                        label: Text(
+                          'Terminer',
+                          style: TextStyle(
+                            fontSize: isMobile ? 12 : 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Helper pour créer une ligne de détail
+  Widget _buildDetailRow(String label, String value, bool isMobile,
+      {bool isTotal = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.grey.shade600,
+            fontSize: isMobile ? 12 : 14,
+            fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
+            color: isTotal ? const Color(0xFF9C27B0) : Colors.black87,
+            fontSize: isMobile ? 12 : 14,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+extension _TerminerCloture on _VenteCommercialPageState {
+  Future<void> _terminerCloture(AttributionPartielle attribution) async {
+    final site = _espaceCtrl.selectedSite.value.isNotEmpty
+        ? _espaceCtrl.selectedSite.value
+        : (_userSession.site ?? '');
+    if (site.isEmpty) {
+      Get.snackbar(
+          'Site manquant', 'Impossible de déterminer le site pour la clôture.');
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Terminer et envoyer à la caisse ?'),
+        content: const Text(
+            'Une clôture sera créée à partir des ventes/restitutions/pertes de cette attribution et envoyée à la caissière pour validation.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(c).pop(false),
+              child: const Text('Annuler')),
+          ElevatedButton(
+              onPressed: () => Navigator.of(c).pop(true),
+              child: const Text('Confirmer')),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    try {
+      final prelevementId = '${attribution.id}_prelevement_temp';
+      final service = VenteService();
+      await service.cloturerAttribution(
+        site: site,
+        prelevementId: prelevementId,
+        commercialId: attribution.commercialId,
+        commercialNom: attribution.commercialNom,
+      );
+      Get.snackbar(
+          'Clôture envoyée', 'La caissière verra la clôture pour validation.');
+    } catch (e) {
+      Get.snackbar('Erreur', 'Impossible de créer la clôture: $e');
+    }
   }
 }

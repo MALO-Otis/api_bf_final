@@ -1,5 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 import '../models/user_management_models.dart';
 
 /// Widget principal pour afficher la liste des utilisateurs
@@ -14,6 +16,10 @@ class UserListWidget extends StatelessWidget {
   final Function(AppUser) onUserChangeSite;
   final Function(AppUser) onUserResetPassword;
   final Function(AppUser) onUserDelete;
+  final Function(AppUser)? onVerifyEmail;
+  final Function(AppUser)? onResendVerificationEmail;
+  final Function(AppUser)? onGenerateTemporaryPassword;
+  final Function(AppUser)? onToggleAccess;
 
   const UserListWidget({
     Key? key,
@@ -27,6 +33,10 @@ class UserListWidget extends StatelessWidget {
     required this.onUserChangeSite,
     required this.onUserResetPassword,
     required this.onUserDelete,
+    this.onVerifyEmail,
+    this.onResendVerificationEmail,
+    this.onGenerateTemporaryPassword,
+    this.onToggleAccess,
   }) : super(key: key);
 
   @override
@@ -383,6 +393,53 @@ class UserListWidget extends StatelessWidget {
                 onUserResetPassword(user);
               },
             ),
+            // Nouvelles actions
+            if (onVerifyEmail != null && !user.emailVerified)
+              _buildActionTile(
+                Icons.verified,
+                'Vérifier l\'email',
+                () {
+                  Get.back();
+                  onVerifyEmail!(user);
+                },
+                color: Colors.green,
+              ),
+            if (onResendVerificationEmail != null)
+              _buildActionTile(
+                Icons.email,
+                'Renvoyer email de vérification',
+                () {
+                  Get.back();
+                  onResendVerificationEmail!(user);
+                },
+                color: Colors.blue,
+              ),
+            if (onGenerateTemporaryPassword != null)
+              _buildActionTile(
+                Icons.password,
+                'Générer mot de passe temporaire',
+                () {
+                  Get.back();
+                  onGenerateTemporaryPassword!(user);
+                },
+                color: Colors.orange,
+              ),
+            if (onToggleAccess != null)
+              _buildActionTile(
+                (user.metadata?['hasAccess'] ?? true)
+                    ? Icons.block
+                    : Icons.check_circle,
+                (user.metadata?['hasAccess'] ?? true)
+                    ? 'Révoquer l\'accès'
+                    : 'Accorder l\'accès',
+                () {
+                  Get.back();
+                  onToggleAccess!(user);
+                },
+                color: (user.metadata?['hasAccess'] ?? true)
+                    ? Colors.orange
+                    : Colors.green,
+              ),
             _buildActionTile(
               Icons.delete,
               'Supprimer',
@@ -399,11 +456,13 @@ class UserListWidget extends StatelessWidget {
   }
 
   Widget _buildActionTile(IconData icon, String title, VoidCallback onPressed,
-      {bool isDestructive = false}) {
+      {bool isDestructive = false, Color? color}) {
+    final effectiveColor = isDestructive ? Colors.red : color ?? Colors.blue;
+
     return ListTile(
       leading: Icon(
         icon,
-        color: isDestructive ? Colors.red : Colors.blue,
+        color: effectiveColor,
       ),
       title: Text(
         title,
@@ -416,41 +475,164 @@ class UserListWidget extends StatelessWidget {
   }
 
   Widget _buildDesktopTable() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          minWidth: MediaQuery.of(Get.context!).size.width,
+    final ScrollController horizontalController = ScrollController();
+    final ScrollController verticalController = ScrollController();
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Tableau principal avec double scroll (horizontal + vertical)
+        Flexible(
+          child: _DesktopScrollableTable(
+            horizontalController: horizontalController,
+            verticalController: verticalController,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minWidth: MediaQuery.of(Get.context!).size.width,
+              ),
+              child: DataTable(
+                columnSpacing: 20,
+                dataRowMinHeight: 56,
+                dataRowMaxHeight: 72,
+                headingRowHeight: 48,
+                headingRowColor: MaterialStateProperty.all(Colors.grey[50]),
+                border: TableBorder.all(
+                  color: Colors.grey[200]!,
+                  width: 1,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                columns: const [
+                  DataColumn(
+                    label: SizedBox(
+                      width: 200,
+                      child: Text(
+                        'Utilisateur',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: SizedBox(
+                      width: 120,
+                      child: Text(
+                        'Rôle',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: SizedBox(
+                      width: 100,
+                      child: Text(
+                        'Site',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: SizedBox(
+                      width: 100,
+                      child: Text(
+                        'Statut',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: SizedBox(
+                      width: 180,
+                      child: Text(
+                        'Email',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: SizedBox(
+                      width: 150,
+                      child: Text(
+                        'Dernière connexion',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                  DataColumn(
+                    label: SizedBox(
+                      width: 120,
+                      child: Text(
+                        'Actions',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+                rows: users.map((user) => _buildDesktopRow(user)).toList(),
+              ),
+            ),
+          ),
         ),
-        child: DataTable(
-          columnSpacing: 16,
-          headingRowColor: MaterialStateProperty.all(Colors.grey[50]),
-          columns: const [
-            DataColumn(
-                label: Text('Utilisateur',
-                    style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(
-                label: Text('Rôle',
-                    style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(
-                label: Text('Site',
-                    style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(
-                label: Text('Statut',
-                    style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(
-                label: Text('Email',
-                    style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(
-                label: Text('Dernière connexion',
-                    style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(
-                label: Text('Actions',
-                    style: TextStyle(fontWeight: FontWeight.bold))),
-          ],
-          rows: users.map((user) => _buildDesktopRow(user)).toList(),
+
+        // Indicateur de scroll avec info et raccourcis
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.blue[50],
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.mouse,
+                    size: 16,
+                    color: Colors.blue[600],
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Scroll avec la souris',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.blue[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[100],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      'Shift + Molette',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.blue[800],
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'pour horizontal',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.blue[600],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
+        const SizedBox(height: 8),
+      ],
     );
   }
 
@@ -650,6 +832,18 @@ class UserListWidget extends StatelessWidget {
                     case 'password':
                       onUserResetPassword(user);
                       break;
+                    case 'verify_email':
+                      onVerifyEmail?.call(user);
+                      break;
+                    case 'resend_email':
+                      onResendVerificationEmail?.call(user);
+                      break;
+                    case 'temp_password':
+                      onGenerateTemporaryPassword?.call(user);
+                      break;
+                    case 'toggle_access':
+                      onToggleAccess?.call(user);
+                      break;
                     case 'delete':
                       onUserDelete(user);
                       break;
@@ -686,6 +880,61 @@ class UserListWidget extends StatelessWidget {
                       ],
                     ),
                   ),
+                  // Nouvelles actions
+                  if (onVerifyEmail != null && !user.emailVerified)
+                    const PopupMenuItem(
+                      value: 'verify_email',
+                      child: Row(
+                        children: [
+                          Icon(Icons.verified, size: 16, color: Colors.green),
+                          SizedBox(width: 8),
+                          Text('Vérifier l\'email'),
+                        ],
+                      ),
+                    ),
+                  if (onResendVerificationEmail != null)
+                    const PopupMenuItem(
+                      value: 'resend_email',
+                      child: Row(
+                        children: [
+                          Icon(Icons.email, size: 16, color: Colors.blue),
+                          SizedBox(width: 8),
+                          Text('Renvoyer email de vérification'),
+                        ],
+                      ),
+                    ),
+                  if (onGenerateTemporaryPassword != null)
+                    const PopupMenuItem(
+                      value: 'temp_password',
+                      child: Row(
+                        children: [
+                          Icon(Icons.password, size: 16, color: Colors.orange),
+                          SizedBox(width: 8),
+                          Text('Générer mot de passe temporaire'),
+                        ],
+                      ),
+                    ),
+                  if (onToggleAccess != null)
+                    PopupMenuItem(
+                      value: 'toggle_access',
+                      child: Row(
+                        children: [
+                          Icon(
+                            (user.metadata?['hasAccess'] ?? true)
+                                ? Icons.block
+                                : Icons.check_circle,
+                            size: 16,
+                            color: (user.metadata?['hasAccess'] ?? true)
+                                ? Colors.orange
+                                : Colors.green,
+                          ),
+                          const SizedBox(width: 8),
+                          Text((user.metadata?['hasAccess'] ?? true)
+                              ? 'Révoquer l\'accès'
+                              : 'Accorder l\'accès'),
+                        ],
+                      ),
+                    ),
                   const PopupMenuItem(
                     value: 'delete',
                     child: Row(
@@ -926,5 +1175,88 @@ class UserOnlineWidget extends StatelessWidget {
       default:
         return Colors.grey;
     }
+  }
+}
+
+/// Widget personnalisé pour le scroll desktop avec scrollbars visibles
+class _DesktopScrollableTable extends StatefulWidget {
+  final ScrollController horizontalController;
+  final ScrollController verticalController;
+  final Widget child;
+
+  const _DesktopScrollableTable({
+    Key? key,
+    required this.horizontalController,
+    required this.verticalController,
+    required this.child,
+  }) : super(key: key);
+
+  @override
+  _DesktopScrollableTableState createState() => _DesktopScrollableTableState();
+}
+
+class _DesktopScrollableTableState extends State<_DesktopScrollableTable> {
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerSignal: (pointerSignal) {
+        if (pointerSignal is PointerScrollEvent) {
+          // Gestion du scroll horizontal avec Shift + molette
+          if (pointerSignal.kind == PointerDeviceKind.mouse) {
+            // Si Shift est pressé, scroll horizontal
+            if (HardwareKeyboard.instance.logicalKeysPressed
+                    .contains(LogicalKeyboardKey.shiftLeft) ||
+                HardwareKeyboard.instance.logicalKeysPressed
+                    .contains(LogicalKeyboardKey.shiftRight)) {
+              final double scrollDelta = pointerSignal.scrollDelta.dy;
+              widget.horizontalController.animateTo(
+                widget.horizontalController.offset + scrollDelta,
+                duration: const Duration(milliseconds: 100),
+                curve: Curves.easeOut,
+              );
+            } else {
+              // Scroll vertical normal
+              final double scrollDelta = pointerSignal.scrollDelta.dy;
+              widget.verticalController.animateTo(
+                widget.verticalController.offset + scrollDelta,
+                duration: const Duration(milliseconds: 100),
+                curve: Curves.easeOut,
+              );
+            }
+          }
+        }
+      },
+      child: Scrollbar(
+        controller: widget.verticalController,
+        thumbVisibility: true,
+        trackVisibility: true,
+        scrollbarOrientation: ScrollbarOrientation.right,
+        thickness: 8,
+        radius: const Radius.circular(4),
+        child: Scrollbar(
+          controller: widget.horizontalController,
+          thumbVisibility: true,
+          trackVisibility: true,
+          scrollbarOrientation: ScrollbarOrientation.bottom,
+          thickness: 8,
+          radius: const Radius.circular(4),
+          child: SingleChildScrollView(
+            controller: widget.verticalController,
+            scrollDirection: Axis.vertical,
+            child: SingleChildScrollView(
+              controller: widget.horizontalController,
+              scrollDirection: Axis.horizontal,
+              child: widget.child,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    // Les controllers sont gérés par le parent
+    super.dispose();
   }
 }

@@ -1,9 +1,13 @@
+import 'dart:typed_data';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
+import '../utils/pdf_export_helper.dart';
 import '../models/commercial_models.dart';
 import '../services/commercial_service.dart';
+import '../services/attribution_pdf_service.dart';
 import '../widgets/modification_attribution_modal.dart';
+import '../controllers/espace_commercial_controller.dart';
 
 /// 🎯 ONGLET ATTRIBUTIONS - VUE DÉTAILLÉE ET MODIFICATION
 ///
@@ -353,8 +357,138 @@ class _AttributionsTabState extends State<AttributionsTab>
               ),
             ],
           ),
+          const SizedBox(width: 12),
+          _buildExportMenu(context),
         ],
       ),
+    );
+  }
+
+  Widget _buildExportMenu(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: 'Export PDF',
+      icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+      onSelected: (value) async {
+        DateTimeRange? pickedRange;
+        if (value == 'range_status' || value == 'range_combined') {
+          final now = DateTime.now();
+          pickedRange = await showDateRangePicker(
+            context: context,
+            firstDate: DateTime(now.year - 1, 1, 1),
+            lastDate: now,
+            initialDateRange: DateTimeRange(
+              start: now.subtract(const Duration(days: 7)),
+              end: now,
+            ),
+          );
+          if (pickedRange == null) return; // annulé
+        }
+
+        try {
+          // Récupération du controller commercial (si présent)
+          // On encapsule dans un try pour éviter crash si non initialisé
+          final espaceCtrl = Get.isRegistered<EspaceCommercialController>()
+              ? Get.find<EspaceCommercialController>()
+              : null;
+          Uint8List? bytes;
+          DateTime? d1 = pickedRange?.start;
+          DateTime? d2 = pickedRange?.end;
+
+          String baseName = 'rapport_attributions';
+          switch (value) {
+            case 'status':
+              if (espaceCtrl != null) {
+                bytes = await espaceCtrl.generateAttributionStatusReport();
+              }
+              baseName = 'rapport_attributions_status_global';
+              break;
+            case 'status_combined':
+              if (espaceCtrl != null) {
+                bytes =
+                    await espaceCtrl.generateCombinedAttributionSalesReport();
+              }
+              baseName = 'rapport_attributions_ventes_global';
+              break;
+            case 'range_status':
+              if (espaceCtrl != null) {
+                bytes = await espaceCtrl.generateAttributionStatusReport(
+                  dateDebut: d1,
+                  dateFin: d2,
+                );
+              }
+              baseName = 'rapport_attributions_status_periode';
+              break;
+            case 'range_combined':
+              if (espaceCtrl != null) {
+                bytes = await espaceCtrl.generateCombinedAttributionSalesReport(
+                  dateDebut: d1,
+                  dateFin: d2,
+                );
+              }
+              baseName = 'rapport_attributions_ventes_periode';
+              break;
+          }
+
+          if (bytes == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text(
+                      'Impossible de générer le PDF (controller indisponible)')),
+            );
+            return;
+          }
+
+          final fileName = PdfExportHelper.buildFileName(
+            baseName,
+            start: d1,
+            end: d2,
+          );
+
+          await PdfExportHelper.export(
+            context: context,
+            bytes: bytes,
+            fileName: fileName,
+            cache: true,
+            cacheKey:
+                '$baseName-${d1?.millisecondsSinceEpoch}-${d2?.millisecondsSinceEpoch}',
+          );
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erreur export: $e')),
+          );
+        }
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: 'status',
+          child: ListTile(
+            leading: Icon(Icons.assignment_turned_in),
+            title: Text('Rapport Attributions (global)'),
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'status_combined',
+          child: ListTile(
+            leading: Icon(Icons.layers),
+            title: Text('Rapport Combiné Attributions + Ventes'),
+          ),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: 'range_status',
+          child: ListTile(
+            leading: Icon(Icons.date_range),
+            title: Text('Rapport Attributions (période)'),
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'range_combined',
+          child: ListTile(
+            leading: Icon(Icons.timeline),
+            title: Text('Rapport Combiné (période)'),
+          ),
+        ),
+      ],
     );
   }
 
@@ -677,12 +811,30 @@ class _AttributionsTabState extends State<AttributionsTab>
               Row(
                 children: [
                   Expanded(
-                    child: _buildAttributionDetail(
-                      'Quantité attribuée',
-                      '${attribution.quantiteAttribuee} unités',
-                      Icons.inventory,
-                      const Color(0xFF2196F3),
-                    ),
+                    child: Obx(() {
+                      final controller = Get.find<EspaceCommercialController>();
+                      final quantiteRestante = controller
+                              .attributionRestant[attribution.id] ??
+                          (attribution.quantiteAttribuee -
+                              (controller.attributionConsomme[attribution.id] ??
+                                  0));
+                      final quantiteConsommee =
+                          controller.attributionConsomme[attribution.id] ?? 0;
+
+                      return _buildAttributionDetail(
+                        quantiteRestante > 0
+                            ? 'Quantité restante'
+                            : 'Stock épuisé',
+                        '${quantiteRestante} unités',
+                        Icons.inventory,
+                        quantiteRestante > 0
+                            ? const Color(0xFF4CAF50)
+                            : Colors.red,
+                        subtitle: quantiteConsommee > 0
+                            ? '${quantiteConsommee} vendues'
+                            : null,
+                      );
+                    }),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -740,20 +892,26 @@ class _AttributionsTabState extends State<AttributionsTab>
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () =>
-                          _showModificationModal(context, attribution, lot),
-                      icon: const Icon(Icons.edit, size: 16),
-                      label: const Text('Modifier'),
+                          _generateAttributionPDF(context, attribution, lot),
+                      icon: const Icon(Icons.picture_as_pdf, size: 16),
+                      label: const Text('PDF'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2196F3),
+                        backgroundColor: const Color(0xFF4CAF50),
                         foregroundColor: Colors.white,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () =>
+                        _showModificationModal(context, attribution, lot),
+                    icon: const Icon(Icons.edit, color: Colors.blue),
+                    tooltip: 'Modifier',
+                  ),
                   IconButton(
                     onPressed: () =>
                         _showDeleteConfirmation(context, attribution),
@@ -983,7 +1141,18 @@ class _AttributionsTabState extends State<AttributionsTab>
                                     ),
                                   ),
                                   Text(
-                                    '${attribution.quantiteAttribuee} unités • ${CommercialUtils.formatPrix(attribution.valeurTotale)}',
+                                    () {
+                                      final controller = Get.find<
+                                          EspaceCommercialController>();
+                                      final quantiteRestante = controller
+                                                  .attributionRestant[
+                                              attribution.id] ??
+                                          (attribution.quantiteAttribuee -
+                                              (controller.attributionConsomme[
+                                                      attribution.id] ??
+                                                  0));
+                                      return '${quantiteRestante} unités restantes • ${CommercialUtils.formatPrix(attribution.valeurTotale)}';
+                                    }(),
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: Colors.grey.shade600,
@@ -1064,7 +1233,8 @@ class _AttributionsTabState extends State<AttributionsTab>
   }
 
   Widget _buildAttributionDetail(
-      String label, String value, IconData icon, Color color) {
+      String label, String value, IconData icon, Color color,
+      {String? subtitle}) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1095,6 +1265,15 @@ class _AttributionsTabState extends State<AttributionsTab>
                     color: Colors.grey.shade600,
                   ),
                 ),
+                if (subtitle != null)
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey.shade500,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -1115,8 +1294,30 @@ class _AttributionsTabState extends State<AttributionsTab>
             mainAxisSize: MainAxisSize.min,
             children: [
               _buildDetailRow('Commercial', attribution.commercialNom),
-              _buildDetailRow('Quantité attribuée',
-                  '${attribution.quantiteAttribuee} unités'),
+              () {
+                final controller = Get.find<EspaceCommercialController>();
+                final quantiteRestante = controller
+                        .attributionRestant[attribution.id] ??
+                    (attribution.quantiteAttribuee -
+                        (controller.attributionConsomme[attribution.id] ?? 0));
+                final quantiteConsommee =
+                    controller.attributionConsomme[attribution.id] ?? 0;
+
+                return Column(
+                  children: [
+                    _buildDetailRow('Quantité attribuée initiale',
+                        '${attribution.quantiteAttribuee} unités'),
+                    if (quantiteConsommee > 0)
+                      _buildDetailRow(
+                          'Quantité vendue', '${quantiteConsommee} unités'),
+                    _buildDetailRow(
+                        'Quantité restante', '${quantiteRestante} unités',
+                        color: quantiteRestante > 0
+                            ? const Color(0xFF4CAF50)
+                            : Colors.red),
+                  ],
+                );
+              }(),
               _buildDetailRow('Valeur unitaire',
                   CommercialUtils.formatPrix(attribution.valeurUnitaire)),
               _buildDetailRow('Valeur totale',
@@ -1161,7 +1362,7 @@ class _AttributionsTabState extends State<AttributionsTab>
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildDetailRow(String label, String value, {Color? color}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -1177,7 +1378,13 @@ class _AttributionsTabState extends State<AttributionsTab>
           const Text(' : '),
           Expanded(
             flex: 3,
-            child: Text(value),
+            child: Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontWeight: color != null ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
           ),
         ],
       ),
@@ -1232,7 +1439,37 @@ class _AttributionsTabState extends State<AttributionsTab>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Commercial : ${attribution.commercialNom}'),
-                  Text('Quantité : ${attribution.quantiteAttribuee} unités'),
+                  Builder(
+                    builder: (context) {
+                      final controller = Get.find<EspaceCommercialController>();
+                      final quantiteRestante = controller
+                              .attributionRestant[attribution.id] ??
+                          (attribution.quantiteAttribuee -
+                              (controller.attributionConsomme[attribution.id] ??
+                                  0));
+                      final quantiteConsommee =
+                          controller.attributionConsomme[attribution.id] ?? 0;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                              'Quantité attribuée : ${attribution.quantiteAttribuee} unités'),
+                          if (quantiteConsommee > 0)
+                            Text(
+                                'Quantité vendue : ${quantiteConsommee} unités'),
+                          Text(
+                            'Quantité restante : ${quantiteRestante} unités',
+                            style: TextStyle(
+                              color: quantiteRestante > 0
+                                  ? const Color(0xFF4CAF50)
+                                  : Colors.red,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                   Text(
                       'Valeur : ${CommercialUtils.formatPrix(attribution.valeurTotale)}'),
                 ],
@@ -1289,5 +1526,83 @@ class _AttributionsTabState extends State<AttributionsTab>
         ],
       ),
     );
+  }
+
+  /// Générer et télécharger le rapport PDF d'attribution
+  Future<void> _generateAttributionPDF(BuildContext context,
+      AttributionPartielle attribution, LotProduit? lot) async {
+    try {
+      // Afficher un loading
+      Get.dialog(
+        AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4CAF50)),
+              ),
+              const SizedBox(height: 16),
+              Text('Génération du rapport PDF...'),
+              const SizedBox(height: 8),
+              Text(
+                'Veuillez patienter',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+        ),
+        barrierDismissible: false,
+      );
+
+      // Générer le PDF
+      final pdfService = Get.put(AttributionPDFService());
+      final pdfBytes = await pdfService.generateAttributionReport(
+        attribution: attribution,
+        lot: lot,
+      );
+
+      // Fermer le loading
+      Get.back();
+
+      if (pdfBytes != null) {
+        // Télécharger le PDF
+        await pdfService.downloadPDF(
+          pdfBytes: pdfBytes,
+          fileName:
+              'Attribution_${attribution.commercialNom}_${attribution.numeroLot}_${DateFormat('yyyyMMdd_HHmm').format(attribution.dateAttribution)}.pdf',
+        );
+
+        Get.snackbar(
+          '✅ PDF généré',
+          'Le rapport d\'attribution a été téléchargé avec succès',
+          backgroundColor: Color(0xFF4CAF50),
+          colorText: Colors.white,
+          duration: Duration(seconds: 3),
+          icon: Icon(Icons.check_circle, color: Colors.white),
+        );
+      } else {
+        Get.snackbar(
+          '❌ Erreur',
+          'Impossible de générer le rapport PDF',
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+          duration: Duration(seconds: 3),
+        );
+      }
+    } catch (e) {
+      // Fermer le loading si ouvert
+      if (Get.isDialogOpen ?? false) {
+        Get.back();
+      }
+
+      print('Erreur génération PDF: $e');
+      Get.snackbar(
+        '❌ Erreur',
+        'Erreur lors de la génération: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: Duration(seconds: 4),
+      );
+    }
   }
 }

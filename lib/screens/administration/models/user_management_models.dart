@@ -337,6 +337,10 @@ enum UserActionType {
   siteChanged,
   passwordReset,
   emailVerified,
+  emailResent,
+  passwordGenerated,
+  accessGranted,
+  accessRevoked,
   deleted,
   other,
 }
@@ -360,6 +364,14 @@ extension UserActionTypeExtension on UserActionType {
         return 'Mot de passe réinitialisé';
       case UserActionType.emailVerified:
         return 'Email vérifié';
+      case UserActionType.emailResent:
+        return 'Email de vérification renvoyé';
+      case UserActionType.passwordGenerated:
+        return 'Mot de passe temporaire généré';
+      case UserActionType.accessGranted:
+        return 'Accès accordé';
+      case UserActionType.accessRevoked:
+        return 'Accès révoqué';
       case UserActionType.deleted:
         return 'Supprimé';
       case UserActionType.other:
@@ -385,6 +397,14 @@ extension UserActionTypeExtension on UserActionType {
         return '🔑';
       case UserActionType.emailVerified:
         return '📧';
+      case UserActionType.emailResent:
+        return '📤';
+      case UserActionType.passwordGenerated:
+        return '🔐';
+      case UserActionType.accessGranted:
+        return '🟢';
+      case UserActionType.accessRevoked:
+        return '🔴';
       case UserActionType.deleted:
         return '🗑️';
       case UserActionType.other:

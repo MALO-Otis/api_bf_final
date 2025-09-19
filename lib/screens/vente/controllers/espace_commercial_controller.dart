@@ -5,8 +5,11 @@ import '../services/vente_service.dart';
 import 'package:flutter/foundation.dart';
 import '../models/commercial_models.dart';
 import '../services/commercial_service.dart';
+import '../../caisse/models/caisse_cloture.dart';
 import '../../../authentication/user_session.dart';
+import '../utils/attribution_status_report_pdf.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/attribution_sales_combined_report_pdf.dart';
 
 /// Controller central pour l'Espace Commercial
 /// Gère : prélevements, ventes, restitutions, pertes avec logique rôle/site
@@ -47,7 +50,53 @@ class EspaceCommercialController extends GetxController {
   final RxList<Restitution> restitutions = <Restitution>[].obs;
   final RxList<Perte> pertes = <Perte>[].obs;
   final RxList<ClientLight> clients = <ClientLight>[].obs;
+  final RxList<CaisseCloture> clotures = <CaisseCloture>[].obs;
   int get clientsCount => clients.length;
+
+  /// Méthode publique pour charger les attributions
+  Future<void> ensureAttributionsLoaded({bool forceRefresh = false}) async {
+    try {
+      if (isAdminRole) {
+        // Admin : charger toutes les attributions de tous les commerciaux
+        final allAttributions = await _venteService.getAllAttributionsAdmin();
+        attributions.assignAll(allAttributions);
+      } else {
+        // Commercial : charger seulement ses propres attributions
+        final userAttributions =
+            await _venteService.getAttributionsCommercial();
+        attributions.assignAll(userAttributions);
+      }
+
+      // Trier par date d'attribution (plus récent en premier)
+      attributions
+          .sort((a, b) => b.dateAttribution.compareTo(a.dateAttribution));
+
+      // Réconcilier les attributions avec les ventes/pertes/restitutions
+      _reconcilierAttributions();
+
+      print('✅ Attributions chargées: ${attributions.length} éléments');
+      if (attributions.isNotEmpty) {
+        print(
+            '🔍 Première attribution: ${attributions.first.numeroLot} - ${attributions.first.typeEmballage} - ${attributions.first.quantiteAttribuee}');
+      }
+    } catch (e) {
+      print('❌ Erreur lors du chargement des attributions: $e');
+    }
+  }
+
+  /// Force le recalcul des quantités restantes après une vente
+  void forceRecalculQuantites() {
+    _reconcilierAttributions();
+
+    // Force explicitement le rafraîchissement des observables
+    attributionRestant.refresh();
+    attributionConsomme.refresh();
+    attributionProgression.refresh();
+
+    print('🔄 Recalcul forcé des quantités restantes effectué');
+    print('📊 AttributionRestant: ${attributionRestant.length} éléments');
+    print('📊 AttributionConsomme: ${attributionConsomme.length} éléments');
+  }
 
   // Attribution scope (for non-admin)
   final RxSet<String> _attributedKeys =
@@ -154,6 +203,15 @@ class EspaceCommercialController extends GetxController {
     return r == 'Admin' || r == 'Magazinier' || r == 'Gestionnaire Commercial';
   }
 
+  // Rôle caissier : doit voir l'ensemble des opérations du site (tous les commerciaux)
+  bool get isCashierRole {
+    final r = _session.role ?? '';
+    return r == 'Caissier' || r == 'Caissiere';
+  }
+
+  // Rôles avec portée élargie (pas de filtrage par commercialId)
+  bool get isWideScopeRole => isAdminRole || isCashierRole;
+
   String get effectiveSite => isAdminRole
       ? (selectedSite.value.isNotEmpty
           ? selectedSite.value
@@ -187,7 +245,8 @@ class EspaceCommercialController extends GetxController {
       final siteFilter = isAdminRole
           ? (selectedSite.value.isEmpty ? null : selectedSite.value)
           : _session.site;
-      final commercialId = isAdminRole ? null : _session.email;
+      // Caissier doit agréger toutes les opérations du site -> commercialId nul
+      final commercialId = isWideScopeRole ? null : _session.email;
 
       final futures = await Future.wait([
         if (!_useAttributionsRefactor)
@@ -238,87 +297,6 @@ class EspaceCommercialController extends GetxController {
     } finally {
       isLoading.value = false;
     }
-  }
-
-  /// 🎯 NOUVELLE MÉTHODE : Charge les vraies attributions depuis Gestion Commercial
-  /// Remplace la logique des prélèvements pour "Mes Prélèvements"
-  Future<void> ensureAttributionsLoaded({bool forceRefresh = false}) async {
-    // Si déjà chargé et pas de refresh forcé on ne refait rien
-    if (attributions.isNotEmpty && !forceRefresh) return;
-
-    try {
-      debugPrint(
-          '🔄 ensureAttributionsLoaded (forceRefresh=$forceRefresh) démarré');
-      debugPrint(
-          '👤 Mode utilisateur: ${isAdminRole ? 'ADMIN' : 'COMMERCIAL'}');
-
-      List<AttributionPartielle> data;
-
-      if (isAdminRole) {
-        // 👑 ADMIN : Récupérer TOUTES les attributions de TOUS les commerciaux
-        debugPrint('👑 Mode ADMIN : récupération de toutes les attributions');
-        final site =
-            selectedSite.value.isEmpty ? _session.site : selectedSite.value;
-        debugPrint('📍 Site sélectionné pour admin: $site');
-
-        data = await _venteService.getAllAttributionsAdmin(site: site);
-        debugPrint('👑 ADMIN : ${data.length} attributions totales récupérées');
-      } else {
-        // 👨‍💼 COMMERCIAL : Récupérer seulement ses attributions
-        final userEmail = _session.email ?? '';
-        if (userEmail.isEmpty) {
-          debugPrint(
-              '❌ Email utilisateur manquant pour récupérer les attributions');
-          return;
-        }
-
-        // Convertir l'email en clé commercial (kansiemo_marceline@exemple.com -> kansiemo_marceline)
-        final commercialKey = userEmail.split('@').first.toLowerCase();
-        final site = _session.site ?? 'Koudougou';
-
-        debugPrint('👨‍� COMMERCIAL : $commercialKey sur site: $site');
-
-        data = await _venteService.getAttributionsCommercial(
-          commercialKey: commercialKey,
-          site: site,
-        );
-        debugPrint(
-            '👨‍💼 COMMERCIAL : ${data.length} attributions personnelles récupérées');
-      }
-
-      attributions.assignAll(data);
-      debugPrint(
-          '✅ ensureAttributionsLoaded -> ${attributions.length} attributions chargées');
-
-      // Debug détaillé du contenu
-      if (attributions.isNotEmpty) {
-        debugPrint('📋 CONTENU DES ATTRIBUTIONS RÉCUPÉRÉES:');
-        for (int i = 0; i < attributions.length && i < 5; i++) {
-          final attr = attributions[i];
-          debugPrint(
-              '   ${i + 1}. ${attr.commercialNom} - Lot: ${attr.numeroLot} - Qté: ${attr.quantiteAttribuee} - Valeur: ${attr.valeurTotale} FCFA');
-        }
-        if (attributions.length > 5) {
-          debugPrint(
-              '   ... et ${attributions.length - 5} autres attributions');
-        }
-      } else {
-        debugPrint('⚠️ AUCUNE ATTRIBUTION TROUVÉE !');
-      }
-
-      // 🎯 PLUS DE CONVERSION FICTIVE ! Les attributions sont utilisées directement
-    } catch (e) {
-      debugPrint('❌ ensureAttributionsLoaded erreur: $e');
-    }
-  }
-
-  // 🗑️ SUPPRIMÉ : Plus de conversion fictive !
-
-  /// Assure que la liste `prelevements` est chargée même lorsque
-  /// le refactor attributions est actif (legacy UI qui en dépend encore)
-  Future<void> ensurePrelevementsLoaded({bool forceRefresh = false}) async {
-    // 🎯 NOUVELLE LOGIQUE : On charge les attributions au lieu des prélèvements
-    await ensureAttributionsLoaded(forceRefresh: forceRefresh);
   }
 
   // ================= LISTENERS TEMPS RÉEL =================
@@ -440,6 +418,30 @@ class EspaceCommercialController extends GetxController {
       } else {
         _reconcilierPrelevements();
       }
+    }));
+
+    // Listener pour les clôtures
+    final cloturesStream = firestore
+        .collection('Vente')
+        .doc(site)
+        .collection('clotures')
+        .snapshots();
+
+    _realtimeSubscriptions.add(cloturesStream.listen((snapshot) {
+      final cloturesFromSnapshot = snapshot.docs
+          .map((doc) => CaisseCloture.fromMap(doc.data()))
+          .toList();
+
+      final siteFilter = isAdminRole ? null : site;
+      final commercialId = isAdminRole ? null : _session.email;
+      final filtered = cloturesFromSnapshot.where((cloture) {
+        if (siteFilter != null && cloture.site != siteFilter) return false;
+        if (commercialId != null && cloture.commercialId != commercialId)
+          return false;
+        return true;
+      }).toList();
+
+      clotures.assignAll(filtered);
     }));
   }
 
@@ -691,7 +693,8 @@ class EspaceCommercialController extends GetxController {
 
   // Filtrage strict des opérations pour le commercial courant (sans legacy prélèvements)
   void _filtrerOperationsParCommercial() {
-    if (isAdminRole) return;
+    // Pas de filtrage par commercial pour admin ou caissier
+    if (isWideScopeRole) return;
     final commercialId = _session.email;
     if (commercialId == null) return;
     ventes.assignAll(ventes.where((v) => v.commercialId == commercialId));
@@ -728,7 +731,8 @@ class EspaceCommercialController extends GetxController {
   }
 
   void _applyAttributionFilter() {
-    if (isAdminRole) return;
+    // Caissier : visibilité complète sur le site (comme admin pour l'agrégation)
+    if (isWideScopeRole) return;
     final site = _session.site ?? '';
 
     bool produitsAutorises(List produitsDyn) {
@@ -785,8 +789,18 @@ class EspaceCommercialController extends GetxController {
 
   List<Prelevement> get filteredPrelevements =>
       _applySearch(prelevements); // legacy
-  List<AttributionPartielle> get filteredAttributions =>
-      _applySearch(attributions);
+  List<AttributionPartielle> get filteredAttributions {
+    // Filtrer d'abord les attributions qui ont encore du stock
+    final attributionsAvecStock = attributions.where((attribution) {
+      final restant = attributionRestant[attribution.id] ??
+          (attribution.quantiteAttribuee -
+              (attributionConsomme[attribution.id] ?? 0));
+      return restant > 0;
+    }).toList();
+
+    // Puis appliquer la recherche textuelle
+    return _applySearch(attributionsAvecStock);
+  }
 
   // ==================== MÉTRIQUES ATTRIBUTIONS ====================
   int get totalQuantiteAttribuee =>
@@ -806,6 +820,26 @@ class EspaceCommercialController extends GetxController {
   List<Restitution> get filteredRestitutions => _applySearch(restitutions);
   List<Perte> get filteredPertes => _applySearch(pertes);
   List<ClientLight> get filteredClients => _applySearch(clients);
+
+  /// Génère un rapport PDF (bytes) des attributions terminées et partielles.
+  Future<Uint8List> generateAttributionStatusReport(
+      {DateTime? dateDebut, DateTime? dateFin}) async {
+    return AttributionStatusReportPdf.generate(
+      attributions: attributions.toList(),
+      dateDebut: dateDebut,
+      dateFin: dateFin,
+    );
+  }
+
+  Future<Uint8List> generateCombinedAttributionSalesReport(
+      {DateTime? dateDebut, DateTime? dateFin}) async {
+    return AttributionSalesCombinedReportPdf.generate(
+      attributions: attributions.toList(),
+      ventes: ventes.toList(),
+      dateDebut: dateDebut,
+      dateFin: dateFin,
+    );
+  }
 }
 
 /// Modèle léger client pour la liste
