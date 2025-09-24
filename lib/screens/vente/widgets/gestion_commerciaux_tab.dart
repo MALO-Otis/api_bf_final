@@ -1,3 +1,11 @@
+import 'dart:async';
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter/material.dart';
+import '../models/commercial_models.dart';
+import '../services/commercial_service.dart';
+import '../../../data/personnel/personnel_apisavana.dart';
+
 /// 👥 ONGLET GESTION DES COMMERCIAUX
 ///
 /// Interface complète pour gérer toutes les activités des commerciaux :
@@ -5,16 +13,6 @@
 /// - Restitutions effectuées
 /// - Pertes déclarées
 /// - Historique complet des opérations
-
-import 'dart:async';
-
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:intl/intl.dart';
-
-import '../../../data/personnel/personnel_apisavana.dart';
-import '../models/commercial_models.dart';
-import '../services/commercial_service.dart';
 
 class GestionCommerciauxTab extends StatefulWidget {
   final CommercialService commercialService;
@@ -401,6 +399,7 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
           ),
           child: TabBar(
             controller: _tabController,
+            isScrollable: true,
             labelColor: const Color(0xFF2196F3),
             unselectedLabelColor: Colors.grey,
             indicatorColor: const Color(0xFF2196F3),
@@ -690,7 +689,7 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
               const SizedBox(width: 8),
               Expanded(
                 child: _buildStatCard('Pertes', '${pertes.length}',
-                    Icons.report_problem, Colors.red),
+                    Icons.report_problem, const Color(0xFF1976D2)),
               ),
             ],
           ),
@@ -731,8 +730,8 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
           ],
 
           if (pertes.isNotEmpty) ...[
-            _buildSectionHeader(
-                'Déclarations de Pertes', Icons.report_problem, Colors.red),
+            _buildSectionHeader('Déclarations de Pertes', Icons.report_problem,
+                const Color(0xFF1976D2)),
             const SizedBox(height: 8),
             ...pertes.map((perte) => _buildActivityItem(
                   title: '${perte['produit']} x${perte['quantite']}',
@@ -1097,8 +1096,8 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
         child: Row(
           children: [
             CircleAvatar(
-              backgroundColor: Colors.red.withOpacity(0.2),
-              child: const Icon(Icons.report_problem, color: Colors.red),
+              backgroundColor: const Color(0xFF1976D2).withOpacity(0.15),
+              child: const Icon(Icons.report_problem, color: Color(0xFF1976D2)),
             ),
             const SizedBox(width: 16),
             Expanded(

@@ -6,13 +6,14 @@
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",
+    "build": "tsc -p tsconfig.json",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
   },
   "engines": {
     "node": "22"
   },
-  "main": "index.js",
+  "main": "lib/index.js",
   "dependencies": {
     "firebase-admin": "^12.6.0",
     "firebase-functions": "^6.0.1"
@@ -23,7 +24,8 @@
     "eslint": "^8.57.1",
     "eslint-config-google": "^0.14.0",
     "eslint-plugin-import": "^2.31.0",
-    "firebase-functions-test": "^3.1.0"
+    "firebase-functions-test": "^3.1.0",
+    "typescript": "^5.6.3"
   },
   "private": true
 }

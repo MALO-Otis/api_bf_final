@@ -295,7 +295,14 @@ class _EspaceCaissierPageState extends State<EspaceCaissierPage> {
         child: Row(children: const [
           Icon(Icons.receipt_long, color: Colors.blueGrey),
           SizedBox(width: 12),
-          Text('Aucune donnée de reconciliation sur la période'),
+          Expanded(
+            child: Text(
+              'Aucune donnée de reconciliation sur la période',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              softWrap: true,
+            ),
+          ),
         ]),
       );
     }

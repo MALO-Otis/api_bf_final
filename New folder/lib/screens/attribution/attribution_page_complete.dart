@@ -1,13 +1,13 @@
+import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:get/get.dart';
-import '../controle_de_donnes/models/attribution_models_v2.dart' as models;
-import '../controle_de_donnes/models/collecte_models.dart';
-import 'services/attribution_service_complete.dart';
-import 'widgets/attribution_stats_widget.dart';
 import 'widgets/attribution_filters.dart';
 import 'pages/attribution_history_page.dart';
+import 'widgets/attribution_stats_widget.dart';
 import 'services/attribution_page_service.dart';
+import 'services/attribution_service_complete.dart';
+import '../controle_de_donnes/models/collecte_models.dart';
+import '../controle_de_donnes/models/attribution_models_v2.dart' as models;
 
 /// 🎯 PAGE D'ATTRIBUTION PRINCIPALE - SYSTÈME MODERNE
 ///
@@ -357,17 +357,10 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
       expandedHeight: 120,
       floating: false,
       pinned: true,
+      centerTitle: false,
       backgroundColor: Colors.indigo[600],
       foregroundColor: Colors.white,
       flexibleSpace: FlexibleSpaceBar(
-        title: const Text(
-          'Attribution de Produits',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
         background: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -379,44 +372,78 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
               ],
             ),
           ),
-          child: Padding(
-            padding: const EdgeInsets.only(left: 16, right: 16, top: 50),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final collapsed = constraints.maxHeight <= (kToolbarHeight + 20);
+              return Stack(
+                children: [
+                  // Expanded header (big title + subtitle)
+                  AnimatedOpacity(
+                    opacity: collapsed ? 0.0 : 1.0,
+                    duration: const Duration(milliseconds: 150),
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.only(left: 16, right: 16, top: 50),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.assignment_turned_in,
+                                size: 24, color: Colors.white),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'Attribution de Produits',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                Text(
+                                  'Extraction • Filtrage • Traitement Cire',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  child: const Icon(Icons.assignment_turned_in, size: 24),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
+
+                  // Collapsed header (small title only)
+                  Positioned(
+                    left: 16,
+                    bottom: 12,
+                    child: AnimatedOpacity(
+                      opacity: collapsed ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 150),
+                      child: const Text(
                         'Attribution de Produits',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
                       ),
-                      Text(
-                        'Extraction • Filtrage • Traitement Cire',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white70,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -749,6 +776,18 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
     );
   }
 
+  /// Format long product codes based on available width
+  /// - When isVeryNarrow is true: show an ellipsized prefix with the last N digits
+  ///   example: REC_REO_..._0002 (for keepLastDigits=4)
+  /// - Otherwise: return the full code (ellipsis applied by Text where used)
+  String _formatProductCode(String code,
+      {required bool isVeryNarrow, int keepLastDigits = 4}) {
+    if (!isVeryNarrow) return code;
+    if (code.length <= keepLastDigits + 3) return code;
+    final tail = code.substring(code.length - keepLastDigits);
+    return '...$tail';
+  }
+
   /// 📱 MINI CARTE PRODUIT
   ///
   /// Carte compacte pour afficher un produit dans la collecte
@@ -806,11 +845,26 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
                   children: [
                     Row(
                       children: [
-                        Text(
-                          produit.codeContenant,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
+                        Expanded(
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final isVeryNarrow = constraints.maxWidth < 560;
+                              final display = _formatProductCode(
+                                produit.codeContenant,
+                                isVeryNarrow: isVeryNarrow,
+                                keepLastDigits: 4,
+                              );
+                              return Text(
+                                display,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                softWrap: false,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -839,10 +893,12 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
                       ],
                     ),
                     const SizedBox(height: 2),
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 2,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Icon(Icons.scale, color: Colors.blue[600], size: 12),
-                        const SizedBox(width: 4),
                         Text(
                           'Total: ${produit.poidsTotal.toStringAsFixed(1)} kg',
                           style: TextStyle(
@@ -851,10 +907,8 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-                        const SizedBox(width: 8),
                         Icon(Icons.water_drop,
                             color: Colors.green[600], size: 12),
-                        const SizedBox(width: 4),
                         Text(
                           'Miel: ${produit.poidsMiel.toStringAsFixed(1)} kg',
                           style: TextStyle(
@@ -1079,9 +1133,21 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
                       Icon(Icons.close, color: Colors.red, size: 16),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          '${produit.codeContenant} - ${_getAttributionErrorMessage(produit, type)}',
-                          style: const TextStyle(fontSize: 12),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final isVeryNarrow = constraints.maxWidth < 350;
+                            final displayCode = _formatProductCode(
+                              produit.codeContenant,
+                              isVeryNarrow: isVeryNarrow,
+                              keepLastDigits: 4,
+                            );
+                            return Text(
+                              '$displayCode - ${_getAttributionErrorMessage(produit, type)}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12),
+                            );
+                          },
                         ),
                       ),
                     ],
@@ -1310,16 +1376,8 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
   }
 
   /// Couleur selon le type d'attribution
-  Color _getTypeColor(AttributionType type) {
-    switch (type) {
-      case AttributionType.extraction:
-        return const Color(0xFF6D4C41); // Brun extraction professionnel
-      case AttributionType.filtrage:
-        return const Color(0xFF1E88E5); // Bleu filtrage élégant
-      case AttributionType.cire:
-        return const Color(0xFFF57C00); // Orange doré pour la cire
-    }
-  }
+  // Note: Removed unused overload taking a local AttributionType; we use the
+  // widget-scoped _getTypeColor() defined later based on models.AttributionType.
 
   /// Couleur de fond dégradée selon le type d'attribution
   LinearGradient _getTypeGradient(AttributionType type) {
@@ -1633,15 +1691,29 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
                         ),
                       ),
                     ),
-                    title: Text(
-                      produit.codeContenant,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                      ),
+                    title: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isVeryNarrow = constraints.maxWidth < 300;
+                        final display = _formatProductCode(
+                          produit.codeContenant,
+                          isVeryNarrow: isVeryNarrow,
+                          keepLastDigits: 4,
+                        );
+                        return Text(
+                          display,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        );
+                      },
                     ),
                     subtitle: Text(
                       '${produit.poidsMiel.toStringAsFixed(1)} kg • ${produit.producteur}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 9,
                         color: Colors.grey[600],
@@ -2946,12 +3018,16 @@ class _ModernAttributionModalState extends State<ModernAttributionModal>
             children: [
               Icon(Icons.summarize, color: _getTypeColor(), size: 20),
               const SizedBox(width: 8),
-              Text(
-                'Résumé de l\'attribution',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: _getTypeColor(),
+              Expanded(
+                child: Text(
+                  'Résumé de l\'attribution',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: _getTypeColor(),
+                  ),
                 ),
               ),
             ],

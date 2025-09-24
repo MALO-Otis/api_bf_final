@@ -1,10 +1,9 @@
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'dart:async';
-
-import '../../../authentication/user_session.dart';
+import 'package:get/get.dart';
+import 'package:flutter/material.dart';
 import '../models/extraction_models_v2.dart';
 import '../services/extraction_service_v2.dart';
+import '../../../authentication/user_session.dart';
 
 /// Page pour l'historique des extractions avec statistiques
 class ExtractionHistoryPage extends StatefulWidget {
@@ -284,25 +283,32 @@ class _ExtractionHistoryPageState extends State<ExtractionHistoryPage>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Historique des Extractions',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Historique des Extractions',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Suivi et statistiques des extractions réalisées',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.9),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Suivi et statistiques des extractions réalisées',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 12),
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

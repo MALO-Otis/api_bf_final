@@ -1,6 +1,6 @@
+import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
 import '../../../authentication/user_session.dart';
 import '../../../services/universal_container_id_service.dart';
 
@@ -284,21 +284,26 @@ class _VisualContainerIdWidgetState extends State<VisualContainerIdWidget> {
               Row(
                 children: [
                   // Partie fixe (non modifiable)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.grey.shade400),
-                    ),
-                    child: Text(
-                      _fixedPrefix,
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        color: Colors.grey.shade700,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.grey.shade400),
+                        ),
+                        child: Text(
+                          _fixedPrefix,
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            color: Colors.grey.shade700,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ),
                     ),
                   ),

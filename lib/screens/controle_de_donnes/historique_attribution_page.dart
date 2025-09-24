@@ -1,13 +1,15 @@
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'models/collecte_models.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'models/attribution_models_v2.dart';
 import 'models/quality_control_models.dart';
-import 'models/collecte_models.dart';
-import 'services/quality_control_service.dart';
 import 'services/firestore_data_service.dart';
+import 'services/quality_control_service.dart';
+import '../../authentication/user_session.dart';
 import 'services/firestore_attribution_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Page historique améliorée avec statistiques et données d'attribution
 class HistoriqueAttributionPage extends StatefulWidget {
@@ -70,6 +72,10 @@ class _HistoriqueAttributionPageState extends State<HistoriqueAttributionPage>
   DateTimeRange? _selectedDateRange;
   bool _showFilters = false;
 
+  // Contexte utilisateur (permissions)
+  bool _isAdmin = true;
+  String? _userSite;
+
   // Vue
   // int _selectedTabIndex = 0; // Non utilisé - géré par TabController
   String _sortBy = 'date';
@@ -94,7 +100,25 @@ class _HistoriqueAttributionPageState extends State<HistoriqueAttributionPage>
     );
 
     _scrollController.addListener(_onScroll);
+    _initializeUserContext();
     _loadData();
+  }
+
+  /// Initialise le rôle et le site de l'utilisateur pour filtrer selon permissions
+  void _initializeUserContext() {
+    try {
+      final userSession = Get.find<UserSession>();
+      final role = (userSession.role ?? '').toLowerCase();
+      _isAdmin = role.contains('admin');
+      _userSite = (userSession.site ?? '').trim();
+      if (!_isAdmin && (_userSite?.isNotEmpty ?? false)) {
+        _selectedSite = _userSite; // Forcer le filtre site pour les contrôleurs
+      }
+    } catch (_) {
+      // Par défaut, restreindre si aucune session
+      _isAdmin = false;
+      _userSite = null;
+    }
   }
 
   @override
@@ -154,23 +178,54 @@ class _HistoriqueAttributionPageState extends State<HistoriqueAttributionPage>
         print('📊 HISTORIQUE: Chargement des attributions...');
       }
 
-      // Get extraction attributions using streams converted to lists
-      final extractionStream = _attributionService.getAttributionsPourType(
-          type: AttributionType.extraction);
+      // Charger les attributions selon le rôle (admin = tous les sites, contrôleur = uniquement son site)
+      Stream<List<Map<String, dynamic>>> extractionStream;
+      Stream<List<Map<String, dynamic>>> filtrageStream;
+      Stream<List<Map<String, dynamic>>> cireStream;
+
+      if (_isAdmin) {
+        if (kDebugMode) print('👑 HISTORIQUE: Mode ADMIN - chargement global');
+        extractionStream = _attributionService.getAttributionsPourType(
+            type: AttributionType.extraction);
+        filtrageStream = _attributionService.getAttributionsPourType(
+            type: AttributionType.filtration);
+        cireStream = _attributionService.getAttributionsPourType(
+            type: AttributionType.traitementCire);
+      } else {
+        final site = (_userSite ?? '').trim();
+        if (site.isEmpty) {
+          if (kDebugMode) {
+            print(
+                '🚫 HISTORIQUE: Mode CONTRÔLEUR sans site configuré - aucune attribution chargée');
+          }
+          // Streams vides pour éviter les erreurs
+          extractionStream = Stream.value(const <Map<String, dynamic>>[]);
+          filtrageStream = Stream.value(const <Map<String, dynamic>>[]);
+          cireStream = Stream.value(const <Map<String, dynamic>>[]);
+        } else {
+          if (kDebugMode) {
+            print(
+                '🛡️ HISTORIQUE: Mode CONTRÔLEUR - chargement pour le site "$site"');
+          }
+          extractionStream = _attributionService.getAttributionsPourSite(
+              type: AttributionType.extraction, siteReceveur: site);
+          filtrageStream = _attributionService.getAttributionsPourSite(
+              type: AttributionType.filtration, siteReceveur: site);
+          cireStream = _attributionService.getAttributionsPourSite(
+              type: AttributionType.traitementCire, siteReceveur: site);
+        }
+      }
+
       final extractionAttributions = await extractionStream.first;
       if (kDebugMode) {
         print('   ✅ Attributions EXTRACTION: ${extractionAttributions.length}');
       }
 
-      final filtrageStream = _attributionService.getAttributionsPourType(
-          type: AttributionType.filtration);
       final filtrageAttributions = await filtrageStream.first;
       if (kDebugMode) {
         print('   ✅ Attributions FILTRAGE: ${filtrageAttributions.length}');
       }
 
-      final cireStream = _attributionService.getAttributionsPourType(
-          type: AttributionType.traitementCire);
       final cireAttributions = await cireStream.first;
       if (kDebugMode) {
         print('   ✅ Attributions CIRE: ${cireAttributions.length}');
@@ -185,47 +240,53 @@ class _HistoriqueAttributionPageState extends State<HistoriqueAttributionPage>
       // ⚠️ FALLBACK: Si aucune attribution trouvée avec la méthode standard
       if (_allAttributions.isEmpty) {
         if (kDebugMode) {
-          print(
-              '⚠️ HISTORIQUE: AUCUNE ATTRIBUTION TROUVÉE avec la méthode par site');
-          print('   🔄 Tentative de récupération globale de TOUS les sites...');
+          print('⚠️ HISTORIQUE: AUCUNE ATTRIBUTION TROUVÉE');
+          if (_isAdmin) {
+            print(
+                '   🔄 (ADMIN) Tentative de récupération globale de TOUS les sites...');
+          } else {
+            print('   🔒 (CONTRÔLEUR) Pas de fallback global autorisé');
+          }
         }
 
-        try {
-          // Fallback: get all attributions from all types
-          final allExtractionStream = _attributionService
-              .getAttributionsPourType(type: AttributionType.extraction);
-          final allFiltrageStream = _attributionService.getAttributionsPourType(
-              type: AttributionType.filtration);
-          final allCireStream = _attributionService.getAttributionsPourType(
-              type: AttributionType.traitementCire);
+        if (_isAdmin) {
+          try {
+            // Fallback: get all attributions from all types (tous sites)
+            final allExtractionStream = _attributionService
+                .getAttributionsPourType(type: AttributionType.extraction);
+            final allFiltrageStream = _attributionService
+                .getAttributionsPourType(type: AttributionType.filtration);
+            final allCireStream = _attributionService.getAttributionsPourType(
+                type: AttributionType.traitementCire);
 
-          final results = await Future.wait([
-            allExtractionStream.first,
-            allFiltrageStream.first,
-            allCireStream.first,
-          ]);
+            final results = await Future.wait([
+              allExtractionStream.first,
+              allFiltrageStream.first,
+              allCireStream.first,
+            ]);
 
-          _allAttributions = [
-            ...results[0],
-            ...results[1],
-            ...results[2],
-          ];
+            _allAttributions = [
+              ...results[0],
+              ...results[1],
+              ...results[2],
+            ];
 
-          if (kDebugMode) {
-            print(
-                '   ✅ Récupération globale: ${_allAttributions.length} attributions trouvées');
-            if (_allAttributions.isNotEmpty) {
-              print('   📝 Première attribution globale:');
-              final first = _allAttributions.first;
-              print('      - ID: ${first['id']}');
-              print('      - Type: ${first['type']}');
-              print('      - Site origine: ${first['source']?['site']}');
-              print('      - Site destination: ${first['siteDestination']}');
+            if (kDebugMode) {
+              print(
+                  '   ✅ Récupération globale: ${_allAttributions.length} attributions trouvées');
+              if (_allAttributions.isNotEmpty) {
+                print('   📝 Première attribution globale:');
+                final first = _allAttributions.first;
+                print('      - ID: ${first['id']}');
+                print('      - Type: ${first['type']}');
+                print('      - Site origine: ${first['source']?['site']}');
+                print('      - Site destination: ${first['siteDestination']}');
+              }
             }
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            print('   ❌ Erreur récupération globale: $e');
+          } catch (e) {
+            if (kDebugMode) {
+              print('   ❌ Erreur récupération globale: $e');
+            }
           }
         }
 
@@ -233,9 +294,9 @@ class _HistoriqueAttributionPageState extends State<HistoriqueAttributionPage>
         if (_allAttributions.isEmpty) {
           if (kDebugMode) {
             print('');
-            print('❌ HISTORIQUE: AUCUNE ATTRIBUTION TROUVÉE NULLE PART');
+            print('❌ HISTORIQUE: AUCUNE ATTRIBUTION TROUVÉE');
             print('   🔍 Causes possibles:');
-            print('   1. Site utilisateur non configuré');
+            print('   1. Site utilisateur non configuré (contrôleur)');
             print('   2. Collections Firestore vides');
             print('   3. Permissions Firestore insuffisantes');
             print('   4. Aucune attribution créée dans l\'app');
@@ -730,7 +791,8 @@ class _HistoriqueAttributionPageState extends State<HistoriqueAttributionPage>
     setState(() {
       _searchQuery = '';
       _selectedType = null;
-      _selectedSite = null;
+      // Conserver le site forcé pour les contrôleurs
+      _selectedSite = _isAdmin ? null : _userSite;
       // _selectedNature = null; // Non utilisé
       _selectedDateRange = null;
       _searchController.clear();
@@ -1027,34 +1089,6 @@ class _HistoriqueAttributionPageState extends State<HistoriqueAttributionPage>
       ],
       onChanged: (value) {
         setState(() => _selectedType = value);
-        _applyFilters();
-      },
-    );
-  }
-
-  Widget _buildSiteFilter() {
-    final sites = _allAttributions
-        .map((a) => a['siteDestination'] as String? ?? 'Non spécifié')
-        .toSet()
-        .toList()
-      ..sort();
-
-    return DropdownButtonFormField<String?>(
-      value: _selectedSite,
-      decoration: const InputDecoration(
-        labelText: 'Site de destination',
-        border: OutlineInputBorder(),
-        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      ),
-      items: [
-        const DropdownMenuItem(value: null, child: Text('Tous les sites')),
-        ...sites.map((site) => DropdownMenuItem(
-              value: site,
-              child: Text(site),
-            )),
-      ],
-      onChanged: (value) {
-        setState(() => _selectedSite = value);
         _applyFilters();
       },
     );
@@ -1425,6 +1459,41 @@ class _HistoriqueAttributionPageState extends State<HistoriqueAttributionPage>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSiteFilter() {
+    final sites = _allAttributions
+        .map((a) => a['siteDestination'] as String? ?? 'Non spécifié')
+        .toSet()
+        .toList()
+      ..sort();
+
+    final isController = !_isAdmin;
+    final effectiveValue =
+        isController ? (_userSite ?? _selectedSite) : _selectedSite;
+
+    return DropdownButtonFormField<String?>(
+      value: effectiveValue,
+      decoration: const InputDecoration(
+        labelText: 'Site de destination',
+        border: OutlineInputBorder(),
+        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      ),
+      items: [
+        if (_isAdmin)
+          const DropdownMenuItem(value: null, child: Text('Tous les sites')),
+        ...sites.map((site) => DropdownMenuItem(
+              value: site,
+              child: Text(site),
+            )),
+      ],
+      onChanged: isController
+          ? null
+          : (value) {
+              setState(() => _selectedSite = value);
+              _applyFilters();
+            },
     );
   }
 

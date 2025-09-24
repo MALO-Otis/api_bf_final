@@ -1,16 +1,15 @@
+import 'package:get/get.dart';
+import 'condionnement_home.dart';
+import 'conditionnement_models.dart';
+import 'package:flutter/material.dart';
+import '../../utils/smart_appbar.dart';
+import 'pages/lots_disponibles_page.dart';
+import 'pages/stock_conditionne_page.dart';
+import 'services/conditionnement_db_service.dart';
+
 /// 🧊 PAGE PRINCIPALE DU MODULE CONDITIONNEMENT
 ///
 /// Hub central avec navigation vers tous les sous-modules
-
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-
-import '../../utils/smart_appbar.dart';
-import 'condionnement_home.dart';
-import 'conditionnement_models.dart';
-import 'services/conditionnement_db_service.dart';
-import 'pages/stock_conditionne_page.dart';
-import 'pages/lots_disponibles_page.dart';
 
 class ConditionnementMainPage extends StatefulWidget {
   const ConditionnementMainPage({super.key});
@@ -115,7 +114,9 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
         backgroundColor: const Color(0xFF2E7D32),
         onBackPressed: () => Get.offAllNamed('/dashboard'),
       ),
-      body: Obx(() => _service.isLoading ? _buildLoadingView() : _buildMainContent(isMobile)),
+      body: Obx(() => _service.isLoading
+          ? _buildLoadingView()
+          : _buildMainContent(isMobile)),
     );
   }
 
@@ -374,7 +375,8 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
             crossAxisCount: isMobile ? 1 : 2,
             crossAxisSpacing: 16,
             mainAxisSpacing: 16,
-            childAspectRatio: isMobile ? 3.5 : 2.5,
+            // Increase card height on mobile by reducing aspect ratio
+            childAspectRatio: isMobile ? 2.6 : 2.3,
           ),
           itemCount: subModules.length,
           itemBuilder: (context, index) {
@@ -454,6 +456,7 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
                         ],
                       ),
                       const Spacer(),
+                      // Title truncated to avoid overlap
                       Text(
                         module['title'] as String,
                         style: TextStyle(
@@ -461,14 +464,19 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
                           fontSize: isMobile ? 16 : 18,
                           fontWeight: FontWeight.bold,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
+                      // Subtitle truncated to two lines
                       Text(
                         module['subtitle'] as String,
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.9),
                           fontSize: isMobile ? 12 : 14,
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 12),
                       Row(

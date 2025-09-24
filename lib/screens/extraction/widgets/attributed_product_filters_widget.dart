@@ -1,8 +1,9 @@
-/// Widget pour les filtres des produits attribués
 import 'package:flutter/material.dart';
 import '../models/attributed_product_models.dart';
 import '../services/attributed_products_service.dart';
 import '../../controle_de_donnes/models/attribution_models_v2.dart';
+
+/// Widget pour les filtres des produits attribués
 
 class AttributedProductFiltersWidget extends StatefulWidget {
   final AttributedProductFilters currentFilters;
@@ -488,10 +489,16 @@ class _AttributedProductFiltersWidgetState
   ) {
     return TextFormField(
       decoration: InputDecoration(
-        labelText: label,
+        isDense: true,
+        label: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
         ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         suffixIcon: value != null
             ? IconButton(
                 icon: const Icon(Icons.clear),

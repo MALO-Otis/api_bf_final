@@ -1,6 +1,12 @@
-/// Page principale pour les produits attribués à l'extraction
-import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:get/get.dart';
+import 'package:flutter/material.dart';
+import '../widgets/extraction_form_modal.dart';
+import '../../../authentication/user_session.dart';
+import '../services/extraction_attribution_service.dart';
+import '../../controle_de_donnes/models/attribution_models_v2.dart';
+
+/// Page principale pour les produits attribués à l'extraction
 
 // ANCIEN SYSTÈME COMMENTÉ - Utilise maintenant attribution_reçu
 // import '../models/attributed_product_models.dart';
@@ -11,11 +17,6 @@ import 'dart:async';
 // import '../widgets/prelevement_modal.dart';
 
 // NOUVEAU SYSTÈME - Utilise attribution_reçu
-import '../../controle_de_donnes/models/attribution_models_v2.dart';
-import '../services/extraction_attribution_service.dart';
-import '../widgets/extraction_form_modal.dart';
-import '../../../authentication/user_session.dart';
-import 'package:get/get.dart';
 
 class AttributedProductsPage extends StatefulWidget {
   const AttributedProductsPage({super.key});
@@ -835,6 +836,7 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
                       vertical: 8,
                     ),
                   ),
+                  isExpanded: true,
                   items: const [
                     DropdownMenuItem(
                       value: 'dateReception',
@@ -884,6 +886,7 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
                       vertical: 8,
                     ),
                   ),
+                  isExpanded: true,
                   items: const [
                     DropdownMenuItem(
                       value: 'provenance',
@@ -1133,10 +1136,18 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
                     ),
                   ),
                   const Spacer(),
-                  Text(
-                    product.codeContenant,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w500,
+                  Flexible(
+                    child: Tooltip(
+                      message: product.codeContenant,
+                      child: Text(
+                        product.codeContenant,
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ),
                   ),
                 ],

@@ -1,15 +1,14 @@
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter/material.dart';
+import '../models/commercial_models.dart';
+import '../services/commercial_service.dart';
+import '../widgets/statistiques_widgets.dart';
+
 /// 📊 ONGLET STATISTIQUES COMMERCIALES AVANCÉES
 ///
 /// Interface analytique avec graphiques interactifs et métriques approfondies
 /// Calculs en temps réel sur de longues périodes avec visualisations optimisées
-
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:intl/intl.dart';
-
-import '../models/commercial_models.dart';
-import '../services/commercial_service.dart';
-import '../widgets/statistiques_widgets.dart';
 
 class StatistiquesTab extends StatefulWidget {
   final CommercialService commercialService;
@@ -96,11 +95,9 @@ class _StatistiquesTabState extends State<StatistiquesTab>
       _isLoading.value = true;
       _errorMessage.value = '';
 
-      final stats = await widget.commercialService.calculerStatistiques(
-        periodeDebut: _periodeDebut.value,
-        periodeFin: _periodeFin.value,
-        forceRefresh: forceRefresh,
-      );
+      // TODO: Passer la période au service quand l'API supportera ces paramètres
+      final stats = await widget.commercialService
+          .calculerStatistiques(forceRefresh: forceRefresh);
 
       _statistiques.value = stats;
     } catch (e) {
@@ -472,7 +469,7 @@ class _StatistiquesTabState extends State<StatistiquesTab>
             width: 100,
             height: 100,
             decoration: BoxDecoration(
-              color: Colors.red.shade50,
+              color: Colors.grey.shade100,
               borderRadius: BorderRadius.circular(50),
             ),
             child: Icon(
@@ -673,6 +670,7 @@ class _StatistiquesTabState extends State<StatistiquesTab>
           ),
           child: TabBar(
             controller: _tabController,
+            isScrollable: true,
             labelColor: Colors.purple.shade700,
             unselectedLabelColor: Colors.grey.shade600,
             indicatorColor: Colors.purple.shade700,

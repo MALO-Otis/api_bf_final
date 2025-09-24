@@ -1,35 +1,34 @@
-import 'package:fl_chart/fl_chart.dart';
-import 'package:flutter/material.dart';
-// import 'package:apisavana_gestion/screens/collecte_de_donnes/collecte_donnes.dart'; // ANCIEN CODE - DÉSACTIVÉ
 import 'package:get/get.dart';
-import 'package:apisavana_gestion/authentication/user_session.dart';
+import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:apisavana_gestion/authentication/login.dart';
-import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
-import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collectes.dart';
-import 'package:apisavana_gestion/screens/collecte_de_donnes/nouvelle_collecte_individuelle.dart';
-
-import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_achats_scoop_contenants/nouvel_achat_scoop_contenants.dart';
-
-import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_mielleurie/nouvelle_collecte_miellerie.dart';
-import 'package:apisavana_gestion/screens/dashboard/pages/notifications_page.dart';
+import 'package:apisavana_gestion/authentication/sign_up.dart';
 import 'package:apisavana_gestion/services/user_role_service.dart';
+import 'package:apisavana_gestion/authentication/user_session.dart';
+import 'package:apisavana_gestion/screens/vente/vente_main_page.dart';
+import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
+import 'package:apisavana_gestion/screens/dashboard/pages/notifications_page.dart';
+import 'package:apisavana_gestion/screens/administration/pages/settings_page.dart';
+import 'package:apisavana_gestion/screens/conditionnement/condionnement_home.dart';
+import 'package:apisavana_gestion/screens/extraction/pages/main_extraction_page.dart';
+import 'package:apisavana_gestion/screens/administration/pages/admin_reports_page.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collectes.dart';
+import 'package:apisavana_gestion/screens/administration/pages/user_management_page.dart';
+import 'package:apisavana_gestion/screens/conditionnement/conditionnement_main_page.dart';
+import 'package:apisavana_gestion/screens/conditionnement/pages/stock_conditionne_page.dart';
 import 'package:apisavana_gestion/screens/dashboard/role_dashboards/controleur_dashboard.dart';
-import 'package:apisavana_gestion/screens/dashboard/role_dashboards/extracteur_filtreur_dashboard.dart';
-import 'package:apisavana_gestion/screens/dashboard/role_dashboards/conditionneur_dashboard.dart';
 import 'package:apisavana_gestion/screens/dashboard/role_dashboards/commercial_dashboard.dart';
 import 'package:apisavana_gestion/screens/dashboard/role_dashboards/collecteur_dashboard.dart';
-import 'package:apisavana_gestion/screens/administration/pages/user_management_page.dart';
-import 'package:apisavana_gestion/screens/administration/pages/admin_reports_page.dart';
-import 'package:apisavana_gestion/screens/administration/pages/settings_page.dart';
-import 'package:apisavana_gestion/authentication/sign_up.dart';
 import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
-import 'package:apisavana_gestion/screens/extraction/pages/main_extraction_page.dart';
-import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
-import 'package:apisavana_gestion/screens/conditionnement/conditionnement_main_page.dart';
-import 'package:apisavana_gestion/screens/conditionnement/condionnement_home.dart';
-import 'package:apisavana_gestion/screens/conditionnement/pages/stock_conditionne_page.dart';
-import 'package:apisavana_gestion/screens/vente/vente_main_page.dart';
+import 'package:apisavana_gestion/screens/controle_de_donnes/historique_attribution_page.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nouvelle_collecte_individuelle.dart';
+import 'package:apisavana_gestion/screens/dashboard/role_dashboards/conditionneur_dashboard.dart';
+import 'package:apisavana_gestion/screens/dashboard/role_dashboards/extracteur_filtreur_dashboard.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_mielleurie/nouvelle_collecte_miellerie.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_achats_scoop_contenants/nouvel_achat_scoop_contenants.dart';
+// import 'package:apisavana_gestion/screens/collecte_de_donnes/collecte_donnes.dart'; // ANCIEN CODE - DÉSACTIVÉ
 
 // Color palette
 const Color kHighlightColor = Color(0xFFF49101);
@@ -85,6 +84,11 @@ class DashboardController extends GetxController {
         currentPage.value = const ControlePageDashboard();
         return;
       }
+      if (moduleName == 'CONTRÔLE' && subModule == 'Historique contrôles') {
+        print('✅ Navigation vers Historique des Contrôles');
+        currentPage.value = const HistoriqueAttributionPage();
+        return;
+      }
       if (moduleName == 'CONTRÔLE' &&
           (subModule == 'Contrôle a gerer' ||
               subModule == 'Contrôles en attente')) {
@@ -96,7 +100,7 @@ class DashboardController extends GetxController {
       // NOUVEAU : Module d'extraction
       if (moduleName == 'EXTRACTION' && subModule == 'Extraction de données') {
         print('✅ Navigation vers Extraction de données');
-        currentPage.value = const MainExtractionPage();
+        currentPage.value = const MainExtractionPage(initialTabIndex: 0);
         return;
       }
       if (moduleName == 'EXTRACTION' &&
@@ -105,7 +109,8 @@ class DashboardController extends GetxController {
               subModule == 'Historique extractions' ||
               subModule == 'Rapports qualité')) {
         print('✅ Navigation vers ${subModule} -> MainExtractionPage');
-        currentPage.value = const MainExtractionPage();
+        final initialTab = subModule == 'Historique extractions' ? 1 : 0;
+        currentPage.value = MainExtractionPage(initialTabIndex: initialTab);
         return;
       }
 
@@ -113,9 +118,11 @@ class DashboardController extends GetxController {
       if (moduleName == 'FILTRAGE' &&
           (subModule == 'Nouveau filtrage' ||
               subModule == 'En cours de filtrage' ||
-              subModule == 'Filtrage terminé')) {
+              subModule == 'Filtrage terminé' ||
+              subModule == 'Historique filtrage')) {
         print('✅ Navigation vers ${subModule} -> FiltrageMainPage');
-        currentPage.value = const FiltrageMainPage();
+        final initialTab = subModule == 'Historique filtrage' ? 1 : 0;
+        currentPage.value = FiltrageMainPage(initialTabIndex: initialTab);
         return;
       }
 
@@ -246,14 +253,12 @@ class _DashboardPageState extends State<DashboardPage> {
             isDesktop: false,
           ).filterModulesByUser(
             [
-              {"name": "VENTES"},
               {"name": "COLLECTE"},
               {"name": "CONTRÔLE"},
               {"name": "EXTRACTION"},
               {"name": "FILTRAGE"},
               {"name": "CONDITIONNEMENT"},
               {"name": "GESTION DE VENTES"},
-              {"name": "RAPPORTS"},
             ],
             user,
           );
@@ -1303,7 +1308,6 @@ class _LineChartSampleState extends State<LineChartSample> {
               lineTouchData: LineTouchData(
                 enabled: true,
                 touchTooltipData: LineTouchTooltipData(
-                  tooltipRoundedRadius: 10,
                   getTooltipItems: (touchedSpots) {
                     return touchedSpots.map((touched) {
                       final series =
@@ -1507,7 +1511,6 @@ class BarChartSample extends StatelessWidget {
               barTouchData: BarTouchData(
                 enabled: true,
                 touchTooltipData: BarTouchTooltipData(
-                  tooltipRoundedRadius: 10,
                   getTooltipItem: (group, groupIndex, rod, rodIndex) {
                     final idx = group.x.toInt();
                     final label = data[idx]['name'];
@@ -1806,7 +1809,6 @@ class AreaChartSample extends StatelessWidget {
         lineTouchData: LineTouchData(
           enabled: true,
           touchTooltipData: LineTouchTooltipData(
-            tooltipRoundedRadius: 10,
             getTooltipItems: (touchedSpots) {
               return touchedSpots.map((spot) {
                 final idx = spot.x.toInt();
@@ -2187,18 +2189,7 @@ class NavigationSlider extends StatelessWidget {
       'Caissière'
     ],
 
-    // 🔒 VENTES : Rôles commerciaux uniquement
-    'VENTES': [
-      'Admin',
-      'Magazinier',
-      'Gestionnaire Commercial',
-      'Commercial',
-      'Caissier',
-      'Caissière'
-    ],
-
     // 🔒 ADMINISTRATION : Admin uniquement
-    'RAPPORTS': ['Admin'],
     'ADMINISTRATION': ['Admin'],
   };
 
@@ -2221,7 +2212,7 @@ class NavigationSlider extends StatelessWidget {
     debugPrint('   🔒 Extracteur → FILTRAGE, EXTRACTION uniquement');
     debugPrint('   🔒 Filtreur → FILTRAGE, EXTRACTION uniquement');
     debugPrint('   🔒 Conditionneur → CONDITIONNEMENT uniquement');
-    debugPrint('   🔒 Commercial/Caissier → VENTES, GESTION DE VENTES');
+    debugPrint('   🔒 Commercial/Caissier → GESTION DE VENTES');
     debugPrint('   🔒 Admin → TOUS les modules');
 
     // 🔒 FILTRAGE UNIQUEMENT PAR RÔLE (indépendamment du site)
@@ -2250,17 +2241,6 @@ class NavigationSlider extends StatelessWidget {
       user = Get.put(UserSession());
     }
     final modules = [
-      {
-        "icon": Icons.trending_up,
-        "name": "VENTES",
-        "badge": 8,
-        "subModules": [
-          {"name": "Nouvelle vente"},
-          {"name": "Ventes en cours", "badge": 5},
-          {"name": "Crédit/Recouvrement", "badge": 3},
-          {"name": "Historique ventes"}
-        ]
-      },
       {
         "icon": Icons.nature,
         "name": "COLLECTE",
@@ -2305,10 +2285,7 @@ class NavigationSlider extends StatelessWidget {
           {"name": "Rapports qualité", "badge": 2}
         ]
       },
-      {
-        "icon": Icons.bar_chart,
-        "name": "RAPPORTS",
-      },
+      // Module RAPPORTS retiré du sidebar
       {
         "name": "FILTRAGE",
         "icon": Icons.filter_alt,

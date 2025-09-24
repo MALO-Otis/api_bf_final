@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'authentication/user_session.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'services/push_notifications_service.dart';
 import 'screens/caisse/pages/espace_caissier_page.dart';
 import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
 import 'screens/conditionnement/services/conditionnement_db_service.dart';
@@ -35,6 +36,9 @@ void main() async {
   // Initialiser les services
   Get.put(UserSession());
   Get.put(ConditionnementDbService());
+
+  // Init push notifications (FCM)
+  await PushNotificationsService.instance.init();
 
   runApp(const ApisavanaApp());
 }

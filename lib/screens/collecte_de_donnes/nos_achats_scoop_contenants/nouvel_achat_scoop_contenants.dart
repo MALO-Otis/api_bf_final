@@ -1,16 +1,16 @@
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:geolocator/geolocator.dart';
-import '../../../data/models/scoop_models.dart';
-import '../../../data/services/stats_scoop_contenants_service.dart';
-import '../../../authentication/user_session.dart';
-import '../historiques_collectes.dart';
-import '../../../services/universal_container_id_service.dart';
 import 'widgets/section_scoop.dart';
+import 'widgets/section_resume.dart';
 import 'widgets/section_periode.dart';
+import 'package:flutter/material.dart';
+import '../historiques_collectes.dart';
 import 'widgets/section_contenants.dart';
 import 'widgets/section_observations.dart';
-import 'widgets/section_resume.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../../data/models/scoop_models.dart';
+import '../../../authentication/user_session.dart';
+import '../../../services/universal_container_id_service.dart';
+import '../../../data/services/stats_scoop_contenants_service.dart';
 
 class NouvelAchatScoopContenantsPage extends StatefulWidget {
   const NouvelAchatScoopContenantsPage({super.key});
@@ -492,18 +492,24 @@ class _NouvelAchatScoopContenantsPageState
                     color: Colors.white, size: 24),
               ),
               const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Géolocalisation',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    'Obtenez votre position GPS actuelle',
-                    style: TextStyle(color: Colors.grey.shade600),
-                  ),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Géolocalisation',
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      'Obtenez votre position GPS actuelle',
+                      style: TextStyle(color: Colors.grey.shade600),
+                      softWrap: true,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

@@ -82,7 +82,7 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: SmartAppBar(
-        title: "🛒 Espace Commercial - $commercialNom",
+        title: "Espace Commercial - $commercialNom",
         backgroundColor: const Color(0xFF9C27B0),
         onBackPressed: () => Get.back(),
         bottom: TabBar(
@@ -264,28 +264,38 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header
-          Row(
-            children: [
-              Icon(Icons.tune, color: Colors.purple[600], size: 20),
-              const SizedBox(width: 8),
-              const Text(
-                'Options de Tri & Filtrage',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+          LayoutBuilder(builder: (context, constraints) {
+            final narrow = constraints.maxWidth < 420;
+            final resetBtn = TextButton.icon(
+              onPressed: _resetFilters,
+              icon: const Icon(Icons.refresh, size: 16),
+              label: Text(narrow ? 'Réinit.' : 'Réinitialiser'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.purple[600],
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                visualDensity: VisualDensity.compact,
+                minimumSize: const Size(0, 36),
               ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: _resetFilters,
-                icon: const Icon(Icons.refresh, size: 16),
-                label: const Text('Réinitialiser'),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.purple[600],
+            );
+
+            return Row(
+              children: [
+                Icon(Icons.tune, color: Colors.purple[600], size: 20),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Options de Tri & Filtrage',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-            ],
-          ),
+                resetBtn,
+              ],
+            );
+          }),
 
           const SizedBox(height: 16),
 
@@ -569,6 +579,7 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
   }
 
   /// 🎯 NOUVEAU HEADER pour les attributions
+  // ignore: unused_element
   Widget _buildAttributionsHeader(bool isMobile, int nombreAttributions,
       double valeurTotale, int quantiteTotale) {
     return Container(
@@ -656,6 +667,7 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
     );
   }
 
+  // ignore: unused_element
   Widget _buildPrelevementLegacyCard(Prelevement prelevement, bool isMobile) {
     final dyn = _espaceCtrl.prelevementStatutsDynamiques[prelevement.id] ??
         prelevement.statut;

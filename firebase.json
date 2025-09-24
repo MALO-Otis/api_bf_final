@@ -17,7 +17,7 @@
         "*.local"
       ],
       "predeploy": [
-        "cd functions && npm run lint"
+        "cd functions && npm install && npm run build"
       ]
     }
   ],

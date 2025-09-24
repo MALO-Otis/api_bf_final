@@ -1,21 +1,21 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'package:get/get.dart';
+import 'widgets/extraction_card.dart';
+import 'package:flutter/material.dart';
+import 'models/extraction_models.dart';
+import 'widgets/extraction_modals.dart';
+import 'services/extraction_service.dart';
+import 'widgets/control_attribution_stats_widget.dart';
+import '../attribution/attribution_page_complete.dart';
 /* 
 🚫 ANCIEN FICHIER D'EXTRACTION - DÉSACTIVÉ
 Ce fichier utilise l'ancien système et n'est plus utilisé.
 La nouvelle interface est dans pages/attributed_products_page.dart
 qui récupère les données depuis attribution_reçu
 
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
-import 'dart:async';
-import 'dart:math' as math;
 
-import 'models/extraction_models.dart';
-import 'services/extraction_service.dart';
-import 'widgets/extraction_card.dart';
-import 'widgets/extraction_modals.dart';
-import 'widgets/control_attribution_stats_widget.dart';
-import '../attribution/attribution_page_complete.dart';
 
 /// Page principale d'extraction de données
 class ExtractionPage extends StatefulWidget {
@@ -1267,12 +1267,14 @@ class _ExtractionPageState extends State<ExtractionPage>
           ? items.firstWhere((item) => item.value.toString() == value).value
           : null,
       decoration: InputDecoration(
+        isDense: true,
         hintText: hint,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
+      isExpanded: true,
       items: [
         DropdownMenuItem<T>(
           value: null,

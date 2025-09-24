@@ -1,5 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../geographe/geographie.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Modèle pour un SCOOP (coopérative)
 class ScoopModel {
@@ -90,6 +90,8 @@ class ScoopModel {
       'nbHommes': nbHommes,
       'nbFemmes': nbFemmes,
       'nbJeunes': nbJeunes,
+      // Ajout: sauvegarde de l'effectif âge > 35 ans (calculé)
+      'nbPlus35': (nbMembres - nbJeunes),
       'predominanceFlorale': predominanceFlorale,
       'createdAt': createdAt != null
           ? Timestamp.fromDate(createdAt!)

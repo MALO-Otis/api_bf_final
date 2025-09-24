@@ -1,15 +1,11 @@
+import 'package:get/get.dart';
+import 'package:flutter/foundation.dart';
+import '../../../authentication/user_session.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../controle_de_donnes/models/attribution_models_v2.dart';
+
 /// Service pour récupérer les produits attribués à l'extraction
 /// 🎯 UTILISE LA MÊME LOGIQUE QUE LES AUTRES SERVICES !
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
-import 'package:get/get.dart';
-
-import '../../../authentication/user_session.dart';
-import '../../controle_de_donnes/models/attribution_models_v2.dart';
-import '../../controle_de_donnes/models/collecte_models.dart';
-import '../../controle_de_donnes/models/quality_control_models.dart';
-import '../../controle_de_donnes/services/firestore_data_service.dart';
-import '../../controle_de_donnes/services/quality_control_service.dart';
 
 class ExtractionAttributionService {
   static final ExtractionAttributionService _instance =
@@ -18,7 +14,7 @@ class ExtractionAttributionService {
   ExtractionAttributionService._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final QualityControlService _qualityService = QualityControlService();
+  // final QualityControlService _qualityService = QualityControlService();
 
   /// Récupère tous les produits attribués pour extraction
   /// 🎯 UTILISE LA MÊME LOGIQUE QUE LES AUTRES SERVICES !
@@ -36,76 +32,96 @@ class ExtractionAttributionService {
       debugPrint('=============================================');
 
       final userSession = Get.find<UserSession>();
-      final siteUtilisateur = siteFilter ?? userSession.site ?? 'SiteInconnu';
+      final role = (userSession.role ?? '').toLowerCase();
+      final isAdmin = role.contains('admin') || role.contains('coordinateur');
 
-      // ✅ CORRECTION : UTILISER LE BON CHEMIN FIRESTORE
-      // 1️⃣ Récupérer toutes les attributions de type "extraction" depuis attribution_reçu
-      debugPrint('📊 Recherche des attributions extraction...');
-      debugPrint(
-          '   🎯 CHEMIN CORRIGÉ: attribution_reçu/$siteUtilisateur/attributions');
-      final querySnapshot = await _firestore
-          .collection('attribution_reçu')
-          .doc(siteUtilisateur)
-          .collection('attributions')
-          .where('type', isEqualTo: 'extraction')
-          .orderBy('dateAttribution', descending: true)
-          .get();
-
-      debugPrint(
-          '   ✅ ${querySnapshot.docs.length} attributions extraction trouvées');
+      // Déterminer la/les cibles sites selon le rôle
+      late final List<String> sitesCibles;
+      final siteSession = (siteFilter ?? userSession.site ?? '').trim();
+      if (isAdmin) {
+        // Admin: tous les sites (ou seulement celui filtré si fourni)
+        sitesCibles = siteSession.isNotEmpty
+            ? [siteSession]
+            : ['Koudougou', 'Ouagadougou', 'Bobo-Dioulasso', 'Kaya'];
+      } else {
+        // Contrôleur: uniquement son site; si absent → vide
+        if (siteSession.isEmpty) {
+          debugPrint('🚫 [Extraction] Aucun site utilisateur configuré');
+          return [];
+        }
+        sitesCibles = [siteSession];
+      }
 
       List<ProductControle> produitsExtraction = [];
 
-      // 2️⃣ Extraire tous les produits de ces attributions
-      for (final doc in querySnapshot.docs) {
-        try {
-          final data = doc.data();
-          debugPrint('   📄 Attribution ${doc.id}:');
-          debugPrint('      - Date: ${data['dateAttribution']}');
-          debugPrint('      - Produits: ${data['produits']?.length ?? 0}');
+      for (final siteUtilisateur in sitesCibles) {
+        // ✅ CORRECTION : UTILISER LE BON CHEMIN FIRESTORE
+        // 1️⃣ Récupérer toutes les attributions de type "extraction" depuis attribution_reçu
+        debugPrint('📊 Recherche des attributions extraction...');
+        debugPrint(
+            '   🎯 CHEMIN CORRIGÉ: attribution_reçu/$siteUtilisateur/attributions');
+        final querySnapshot = await _firestore
+            .collection('attribution_reçu')
+            .doc(siteUtilisateur)
+            .collection('attributions')
+            .where('type', isEqualTo: 'extraction')
+            .orderBy('dateAttribution', descending: true)
+            .get();
 
-          if (data['produits'] != null) {
-            final List<dynamic> produitsData = data['produits'];
+        debugPrint(
+            '   ✅ ${querySnapshot.docs.length} attributions extraction trouvées pour $siteUtilisateur');
 
-            for (final produitData in produitsData) {
-              try {
-                final produit = ProductControle.fromMap(produitData);
+        // 2️⃣ Extraire tous les produits de ces attributions
+        for (final doc in querySnapshot.docs) {
+          try {
+            final data = doc.data();
+            debugPrint('   📄 Attribution ${doc.id}:');
+            debugPrint('      - Date: ${data['dateAttribution']}');
+            debugPrint('      - Produits: ${data['produits']?.length ?? 0}');
 
-                // ✅ PRIORITÉ: Filtrer les produits déjà extraits
-                final estExtrait = produitData['estExtrait'] == true;
-                if (estExtrait) {
-                  debugPrint(
-                      '      ⏭️ Produit déjà extrait ignoré: ${produit.codeContenant}');
-                  continue;
+            if (data['produits'] != null) {
+              final List<dynamic> produitsData = data['produits'];
+
+              for (final produitData in produitsData) {
+                try {
+                  final produit = ProductControle.fromMap(produitData);
+
+                  // ✅ PRIORITÉ: Filtrer les produits déjà extraits
+                  final estExtrait = produitData['estExtrait'] == true;
+                  if (estExtrait) {
+                    debugPrint(
+                        '      ⏭️ Produit déjà extrait ignoré: ${produit.codeContenant}');
+                    continue;
+                  }
+
+                  // 3️⃣ Appliquer les filtres
+                  bool inclure = true;
+
+                  // Filtre par recherche
+                  if (searchQuery != null && searchQuery.isNotEmpty) {
+                    final query = searchQuery.toLowerCase();
+                    inclure =
+                        produit.codeContenant.toLowerCase().contains(query) ||
+                            produit.village.toLowerCase().contains(query) ||
+                            produit.producteur.toLowerCase().contains(query) ||
+                            produit.siteOrigine.toLowerCase().contains(query);
+                  }
+
+                  if (inclure) {
+                    produitsExtraction.add(produit);
+                    debugPrint(
+                        '      ✅ Produit ajouté ($siteUtilisateur): ${produit.codeContenant}');
+                  }
+                } catch (e) {
+                  debugPrint('      ❌ Erreur parsing produit: $e');
                 }
-
-                // 3️⃣ Appliquer les filtres
-                bool inclure = true;
-
-                // Filtre par recherche
-                if (searchQuery != null && searchQuery.isNotEmpty) {
-                  final query = searchQuery.toLowerCase();
-                  inclure =
-                      produit.codeContenant.toLowerCase().contains(query) ||
-                          produit.village.toLowerCase().contains(query) ||
-                          produit.producteur.toLowerCase().contains(query) ||
-                          produit.siteOrigine.toLowerCase().contains(query);
-                }
-
-                if (inclure) {
-                  produitsExtraction.add(produit);
-                  debugPrint(
-                      '      ✅ Produit ajouté: ${produit.codeContenant}');
-                }
-              } catch (e) {
-                debugPrint('      ❌ Erreur parsing produit: $e');
               }
             }
+          } catch (e) {
+            debugPrint('   ❌ Erreur traitement attribution ${doc.id}: $e');
           }
-        } catch (e) {
-          debugPrint('   ❌ Erreur traitement attribution ${doc.id}: $e');
         }
-      }
+      } // fin boucle sites
 
       // 3️⃣ Appliquer les filtres de recherche
       if (searchQuery != null && searchQuery.isNotEmpty) {
@@ -121,7 +137,7 @@ class ExtractionAttributionService {
       debugPrint('🎊 ===== RÉSULTAT FINAL =====');
       debugPrint(
           '   ✅ Total produits extraction: ${produitsExtraction.length}');
-      debugPrint('   🏢 Site: $siteUtilisateur');
+      debugPrint('   🏢 Sites: ${sitesCibles.join(', ')}');
       debugPrint('   📊 Répartition par nature:');
 
       final Map<String, int> repartition = {};

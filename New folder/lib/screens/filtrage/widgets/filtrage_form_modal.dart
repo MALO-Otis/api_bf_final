@@ -1,9 +1,9 @@
-/// Modal de formulaire pour le processus de filtrage
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-import '../../controle_de_donnes/models/attribution_models_v2.dart';
 import '../../../services/filtrage_service_complete.dart';
+import '../../controle_de_donnes/models/attribution_models_v2.dart';
+
+/// Modal de formulaire pour le processus de filtrage
 
 class FiltrageFormModal extends StatefulWidget {
   final List<ProductControle> produitsSelectionnes;
@@ -318,11 +318,15 @@ class _FiltrageFormModalState extends State<FiltrageFormModal> {
             children: [
               Icon(Icons.inventory_2, color: Colors.purple.shade600, size: 20),
               const SizedBox(width: 8),
-              Text(
-                'Produits à Filtrer',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.purple.shade700,
+              Expanded(
+                child: Text(
+                  'Produits à Filtrer',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.purple.shade700,
+                  ),
                 ),
               ),
             ],
@@ -347,6 +351,8 @@ class _FiltrageFormModalState extends State<FiltrageFormModal> {
                     Expanded(
                       child: Text(
                         '${product.codeContenant} - ${product.producteur}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodyMedium,
                       ),
                     ),
@@ -374,13 +380,16 @@ class _FiltrageFormModalState extends State<FiltrageFormModal> {
               children: [
                 Icon(Icons.scale, color: Colors.purple.shade600, size: 20),
                 const SizedBox(width: 8),
-                Text(
-                  'Quantité totale disponible',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Text(
+                    'Quantité totale disponible',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-                const Spacer(),
                 Text(
                   '${_quantiteTotale.toStringAsFixed(1)} kg',
                   style: theme.textTheme.titleLarge?.copyWith(

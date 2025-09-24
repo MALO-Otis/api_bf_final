@@ -186,69 +186,125 @@ class _AttributionsTabState extends State<AttributionsTab>
   }
 
   Widget _buildHeader(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final isNarrow = width < 480;
+
+    final segmented = Obx(() => SegmentedButton<String>(
+          segments: const [
+            ButtonSegment<String>(
+              value: 'attributions',
+              label: Text('Par Attribution'),
+              icon: Icon(Icons.list, size: 16),
+            ),
+            ButtonSegment<String>(
+              value: 'lots',
+              label: Text('Par Lot'),
+              icon: Icon(Icons.inventory, size: 16),
+            ),
+          ],
+          selected: {_viewMode.value},
+          onSelectionChanged: (Set<String> newSelection) {
+            _viewMode.value = newSelection.first;
+          },
+          style: SegmentedButton.styleFrom(
+            backgroundColor: Colors.white.withOpacity(0.1),
+            foregroundColor: Colors.white,
+            selectedBackgroundColor: Colors.white,
+            selectedForegroundColor: const Color(0xFF2196F3),
+          ),
+        ));
+
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
           colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
       ),
-      child: Row(
-        children: [
-          Icon(Icons.assignment, color: Colors.white, size: 24),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
+      child: isNarrow
+          ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Gestion des Attributions',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                Row(
+                  children: [
+                    const Icon(Icons.assignment, color: Colors.white, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Gestion des Attributions',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            'Consultez et modifiez toutes les attributions, y compris les lots complètement attribués',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 13,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: segmented,
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                const Icon(Icons.assignment, color: Colors.white, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Gestion des Attributions',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        'Consultez et modifiez toutes les attributions, y compris les lots complètement attribués',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 13,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
-                Text(
-                  'Consultez et modifiez toutes les attributions, y compris les lots complètement attribués',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 13,
+                const SizedBox(width: 12),
+                Flexible(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: segmented,
                   ),
                 ),
               ],
             ),
-          ),
-
-          // Switch pour changer de mode d'affichage
-          Obx(() => SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment<String>(
-                    value: 'attributions',
-                    label: Text('Par Attribution'),
-                    icon: Icon(Icons.list, size: 16),
-                  ),
-                  ButtonSegment<String>(
-                    value: 'lots',
-                    label: Text('Par Lot'),
-                    icon: Icon(Icons.inventory, size: 16),
-                  ),
-                ],
-                selected: {_viewMode.value},
-                onSelectionChanged: (Set<String> newSelection) {
-                  _viewMode.value = newSelection.first;
-                },
-                style: SegmentedButton.styleFrom(
-                  backgroundColor: Colors.white.withOpacity(0.1),
-                  foregroundColor: Colors.white,
-                  selectedBackgroundColor: Colors.white,
-                  selectedForegroundColor: const Color(0xFF2196F3),
-                ),
-              )),
-        ],
-      ),
     );
   }
 
@@ -271,31 +327,51 @@ class _AttributionsTabState extends State<AttributionsTab>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 🚀 OPTIMISATION : Statistiques précalculées instantanées
-          Obx(() => Row(
-                children: [
-                  _buildQuickStat(
-                    'Attributions',
-                    '${widget.commercialService.nombreAttributionsObs.value}',
-                    Icons.assignment_turned_in,
-                    const Color(0xFF4CAF50),
-                  ),
-                  const SizedBox(width: 16),
-                  _buildQuickStat(
-                    'Lots attribués',
-                    '${widget.commercialService.nombreLotsAttribuesObs.value}',
-                    Icons.inventory,
-                    const Color(0xFF2196F3),
-                  ),
-                  const SizedBox(width: 16),
-                  _buildQuickStat(
-                    'Valeur totale',
-                    CommercialUtils.formatPrix(
-                        widget.commercialService.valeurTotaleObs.value),
-                    Icons.monetization_on,
-                    const Color(0xFF9C27B0),
-                  ),
-                ],
-              )),
+          Obx(() {
+            final items = <Widget>[
+              _buildQuickStat(
+                'Attributions',
+                '${widget.commercialService.nombreAttributionsObs.value}',
+                Icons.assignment_turned_in,
+                const Color(0xFF4CAF50),
+              ),
+              _buildQuickStat(
+                'Lots attribués',
+                '${widget.commercialService.nombreLotsAttribuesObs.value}',
+                Icons.inventory,
+                const Color(0xFF2196F3),
+              ),
+              _buildQuickStat(
+                'Valeur totale',
+                CommercialUtils.formatPrix(
+                    widget.commercialService.valeurTotaleObs.value),
+                Icons.monetization_on,
+                const Color(0xFF9C27B0),
+              ),
+            ];
+
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 600;
+                if (compact) {
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: items,
+                  );
+                }
+                return Row(
+                  children: [
+                    items[0],
+                    const SizedBox(width: 16),
+                    items[1],
+                    const SizedBox(width: 16),
+                    items[2],
+                  ],
+                );
+              },
+            );
+          }),
 
           const SizedBox(height: 16),
 
@@ -336,38 +412,51 @@ class _AttributionsTabState extends State<AttributionsTab>
         children: [
           Icon(icon, color: color, size: 16),
           const SizedBox(width: 6),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              Text(
-                label,
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 10,
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 10,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(width: 12),
-          _buildExportMenu(context),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 32,
+            height: 32,
+            child: FittedBox(
+              child: _buildExportMenu(context, iconColor: color),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildExportMenu(BuildContext context) {
+  Widget _buildExportMenu(BuildContext context, {Color? iconColor}) {
     return PopupMenuButton<String>(
       tooltip: 'Export PDF',
-      icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+      icon: Icon(Icons.picture_as_pdf,
+          color: iconColor ?? const Color(0xFF1976D2)),
       onSelected: (value) async {
         DateTimeRange? pickedRange;
         if (value == 'range_status' || value == 'range_combined') {
@@ -829,7 +918,7 @@ class _AttributionsTabState extends State<AttributionsTab>
                         Icons.inventory,
                         quantiteRestante > 0
                             ? const Color(0xFF4CAF50)
-                            : Colors.red,
+                            : const Color(0xFF1976D2),
                         subtitle: quantiteConsommee > 0
                             ? '${quantiteConsommee} vendues'
                             : null,
@@ -959,9 +1048,10 @@ class _AttributionsTabState extends State<AttributionsTab>
                           .withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text(
-                      CommercialUtils.getEmojiEmballage(lot.typeEmballage),
-                      style: const TextStyle(fontSize: 24),
+                    child: Icon(
+                      Icons.inventory_2_rounded,
+                      color: CommercialUtils.getCouleurStatut(lot.statut),
+                      size: 20,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -1072,7 +1162,7 @@ class _AttributionsTabState extends State<AttributionsTab>
                               fontWeight: FontWeight.bold,
                               color: lot.quantiteRestante > 0
                                   ? const Color(0xFF4CAF50)
-                                  : Colors.red,
+                                  : const Color(0xFF1976D2),
                             ),
                           ),
                           Text(
@@ -1110,118 +1200,138 @@ class _AttributionsTabState extends State<AttributionsTab>
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: Colors.grey.shade200),
                         ),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 16,
-                              backgroundColor:
-                                  const Color(0xFF2196F3).withOpacity(0.1),
-                              child: Text(
-                                attribution.commercialNom
-                                    .substring(0, 1)
-                                    .toUpperCase(),
-                                style: const TextStyle(
-                                  color: Color(0xFF2196F3),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    attribution.commercialNom,
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final compact = constraints.maxWidth < 420;
+                            return Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor:
+                                      const Color(0xFF2196F3).withOpacity(0.1),
+                                  child: Text(
+                                    attribution.commercialNom
+                                        .substring(0, 1)
+                                        .toUpperCase(),
                                     style: const TextStyle(
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 13,
+                                      color: Color(0xFF2196F3),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
                                     ),
                                   ),
-                                  Text(
-                                    () {
-                                      final controller = Get.find<
-                                          EspaceCommercialController>();
-                                      final quantiteRestante = controller
-                                                  .attributionRestant[
-                                              attribution.id] ??
-                                          (attribution.quantiteAttribuee -
-                                              (controller.attributionConsomme[
-                                                      attribution.id] ??
-                                                  0));
-                                      return '${quantiteRestante} unités restantes • ${CommercialUtils.formatPrix(attribution.valeurTotale)}';
-                                    }(),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        attribution.commercialNom,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      Text(
+                                        () {
+                                          final controller = Get.find<
+                                              EspaceCommercialController>();
+                                          final quantiteRestante = controller
+                                                      .attributionRestant[
+                                                  attribution.id] ??
+                                              (attribution.quantiteAttribuee -
+                                                  (controller.attributionConsomme[
+                                                          attribution.id] ??
+                                                      0));
+                                          return '${quantiteRestante} unités restantes • ${CommercialUtils.formatPrix(attribution.valeurTotale)}';
+                                        }(),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (!compact) ...[
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    width: 48,
+                                    child: Text(
+                                      DateFormat('dd/MM')
+                                          .format(attribution.dateAttribution),
+                                      textAlign: TextAlign.right,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.grey.shade500,
+                                      ),
                                     ),
                                   ),
                                 ],
-                              ),
-                            ),
-                            Text(
-                              DateFormat('dd/MM')
-                                  .format(attribution.dateAttribution),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey.shade500,
-                              ),
-                            ),
-                            PopupMenuButton(
-                              icon: const Icon(Icons.more_vert, size: 16),
-                              itemBuilder: (context) => [
-                                PopupMenuItem(
-                                  value: 'details',
-                                  child: const Row(
-                                    children: [
-                                      Icon(Icons.visibility, size: 16),
-                                      SizedBox(width: 8),
-                                      Text('Détails'),
-                                    ],
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'edit',
-                                  child: const Row(
-                                    children: [
-                                      Icon(Icons.edit, size: 16),
-                                      SizedBox(width: 8),
-                                      Text('Modifier'),
-                                    ],
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'delete',
-                                  child: const Row(
-                                    children: [
-                                      Icon(Icons.delete,
-                                          size: 16, color: Colors.red),
-                                      SizedBox(width: 8),
-                                      Text('Supprimer'),
-                                    ],
-                                  ),
+                                PopupMenuButton(
+                                  icon: const Icon(Icons.more_vert, size: 16),
+                                  itemBuilder: (context) => [
+                                    PopupMenuItem(
+                                      value: 'details',
+                                      child: const Row(
+                                        children: [
+                                          Icon(Icons.visibility, size: 16),
+                                          SizedBox(width: 8),
+                                          Text('Détails'),
+                                        ],
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'edit',
+                                      child: const Row(
+                                        children: [
+                                          Icon(Icons.edit, size: 16),
+                                          SizedBox(width: 8),
+                                          Text('Modifier'),
+                                        ],
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'delete',
+                                      child: const Row(
+                                        children: [
+                                          Icon(Icons.delete,
+                                              size: 16,
+                                              color: Color(0xFF1976D2)),
+                                          SizedBox(width: 8),
+                                          Text('Supprimer'),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                  onSelected: (value) {
+                                    switch (value) {
+                                      case 'details':
+                                        _showAttributionDetails(
+                                            context, attribution, lot);
+                                        break;
+                                      case 'edit':
+                                        _showModificationModal(
+                                            context, attribution, lot);
+                                        break;
+                                      case 'delete':
+                                        _showDeleteConfirmation(
+                                            context, attribution);
+                                        break;
+                                    }
+                                  },
                                 ),
                               ],
-                              onSelected: (value) {
-                                switch (value) {
-                                  case 'details':
-                                    _showAttributionDetails(
-                                        context, attribution, lot);
-                                    break;
-                                  case 'edit':
-                                    _showModificationModal(
-                                        context, attribution, lot);
-                                    break;
-                                  case 'delete':
-                                    _showDeleteConfirmation(
-                                        context, attribution);
-                                    break;
-                                }
-                              },
-                            ),
-                          ],
+                            );
+                          },
                         ),
                       ))
                   .toList(),
@@ -1282,122 +1392,158 @@ class _AttributionsTabState extends State<AttributionsTab>
     );
   }
 
+  // Petite ligne label -> valeur pour les dialogues de détails
+  Widget _buildDetailRow(String label, String value, {Color? color}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 140,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+                color: Colors.grey.shade700,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 13,
+                color: color ?? Colors.black87,
+              ),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showAttributionDetails(
       BuildContext context, AttributionPartielle attribution, LotProduit? lot) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Détails de l\'attribution'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildDetailRow('Commercial', attribution.commercialNom),
-              () {
-                final controller = Get.find<EspaceCommercialController>();
-                final quantiteRestante = controller
-                        .attributionRestant[attribution.id] ??
-                    (attribution.quantiteAttribuee -
-                        (controller.attributionConsomme[attribution.id] ?? 0));
-                final quantiteConsommee =
-                    controller.attributionConsomme[attribution.id] ?? 0;
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Détails de l\'attribution'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildDetailRow('Commercial', attribution.commercialNom),
+                () {
+                  final controller = Get.find<EspaceCommercialController>();
+                  final quantiteRestante =
+                      controller.attributionRestant[attribution.id] ??
+                          (attribution.quantiteAttribuee -
+                              (controller.attributionConsomme[attribution.id] ??
+                                  0));
+                  final quantiteConsommee =
+                      controller.attributionConsomme[attribution.id] ?? 0;
 
-                return Column(
-                  children: [
-                    _buildDetailRow('Quantité attribuée initiale',
-                        '${attribution.quantiteAttribuee} unités'),
-                    if (quantiteConsommee > 0)
+                  return Column(
+                    children: [
+                      _buildDetailRow('Quantité attribuée initiale',
+                          '${attribution.quantiteAttribuee} unités'),
+                      if (quantiteConsommee > 0)
+                        _buildDetailRow(
+                            'Quantité vendue', '${quantiteConsommee} unités'),
                       _buildDetailRow(
-                          'Quantité vendue', '${quantiteConsommee} unités'),
-                    _buildDetailRow(
-                        'Quantité restante', '${quantiteRestante} unités',
-                        color: quantiteRestante > 0
-                            ? const Color(0xFF4CAF50)
-                            : Colors.red),
-                  ],
-                );
-              }(),
-              _buildDetailRow('Valeur unitaire',
-                  CommercialUtils.formatPrix(attribution.valeurUnitaire)),
-              _buildDetailRow('Valeur totale',
-                  CommercialUtils.formatPrix(attribution.valeurTotale)),
-              _buildDetailRow(
-                  'Date attribution',
-                  DateFormat('dd/MM/yyyy à HH:mm')
-                      .format(attribution.dateAttribution)),
-              _buildDetailRow('Gestionnaire', attribution.gestionnaire),
-              if (attribution.dateDerniereModification != null) ...[
+                          'Quantité restante', '${quantiteRestante} unités',
+                          color: quantiteRestante > 0
+                              ? const Color(0xFF4CAF50)
+                              : const Color(0xFF1976D2)),
+                    ],
+                  );
+                }(),
+                _buildDetailRow('Valeur unitaire',
+                    CommercialUtils.formatPrix(attribution.valeurUnitaire)),
+                _buildDetailRow('Valeur totale',
+                    CommercialUtils.formatPrix(attribution.valeurTotale)),
                 _buildDetailRow(
-                    'Dernière modification',
+                    'Date attribution',
                     DateFormat('dd/MM/yyyy à HH:mm')
-                        .format(attribution.dateDerniereModification!)),
-                if (attribution.motifModification?.isNotEmpty == true)
+                        .format(attribution.dateAttribution)),
+                _buildDetailRow('Gestionnaire', attribution.gestionnaire),
+                if (attribution.dateDerniereModification != null) ...[
                   _buildDetailRow(
-                      'Motif modification', attribution.motifModification!),
+                      'Dernière modification',
+                      DateFormat('dd/MM/yyyy à HH:mm')
+                          .format(attribution.dateDerniereModification!)),
+                  if (attribution.motifModification?.isNotEmpty == true)
+                    _buildDetailRow(
+                        'Motif modification', attribution.motifModification!),
+                ],
+                if (lot != null) ...[
+                  const Divider(),
+                  Text('Informations du lot',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  _buildDetailRow('Numéro lot', lot.numeroLot),
+                  _buildDetailRow('Type emballage', lot.typeEmballage),
+                  _buildDetailRow('Site origine', lot.siteOrigine),
+                  _buildDetailRow(
+                      'Prédominance florale', lot.predominanceFlorale),
+                  _buildDetailRow(
+                      'Statut', CommercialUtils.getLibelleStatut(lot.statut)),
+                ],
               ],
-              if (lot != null) ...[
-                const Divider(),
-                Text('Informations du lot',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                _buildDetailRow('Numéro lot', lot.numeroLot),
-                _buildDetailRow('Type emballage', lot.typeEmballage),
-                _buildDetailRow('Site origine', lot.siteOrigine),
-                _buildDetailRow(
-                    'Prédominance florale', lot.predominanceFlorale),
-                _buildDetailRow(
-                    'Statut', CommercialUtils.getLibelleStatut(lot.statut)),
-              ],
-            ],
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Fermer'),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Fermer'),
+            ),
+            TextButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                _generateAttributionPDF(context, attribution, lot);
+              },
+              icon: const Icon(Icons.picture_as_pdf, size: 16),
+              label: const Text('PDF'),
+            ),
+            TextButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                _showModificationModal(context, attribution, lot);
+              },
+              icon: const Icon(Icons.edit, size: 16),
+              label: const Text('Modifier'),
+            ),
+            TextButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                _showDeleteConfirmation(context, attribution);
+              },
+              icon: const Icon(Icons.delete, size: 16),
+              label: const Text('Supprimer'),
+            ),
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildDetailRow(String label, String value, {Color? color}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 2,
-            child: Text(
-              label,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-          ),
-          const Text(' : '),
-          Expanded(
-            flex: 3,
-            child: Text(
-              value,
-              style: TextStyle(
-                color: color,
-                fontWeight: color != null ? FontWeight.w600 : FontWeight.normal,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
+  // Ouvre le modal de modification d'une attribution
   void _showModificationModal(
       BuildContext context, AttributionPartielle attribution, LotProduit? lot) {
     if (lot == null) {
       Get.snackbar(
         'Erreur',
         'Impossible de modifier cette attribution car le lot correspondant est introuvable',
-        backgroundColor: Colors.red,
+        backgroundColor: const Color(0xFF263238),
         colorText: Colors.white,
       );
       return;
@@ -1514,12 +1660,13 @@ class _AttributionsTabState extends State<AttributionsTab>
                 Get.snackbar(
                   'Erreur',
                   'Impossible de supprimer cette attribution',
-                  backgroundColor: Colors.red,
+                  backgroundColor: const Color(0xFF263238),
                   colorText: Colors.white,
                 );
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF263238)),
             child:
                 const Text('Supprimer', style: TextStyle(color: Colors.white)),
           ),
@@ -1584,7 +1731,7 @@ class _AttributionsTabState extends State<AttributionsTab>
         Get.snackbar(
           '❌ Erreur',
           'Impossible de générer le rapport PDF',
-          backgroundColor: Colors.red,
+          backgroundColor: const Color(0xFF263238),
           colorText: Colors.white,
           duration: Duration(seconds: 3),
         );
@@ -1599,7 +1746,7 @@ class _AttributionsTabState extends State<AttributionsTab>
       Get.snackbar(
         '❌ Erreur',
         'Erreur lors de la génération: $e',
-        backgroundColor: Colors.red,
+        backgroundColor: const Color(0xFF263238),
         colorText: Colors.white,
         duration: Duration(seconds: 4),
       );

@@ -43,18 +43,24 @@ class SectionResume extends StatelessWidget {
                     const Icon(Icons.summarize, color: Colors.white, size: 24),
               ),
               const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Résumé',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    'Vérifiez toutes les informations avant enregistrement',
-                    style: TextStyle(color: Colors.grey.shade600),
-                  ),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Résumé',
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      'Vérifiez toutes les informations avant enregistrement',
+                      style: TextStyle(color: Colors.grey.shade600),
+                      softWrap: true,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -82,11 +88,11 @@ class SectionResume extends StatelessWidget {
 
           const SizedBox(height: 24),
 
-          // Boutons d'action
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              TextButton.icon(
+          // Boutons d'action (responsives)
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 460;
+              final back = TextButton.icon(
                 onPressed: onPrevious,
                 icon: const Icon(Icons.arrow_back),
                 label: const Text('Retour'),
@@ -94,8 +100,8 @@ class SectionResume extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 ),
-              ),
-              ElevatedButton.icon(
+              );
+              final save = ElevatedButton.icon(
                 onPressed: isLoading ? null : onSave,
                 icon: isLoading
                     ? const SizedBox(
@@ -111,12 +117,28 @@ class SectionResume extends StatelessWidget {
                   backgroundColor: Colors.green.shade600,
                   foregroundColor: Colors.white,
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8)),
+                  minimumSize: const Size(0, 0),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-              ),
-            ],
+              );
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(alignment: Alignment.centerLeft, child: back),
+                    const SizedBox(height: 12),
+                    Align(alignment: Alignment.centerRight, child: save),
+                  ],
+                );
+              }
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [back, save],
+              );
+            },
           ),
 
           const SizedBox(height: 40),

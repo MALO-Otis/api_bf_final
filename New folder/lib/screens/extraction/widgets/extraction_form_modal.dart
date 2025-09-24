@@ -1,11 +1,10 @@
+import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
-
-import '../../../authentication/user_session.dart';
-import '../../controle_de_donnes/models/attribution_models_v2.dart';
 import '../models/extraction_models_v2.dart';
 import '../services/extraction_service_v2.dart';
+import '../../../authentication/user_session.dart';
+import '../../controle_de_donnes/models/attribution_models_v2.dart';
 
 /// Modal pour le formulaire d'extraction selon le workflow spécifié
 class ExtractionFormModal extends StatefulWidget {
@@ -157,10 +156,16 @@ class _ExtractionFormModalState extends State<ExtractionFormModal> {
               children: [
                 Icon(Icons.inventory_2, color: Colors.green.shade600),
                 const SizedBox(width: 8),
-                Text(
-                  'Contenants Sélectionnés (${widget.produitsSelectionnes.length})',
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Text(
+                    'Contenants Sélectionnés (${widget.produitsSelectionnes.length})',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -188,6 +193,8 @@ class _ExtractionFormModalState extends State<ExtractionFormModal> {
                     ),
                     title: Text(
                       produit.codeContenant,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                     subtitle:
@@ -212,13 +219,16 @@ class _ExtractionFormModalState extends State<ExtractionFormModal> {
                 border: Border.all(color: Colors.blue.shade200),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Poids Total à Extraire:',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w500,
-                      color: Colors.blue.shade800,
+                  Expanded(
+                    child: Text(
+                      'Poids Total à Extraire:',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        color: Colors.blue.shade800,
+                      ),
                     ),
                   ),
                   Text(
@@ -251,9 +261,13 @@ class _ExtractionFormModalState extends State<ExtractionFormModal> {
               children: [
                 Icon(Icons.edit, color: Colors.orange.shade600),
                 const SizedBox(width: 8),
-                const Text(
-                  'Informations d\'Extraction',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                const Expanded(
+                  child: Text(
+                    "Informations d'Extraction",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ],
             ),
@@ -323,11 +337,19 @@ class _ExtractionFormModalState extends State<ExtractionFormModal> {
           style: TextStyle(fontWeight: FontWeight.w500),
         ),
         const SizedBox(height: 8),
-        Row(
-          children: TechnologieExtraction.values.map((tech) {
-            return Expanded(
-              child: RadioListTile<TechnologieExtraction>(
-                title: Text(tech.label),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isNarrow = constraints.maxWidth < 360;
+            final tiles = TechnologieExtraction.values.map((tech) {
+              return RadioListTile<TechnologieExtraction>(
+                title: Text(
+                  tech.label,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                dense: isNarrow,
+                visualDensity: isNarrow
+                    ? const VisualDensity(horizontal: -2, vertical: -2)
+                    : VisualDensity.compact,
                 value: tech,
                 groupValue: _technologieSelectionnee,
                 onChanged: (value) {
@@ -335,9 +357,22 @@ class _ExtractionFormModalState extends State<ExtractionFormModal> {
                     _technologieSelectionnee = value!;
                   });
                 },
-              ),
+              );
+            }).toList();
+            if (isNarrow) {
+              return Column(
+                children: tiles
+                    .map((t) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: t,
+                        ))
+                    .toList(),
+              );
+            }
+            return Row(
+              children: tiles.map((t) => Expanded(child: t)).toList(),
             );
-          }).toList(),
+          },
         ),
       ],
     );
@@ -483,14 +518,18 @@ class _ExtractionFormModalState extends State<ExtractionFormModal> {
 
   Widget _buildCalculRow(String label, String valeur, Color couleur) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: const TextStyle(fontWeight: FontWeight.w500),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w500),
+          ),
         ),
         Text(
           valeur,
+          textAlign: TextAlign.right,
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: couleur,

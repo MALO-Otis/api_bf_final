@@ -1,10 +1,13 @@
-/// Page principale de filtrage avec onglets (inspirée du module extraction)
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'pages/filtrage_products_page.dart';
 import 'pages/filtrage_historique_page.dart';
 
+/// Page principale de filtrage avec onglets (inspirée du module extraction)
+
 class FiltrageMainPage extends StatefulWidget {
-  const FiltrageMainPage({super.key});
+  final int initialTabIndex; // 0: Produits, 1: Historique
+  const FiltrageMainPage({super.key, this.initialTabIndex = 0});
 
   @override
   State<FiltrageMainPage> createState() => _FiltrageMainPageState();
@@ -17,7 +20,12 @@ class _FiltrageMainPageState extends State<FiltrageMainPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    final clampedIndex = math.min(1, math.max(0, widget.initialTabIndex));
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: clampedIndex,
+    );
   }
 
   @override

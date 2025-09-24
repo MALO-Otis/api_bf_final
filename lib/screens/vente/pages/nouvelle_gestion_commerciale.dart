@@ -43,7 +43,10 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
   void initState() {
     super.initState();
     _initializeControllers();
-    _loadInitialData();
+    // Éviter les mises à jour d'Obx pendant le premier build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadInitialData();
+    });
   }
 
   @override
@@ -54,9 +57,9 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
   }
 
   void _initializeControllers() {
-    // Nombre d'onglets dépend du rôle (onglet Administration caché si non admin)
-    final initialLength = _commercialService.estAdmin ? 5 : 4;
-    _tabController = TabController(length: initialLength, vsync: this);
+    // Pour éviter les décalages et mismatches, on fixe à 5 onglets
+    // et on affiche une vue "Accès restreint" si non admin.
+    _tabController = TabController(length: 5, vsync: this);
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
@@ -181,7 +184,7 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
     Get.snackbar(
       title,
       message,
-      backgroundColor: const Color(0xFFF44336),
+      backgroundColor: const Color(0xFF263238),
       colorText: Colors.white,
       icon: const Icon(Icons.error, color: Colors.white),
       duration: const Duration(seconds: 4),
@@ -215,7 +218,7 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            '🏪 Gestion Commerciale',
+            'Gestion Commerciale',
             style: TextStyle(
               color: Colors.white,
               fontSize: isMobile ? 18 : 20,
@@ -344,6 +347,7 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
 
     return TabBar(
       controller: _tabController,
+      isScrollable: true,
       indicatorColor: Colors.white,
       indicatorWeight: 3,
       labelColor: Colors.white,
@@ -463,37 +467,41 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
           ),
         ),
 
-        // Onglet Administration (conditionnellement affiché)
-        if (_commercialService.estAdmin)
-          Tab(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.admin_panel_settings, size: 18),
-                const SizedBox(width: 8),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(isMobile ? 'Admin' : 'Administration'),
-                    if (!isMobile)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF9C27B0),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Text(
-                          'PRO',
-                          style: TextStyle(
-                              fontSize: 8, fontWeight: FontWeight.bold),
-                        ),
+        // Onglet Administration (toujours présent pour garder la cohérence)
+        Tab(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _commercialService.estAdmin
+                    ? Icons.admin_panel_settings
+                    : Icons.lock_outline,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(isMobile ? 'Admin' : 'Administration'),
+                  if (!_commercialService.estAdmin && !isMobile)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                  ],
-                ),
-              ],
-            ),
+                      child: const Text(
+                        'Restreint',
+                        style:
+                            TextStyle(fontSize: 8, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                ],
+              ),
+            ],
           ),
+        ),
       ],
     );
   }
@@ -578,7 +586,7 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
           child: TabBarView(
             controller: _tabController,
             children: [
-              // Onglet 1: Produits disponibles avec header scrollable
+              // Onglet 1: Produits disponibles
               _buildTabWithHeader(
                 LotsDisponiblesTab(
                   commercialService: _commercialService,
@@ -587,7 +595,7 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
                 ),
               ),
 
-              // Onglet 2: Attributions avec header scrollable
+              // Onglet 2: Attributions
               _buildTabWithHeader(
                 AttributionsTab(
                   commercialService: _commercialService,
@@ -596,25 +604,27 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
                 ),
               ),
 
-              // Onglet 3: Statistiques avec header scrollable
+              // Onglet 3: Statistiques
               _buildTabWithHeader(
                 StatistiquesSimple(
                   commercialService: _commercialService,
                 ),
               ),
 
-              // Onglet 4: Gestion des commerciaux avec header scrollable
+              // Onglet 4: Gestion des commerciaux
               _buildTabWithHeader(
                 GestionCommerciauxTab(
                   commercialService: _commercialService,
                 ),
               ),
 
-              // Onglet 5: Administration avec header scrollable
+              // Onglet 5: Administration ou Accès restreint
               _buildTabWithHeader(
-                AdminPanelWidget(
-                  commercialService: _commercialService,
-                ),
+                _commercialService.estAdmin
+                    ? AdminPanelWidget(
+                        commercialService: _commercialService,
+                      )
+                    : _buildRestrictedAdminView(context),
               ),
             ],
           ),
@@ -623,20 +633,47 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
     );
   }
 
+  Widget _buildRestrictedAdminView(BuildContext context) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.lock_outline, color: Colors.grey),
+            const SizedBox(width: 8),
+            Text(
+              'Accès restreint',
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Construire un onglet avec header scrollable
   Widget _buildTabWithHeader(Widget content) {
-    return CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        // Header avec métriques rapides (scrollable)
-        SliverToBoxAdapter(
-          child: _buildQuickMetrics(context),
-        ),
-
-        // Contenu de l'onglet
-        SliverFillRemaining(
-          child: content,
-        ),
+    // Utiliser un layout en colonne pour éviter les overflows sur petits écrans
+    return Column(
+      children: [
+        _buildQuickMetrics(context),
+        Expanded(child: content),
       ],
     );
   }

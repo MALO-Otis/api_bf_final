@@ -1,7 +1,7 @@
+import 'modal_contenant.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../data/models/scoop_models.dart';
-import 'modal_contenant.dart';
 
 class SectionContenants extends StatelessWidget {
   final List<ContenantScoopModel> contenants;
@@ -124,24 +124,44 @@ class SectionContenants extends StatelessWidget {
               padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final isCompact = constraints.maxWidth < 420;
+                      final title = const Text(
                         'Liste des contenants',
                         style: TextStyle(
                             fontWeight: FontWeight.w600, fontSize: 16),
-                      ),
-                      ElevatedButton.icon(
+                      );
+                      final addBtn = ElevatedButton.icon(
                         onPressed: () => _showAddContenantModal(context),
                         icon: const Icon(Icons.add),
                         label: const Text('Ajouter un contenant'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.amber.shade700,
                           foregroundColor: Colors.white,
+                          minimumSize: const Size(0, 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
                         ),
-                      ),
-                    ],
+                      );
+                      if (isCompact) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            title,
+                            const SizedBox(height: 8),
+                            Align(
+                                alignment: Alignment.centerRight,
+                                child: addBtn),
+                          ],
+                        );
+                      }
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [title, addBtn],
+                      );
+                    },
                   ),
 
                   const SizedBox(height: 16),
@@ -276,16 +296,6 @@ class SectionContenants extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildContenantsList() {
-    return ListView.builder(
-      itemCount: contenants.length,
-      itemBuilder: (context, index) {
-        final contenant = contenants[index];
-        return _buildContenantCard(context, contenant, index);
-      },
     );
   }
 

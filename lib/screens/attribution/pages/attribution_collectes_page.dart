@@ -7,8 +7,6 @@ import '../../controle_de_donnes/services/firestore_data_service.dart';
 import '../services/attribution_collectes_service.dart' as attribution;
 import '../../controle_de_donnes/models/attribution_models_v2.dart' as models;
 import '../../controle_de_donnes/services/firestore_attribution_service_v2.dart';
-library;
-
 
 /// 🎯 PAGE D'ATTRIBUTION PAR COLLECTES - NOUVELLE GÉNÉRATION
 ///
@@ -26,8 +24,6 @@ library;
 /// ✅ Filtrage par type de collecte et statut
 /// ✅ Attribution directe depuis les cartes
 /// ✅ Synchronisation en temps réel
-
-
 
 class AttributionCollectesPage extends StatefulWidget {
   const AttributionCollectesPage({super.key});

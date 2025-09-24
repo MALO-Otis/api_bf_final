@@ -503,11 +503,15 @@ class _ExtractionAttributionModalState
               children: [
                 Icon(Icons.summarize, color: theme.colorScheme.primary),
                 const SizedBox(width: 8),
-                Text(
-                  'Résumé de l\'Attribution',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.primary,
+                Expanded(
+                  child: Text(
+                    'Résumé de l\'Attribution',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
                 ),
               ],

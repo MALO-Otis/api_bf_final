@@ -1,11 +1,14 @@
-/// Page principale d'extraction avec onglets
-import 'package:flutter/material.dart';
-// import '../extraction_page.dart'; // ANCIEN - Fichier désactivé
-import 'attributed_products_page.dart';
+import 'dart:math' as math;
 import 'extraction_history_page.dart';
+import 'package:flutter/material.dart';
+import 'attributed_products_page.dart';
+
+/// Page principale d'extraction avec onglets
+// import '../extraction_page.dart'; // ANCIEN - Fichier désactivé
 
 class MainExtractionPage extends StatefulWidget {
-  const MainExtractionPage({super.key});
+  final int initialTabIndex; // 0: Produits, 1: Historique
+  const MainExtractionPage({super.key, this.initialTabIndex = 0});
 
   @override
   State<MainExtractionPage> createState() => _MainExtractionPageState();
@@ -18,7 +21,12 @@ class _MainExtractionPageState extends State<MainExtractionPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    final clampedIndex = math.min(1, math.max(0, widget.initialTabIndex));
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: clampedIndex,
+    );
   }
 
   @override
@@ -68,49 +76,4 @@ class _MainExtractionPageState extends State<MainExtractionPage>
 }
 
 /// Page placeholder pour l'ancien historique d'extraction
-class _PlaceholderHistoriquePage extends StatelessWidget {
-  const _PlaceholderHistoriquePage();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.construction,
-              size: 64,
-              color: theme.colorScheme.outline,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Historique Extraction',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                color: theme.colorScheme.outline,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Interface en cours de migration',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.outline,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Utilisez l\'onglet "Produits Attribués" pour\naccéder aux fonctionnalités d\'extraction.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.outline,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// Ancien placeholder d'historique supprimé (remplacé par ExtractionHistoryPage)

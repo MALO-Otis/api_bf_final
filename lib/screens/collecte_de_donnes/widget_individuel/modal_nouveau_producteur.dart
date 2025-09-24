@@ -126,6 +126,12 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
       setState(() => _errorMessage = 'Veuillez sélectionner l\'appartenance');
       return;
     }
+    // Validation Prédominance florale (obligatoire)
+    if (_predominancesFloralesSelectionnees.isEmpty) {
+      setState(() => _errorMessage =
+          'Veuillez sélectionner au moins une prédominance florale');
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -525,13 +531,13 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
 
                       const SizedBox(height: 20),
 
-                      // Section Prédominance florale
+                      // Section Prédominance florale (obligatoire)
                       _buildSection(
-                        'Prédominance florale',
+                        'Prédominance florale *',
                         Icons.local_florist,
                         [
                           Text(
-                            'Sélectionnez les prédominances florales (optionnel)',
+                            'Sélectionnez au moins une prédominance florale',
                             style: TextStyle(
                               fontSize: isSmallScreen ? 14 : 16,
                               color: Colors.grey.shade600,

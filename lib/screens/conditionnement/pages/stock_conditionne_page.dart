@@ -1,14 +1,13 @@
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter/material.dart';
+import '../conditionnement_models.dart';
+import '../../../utils/smart_appbar.dart';
+import '../services/conditionnement_db_service.dart';
+
 /// 📊 PAGE STOCK CONDITIONNÉ
 ///
 /// Interface moderne pour visualiser et gérer le stock de produits conditionnés
-
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:intl/intl.dart';
-
-import '../../../utils/smart_appbar.dart';
-import '../conditionnement_models.dart';
-import '../services/conditionnement_db_service.dart';
 
 class StockConditionnePage extends StatefulWidget {
   const StockConditionnePage({super.key});
@@ -218,162 +217,7 @@ class _StockConditionnePageState extends State<StockConditionnePage>
     }
   }
 
-  /// 🧪 CRÉER DES DONNÉES DE TEST
-  Future<void> _createTestData() async {
-    print('🧪 [TEST] Création de données de test...');
-
-    if (!mounted) return;
-
-    try {
-      setState(() => _isLoading = true);
-
-      // Créer des conditionnements de test
-      final now = DateTime.now();
-      final testConditionnements = <ConditionnementData>[
-        _createTestConditionnement(
-          id: 'test_1',
-          lotOrigine: 'LOT-2024-001',
-          site: 'Ouagadougou',
-          quantite: 45.5,
-          prix: 75000,
-          date: now.subtract(const Duration(days: 2)),
-          emballages: [
-            {'type': '1Kg', 'nombre': 30},
-            {'type': '500g', 'nombre': 31},
-          ],
-        ),
-        _createTestConditionnement(
-          id: 'test_2',
-          lotOrigine: 'LOT-2024-002',
-          site: 'Koudougou',
-          quantite: 32.0,
-          prix: 48000,
-          date: now.subtract(const Duration(days: 5)),
-          emballages: [
-            {'type': '1.5Kg', 'nombre': 15},
-            {'type': '720g', 'nombre': 25},
-          ],
-        ),
-        _createTestConditionnement(
-          id: 'test_3',
-          lotOrigine: 'LOT-2024-003',
-          site: 'Bobo-Dioulasso',
-          quantite: 28.8,
-          prix: 86400,
-          date: now.subtract(const Duration(days: 1)),
-          emballages: [
-            {'type': '250g', 'nombre': 50},
-            {'type': '500g', 'nombre': 32},
-          ],
-        ),
-      ];
-
-      // Simuler un délai de création
-      await Future.delayed(const Duration(seconds: 1));
-
-      _conditionnements = testConditionnements;
-      _statistics = _generateStatistics(_conditionnements);
-
-      print(
-          '🧪 [TEST] ${_conditionnements.length} conditionnements de test créés');
-
-      if (mounted) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          Get.snackbar(
-            'Données de test créées ! 🧪',
-            '${_conditionnements.length} conditionnements ajoutés pour demonstration',
-            backgroundColor: Colors.green.shade600,
-            colorText: Colors.white,
-            duration: const Duration(seconds: 3),
-          );
-        });
-      }
-    } catch (e) {
-      print('🧪 [TEST] Erreur création données test: $e');
-      if (mounted) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          Get.snackbar(
-            'Erreur',
-            'Impossible de créer les données de test: $e',
-            backgroundColor: Colors.red.shade600,
-            colorText: Colors.white,
-          );
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  /// 🏭 CRÉER UN CONDITIONNEMENT DE TEST
-  ConditionnementData _createTestConditionnement({
-    required String id,
-    required String lotOrigine,
-    required String site,
-    required double quantite,
-    required double prix,
-    required DateTime date,
-    required List<Map<String, dynamic>> emballages,
-  }) {
-    // Créer le lot origine
-    final lot = LotFiltre(
-      id: '$id-lot',
-      lotOrigine: lotOrigine,
-      collecteId: 'collecte_$id',
-      quantiteRecue: quantite + 5.0,
-      quantiteRestante: 0.0,
-      predominanceFlorale: [
-        'Acacia',
-        'Karité',
-        'Mille fleurs'
-      ][id.hashCode % 3],
-      dateFiltrage: date.subtract(const Duration(days: 7)),
-      site: site,
-      technicien: [
-        'Jean Dupont',
-        'Marie Martin',
-        'Paul Durand'
-      ][id.hashCode % 3],
-      estConditionne: true,
-    );
-
-    // Créer les emballages
-    final emballagesList = <EmballageSelectionne>[];
-    int totalPots = 0;
-
-    for (final embData in emballages) {
-      final typeNom = embData['type'] as String;
-      final nombre = embData['nombre'] as int;
-
-      // Trouver le type d'emballage
-      final emballageType = EmballagesConfig.emballagesDisponibles.firstWhere(
-          (e) => e.nom == typeNom,
-          orElse: () => EmballagesConfig.emballagesDisponibles.first);
-
-      emballagesList.add(EmballageSelectionne(
-        type: emballageType,
-        nombreSaisi: nombre,
-        typeFlorale: lot.typeFlorale,
-      ));
-
-      totalPots += nombre;
-    }
-
-    return ConditionnementData(
-      id: id,
-      dateConditionnement: date,
-      lotOrigine: lot,
-      emballages: emballagesList,
-      quantiteConditionnee: quantite,
-      quantiteRestante: 0.0,
-      prixTotal: prix,
-      nbTotalPots: totalPots,
-      createdAt: date,
-      observations: 'Données de test créées pour demonstration',
-    );
-  }
+  // Test data creation removed per requirement
 
   /// 📊 GÉNÉRATION DES STATISTIQUES À PARTIR DES CONDITIONNEMENTS
   Map<String, dynamic> _generateStatistics(
@@ -843,15 +687,7 @@ class _StockConditionnePageState extends State<StockConditionnePage>
                   ),
                 ),
                 const SizedBox(height: 8),
-                ElevatedButton.icon(
-                  onPressed: _createTestData,
-                  icon: const Icon(Icons.add_circle),
-                  label: const Text('Créer des données de test'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade600,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
+                // Button for creating test data removed
                 const SizedBox(height: 8),
                 Text(
                   'Cliquez pour voir les détails techniques\ndans la console de debug',

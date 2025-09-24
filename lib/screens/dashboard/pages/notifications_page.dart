@@ -1,4 +1,7 @@
+import 'package:get/get.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:apisavana_gestion/authentication/user_session.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -11,11 +14,13 @@ class _NotificationsPageState extends State<NotificationsPage>
     with TickerProviderStateMixin {
   late TabController _tabController;
   String selectedFilter = 'Toutes';
+  late final UserSession _session;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _session = Get.find<UserSession>();
   }
 
   @override
@@ -24,164 +29,19 @@ class _NotificationsPageState extends State<NotificationsPage>
     super.dispose();
   }
 
-  // Données fictives des notifications
-  final List<Map<String, dynamic>> notifications = [
-    {
-      'id': '1',
-      'type': 'success',
-      'title': 'Nouvelle vente réalisée',
-      'message':
-          'Vente #2024-157 pour 25kg miel toutes fleurs - Client: Épicerie Bio Nature',
-      'amount': '412,500 FCFA',
-      'timestamp': DateTime.now().subtract(const Duration(minutes: 15)),
-      'isRead': false,
-      'priority': 'normal',
-      'category': 'vente',
-      'icon': Icons.shopping_cart,
-      'color': Colors.green,
-    },
-    {
-      'id': '2',
-      'type': 'warning',
-      'title': 'Stock faible détecté',
-      'message': 'Miel acacia 500g - Il ne reste que 12 unités en stock',
-      'timestamp': DateTime.now().subtract(const Duration(hours: 1)),
-      'isRead': false,
-      'priority': 'high',
-      'category': 'stock',
-      'icon': Icons.inventory_2,
-      'color': Colors.orange,
-    },
-    {
-      'id': '3',
-      'type': 'info',
-      'title': 'Nouvelle collecte enregistrée',
-      'message':
-          'Apiculteur Marie TRAORE: 38kg miel toutes fleurs collectés - Site: Koudougou',
-      'amount': '190,000 FCFA',
-      'timestamp': DateTime.now().subtract(const Duration(hours: 2)),
-      'isRead': true,
-      'priority': 'normal',
-      'category': 'collecte',
-      'icon': Icons.local_florist,
-      'color': Colors.blue,
-    },
-    {
-      'id': '4',
-      'type': 'error',
-      'title': 'Crédit en retard',
-      'message':
-          'Client Boulangerie SANKARA: 2,850,000 FCFA depuis 52 jours - Action requise',
-      'amount': '2,850,000 FCFA',
-      'timestamp': DateTime.now().subtract(const Duration(hours: 3)),
-      'isRead': false,
-      'priority': 'urgent',
-      'category': 'finance',
-      'icon': Icons.credit_card,
-      'color': Colors.red,
-    },
-    {
-      'id': '5',
-      'type': 'success',
-      'title': 'Extraction terminée',
-      'message':
-          'Lot EXT-2024-089: 45kg de miel extrait avec succès - Technicien: Ousmane KONE',
-      'timestamp': DateTime.now().subtract(const Duration(hours: 4)),
-      'isRead': true,
-      'priority': 'normal',
-      'category': 'production',
-      'icon': Icons.science,
-      'color': Colors.green,
-    },
-    {
-      'id': '6',
-      'type': 'info',
-      'title': 'Nouveau contrôle qualité',
-      'message':
-          'Échantillon #CQ-2024-156 en attente de validation - Prélèvement site Bobo-Dioulasso',
-      'timestamp': DateTime.now().subtract(const Duration(hours: 6)),
-      'isRead': false,
-      'priority': 'normal',
-      'category': 'qualite',
-      'icon': Icons.verified,
-      'color': Colors.blue,
-    },
-    {
-      'id': '7',
-      'type': 'warning',
-      'title': 'Maintenance programmée',
-      'message':
-          'Maintenance des extracteurs prévue demain à 14h00 - Durée estimée: 2h',
-      'timestamp': DateTime.now().subtract(const Duration(hours: 8)),
-      'isRead': true,
-      'priority': 'normal',
-      'category': 'maintenance',
-      'icon': Icons.build,
-      'color': Colors.orange,
-    },
-    {
-      'id': '8',
-      'type': 'success',
-      'title': 'Filtrage complété',
-      'message':
-          'Lot FIL-2024-078: 32kg de miel filtré - Prêt pour conditionnement',
-      'timestamp': DateTime.now().subtract(const Duration(hours: 10)),
-      'isRead': true,
-      'priority': 'normal',
-      'category': 'production',
-      'icon': Icons.filter_alt,
-      'color': Colors.green,
-    },
-    {
-      'id': '9',
-      'type': 'info',
-      'title': 'Rapport mensuel disponible',
-      'message':
-          'Le rapport de production de novembre 2024 est maintenant disponible',
-      'timestamp': DateTime.now().subtract(const Duration(days: 1)),
-      'isRead': false,
-      'priority': 'low',
-      'category': 'rapport',
-      'icon': Icons.assessment,
-      'color': Colors.blue,
-    },
-    {
-      'id': '10',
-      'type': 'error',
-      'title': 'Erreur système détectée',
-      'message':
-          'Problème de synchronisation avec la base de données - Support technique contacté',
-      'timestamp': DateTime.now().subtract(const Duration(days: 1, hours: 2)),
-      'isRead': true,
-      'priority': 'urgent',
-      'category': 'systeme',
-      'icon': Icons.error,
-      'color': Colors.red,
-    },
-  ];
-
-  List<Map<String, dynamic>> get filteredNotifications {
-    switch (selectedFilter) {
-      case 'Non lues':
-        return notifications.where((n) => !n['isRead']).toList();
-      case 'Urgentes':
-        return notifications
-            .where((n) => n['priority'] == 'urgent' || n['priority'] == 'high')
-            .toList();
-      case 'Aujourd\'hui':
-        final today = DateTime.now();
-        return notifications.where((n) {
-          final notifDate = n['timestamp'] as DateTime;
-          return notifDate.day == today.day &&
-              notifDate.month == today.month &&
-              notifDate.year == today.year;
-        }).toList();
-      default:
-        return notifications;
+  Query<Map<String, dynamic>> _baseQuery() {
+    Query<Map<String, dynamic>> q =
+        FirebaseFirestore.instance.collection('notifications_caisse');
+    final site = _session.site ?? '';
+    if (site.isNotEmpty) {
+      q = q.where('site', isEqualTo: site);
     }
+    return q; // tri côté client
   }
 
-  int get unreadCount => notifications.where((n) => !n['isRead']).length;
+  int _unreadFromDocs(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    return docs.where((d) => (d.data()['statut'] ?? 'non_lue') != 'lue').length;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -202,13 +62,30 @@ class _NotificationsPageState extends State<NotificationsPage>
                 color: Color(0xFF2D0C0D),
               ),
             ),
-            Text(
-              '$unreadCount non lues',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.normal,
-              ),
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _baseQuery().snapshots(),
+              builder: (context, snap) {
+                final docs =
+                    List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
+                        snap.data?.docs ?? []);
+                // tri dateCreation desc si dispo
+                docs.sort((a, b) {
+                  final ta = a.data()['dateCreation'];
+                  final tb = b.data()['dateCreation'];
+                  DateTime da = ta is Timestamp ? ta.toDate() : DateTime(0);
+                  DateTime db = tb is Timestamp ? tb.toDate() : DateTime(0);
+                  return db.compareTo(da);
+                });
+                final count = _unreadFromDocs(docs);
+                return Text(
+                  '$count non lues',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.normal,
+                  ),
+                );
+              },
             ),
           ],
         ),
@@ -221,9 +98,7 @@ class _NotificationsPageState extends State<NotificationsPage>
           ),
           // Bouton paramètres
           IconButton(
-            onPressed: () {
-              _showNotificationSettings();
-            },
+            onPressed: _showNotificationSettings,
             icon: const Icon(Icons.settings),
             tooltip: 'Paramètres des notifications',
           ),
@@ -286,244 +161,217 @@ class _NotificationsPageState extends State<NotificationsPage>
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildNotificationsList(filteredNotifications),
-          _buildNotificationsList(notifications
-              .where(
-                  (n) => n['category'] == 'vente' || n['category'] == 'finance')
-              .toList()),
-          _buildNotificationsList(notifications
-              .where((n) =>
-                  n['category'] == 'production' ||
-                  n['category'] == 'collecte' ||
-                  n['category'] == 'qualite')
-              .toList()),
-          _buildNotificationsList(notifications
-              .where((n) =>
-                  n['category'] == 'systeme' || n['category'] == 'maintenance')
-              .toList()),
+          // Toutes
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: _baseQuery().snapshots(),
+            builder: (context, snap) {
+              final docs =
+                  List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
+                      snap.data?.docs ?? []);
+              // Tri côté client par dateCreation desc
+              docs.sort((a, b) {
+                final ta = a.data()['dateCreation'];
+                final tb = b.data()['dateCreation'];
+                DateTime da = ta is Timestamp ? ta.toDate() : DateTime(0);
+                DateTime db = tb is Timestamp ? tb.toDate() : DateTime(0);
+                return db.compareTo(da);
+              });
+
+              // Appliquer filtres rapides
+              final filtered = docs.where((d) {
+                final data = d.data();
+                final statut = (data['statut'] ?? 'non_lue').toString();
+                final priorite = (data['priorite'] ?? 'normale').toString();
+                final ts = data['dateCreation'];
+                DateTime when = ts is Timestamp ? ts.toDate() : DateTime.now();
+
+                switch (selectedFilter) {
+                  case 'Non lues':
+                    return statut != 'lue';
+                  case 'Urgentes':
+                    return priorite == 'haute' ||
+                        priorite == 'urgent' ||
+                        priorite == 'high';
+                  case 'Aujourd\'hui':
+                    final now = DateTime.now();
+                    return when.year == now.year &&
+                        when.month == now.month &&
+                        when.day == now.day;
+                  default:
+                    return true;
+                }
+              }).toList();
+
+              return _buildNotificationsListFromDocs(filtered);
+            },
+          ),
+          // Ventes / Finance
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: _baseQuery().snapshots(),
+            builder: (context, snap) {
+              final docs =
+                  List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
+                      snap.data?.docs ?? []);
+              docs.sort((a, b) {
+                final ta = a.data()['dateCreation'];
+                final tb = b.data()['dateCreation'];
+                DateTime da = ta is Timestamp ? ta.toDate() : DateTime(0);
+                DateTime db = tb is Timestamp ? tb.toDate() : DateTime(0);
+                return db.compareTo(da);
+              });
+
+              final filtered = docs.where((d) {
+                final data = d.data();
+                if (!_isVenteType((data['type'] ?? '').toString())) {
+                  return false;
+                }
+
+                final statut = (data['statut'] ?? 'non_lue').toString();
+                final priorite = (data['priorite'] ?? 'normale').toString();
+                final ts = data['dateCreation'];
+                DateTime when = ts is Timestamp ? ts.toDate() : DateTime.now();
+
+                switch (selectedFilter) {
+                  case 'Non lues':
+                    return statut != 'lue';
+                  case 'Urgentes':
+                    return priorite == 'haute' ||
+                        priorite == 'urgent' ||
+                        priorite == 'high';
+                  case 'Aujourd\'hui':
+                    final now = DateTime.now();
+                    return when.year == now.year &&
+                        when.month == now.month &&
+                        when.day == now.day;
+                  default:
+                    return true;
+                }
+              }).toList();
+
+              return _buildNotificationsListFromDocs(filtered);
+            },
+          ),
+          // Production / Collecte / Qualité
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: _baseQuery().snapshots(),
+            builder: (context, snap) {
+              final docs =
+                  List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
+                      snap.data?.docs ?? []);
+              docs.sort((a, b) {
+                final ta = a.data()['dateCreation'];
+                final tb = b.data()['dateCreation'];
+                DateTime da = ta is Timestamp ? ta.toDate() : DateTime(0);
+                DateTime db = tb is Timestamp ? tb.toDate() : DateTime(0);
+                return db.compareTo(da);
+              });
+
+              final filtered = docs.where((d) {
+                final data = d.data();
+                if (!_isProductionType((data['type'] ?? '').toString())) {
+                  return false;
+                }
+
+                final statut = (data['statut'] ?? 'non_lue').toString();
+                final priorite = (data['priorite'] ?? 'normale').toString();
+                final ts = data['dateCreation'];
+                DateTime when = ts is Timestamp ? ts.toDate() : DateTime.now();
+
+                switch (selectedFilter) {
+                  case 'Non lues':
+                    return statut != 'lue';
+                  case 'Urgentes':
+                    return priorite == 'haute' ||
+                        priorite == 'urgent' ||
+                        priorite == 'high';
+                  case 'Aujourd\'hui':
+                    final now = DateTime.now();
+                    return when.year == now.year &&
+                        when.month == now.month &&
+                        when.day == now.day;
+                  default:
+                    return true;
+                }
+              }).toList();
+
+              return _buildNotificationsListFromDocs(filtered);
+            },
+          ),
+          // Système / Maintenance
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: _baseQuery().snapshots(),
+            builder: (context, snap) {
+              final docs =
+                  List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
+                      snap.data?.docs ?? []);
+              docs.sort((a, b) {
+                final ta = a.data()['dateCreation'];
+                final tb = b.data()['dateCreation'];
+                DateTime da = ta is Timestamp ? ta.toDate() : DateTime(0);
+                DateTime db = tb is Timestamp ? tb.toDate() : DateTime(0);
+                return db.compareTo(da);
+              });
+
+              final filtered = docs.where((d) {
+                final data = d.data();
+                if (!_isSystemType((data['type'] ?? '').toString())) {
+                  return false;
+                }
+
+                final statut = (data['statut'] ?? 'non_lue').toString();
+                final priorite = (data['priorite'] ?? 'normale').toString();
+                final ts = data['dateCreation'];
+                DateTime when = ts is Timestamp ? ts.toDate() : DateTime.now();
+
+                switch (selectedFilter) {
+                  case 'Non lues':
+                    return statut != 'lue';
+                  case 'Urgentes':
+                    return priorite == 'haute' ||
+                        priorite == 'urgent' ||
+                        priorite == 'high';
+                  case 'Aujourd\'hui':
+                    final now = DateTime.now();
+                    return when.year == now.year &&
+                        when.month == now.month &&
+                        when.day == now.day;
+                  default:
+                    return true;
+                }
+              }).toList();
+
+              return _buildNotificationsListFromDocs(filtered);
+            },
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildNotificationsList(List<Map<String, dynamic>> notifs) {
-    if (notifs.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.notifications_none,
-              size: 64,
-              color: Colors.grey[400],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Aucune notification',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Vous êtes à jour !',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[500],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: notifs.length,
-      itemBuilder: (context, index) {
-        final notification = notifs[index];
-        return _buildNotificationCard(notification);
-      },
-    );
+  // Catégories de type pour onglets
+  bool _isVenteType(String type) {
+    final t = type.toLowerCase();
+    return t == 'prelevement_termine' ||
+        t == 'credit_overdue' ||
+        t.startsWith('vente_') ||
+        t.startsWith('finance_') ||
+        t.contains('vente') ||
+        t.contains('credit');
   }
 
-  Widget _buildNotificationCard(Map<String, dynamic> notification) {
-    final isUrgent = notification['priority'] == 'urgent';
-    final isHigh = notification['priority'] == 'high';
-    final isRead = notification['isRead'] as bool;
+  bool _isProductionType(String type) {
+    final t = type.toLowerCase();
+    return t.startsWith('collecte_') ||
+        t.startsWith('extraction_') ||
+        t.startsWith('filtrage') ||
+        t.startsWith('conditionnement');
+  }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isUrgent
-              ? Colors.red.shade200
-              : isHigh
-                  ? Colors.orange.shade200
-                  : Colors.grey.shade200,
-          width: isUrgent ? 2 : 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: InkWell(
-        onTap: () => _markAsRead(notification['id']),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Icône avec indicateur de priorité
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: (notification['color'] as Color).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  notification['icon'],
-                  color: notification['color'],
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              // Contenu
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        // Indicateur non lu
-                        if (!isRead)
-                          Container(
-                            width: 8,
-                            height: 8,
-                            margin: const EdgeInsets.only(right: 8),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFF49101),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        // Titre
-                        Expanded(
-                          child: Text(
-                            notification['title'],
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight:
-                                  isRead ? FontWeight.w500 : FontWeight.bold,
-                              color: const Color(0xFF2D0C0D),
-                            ),
-                          ),
-                        ),
-                        // Badge de priorité
-                        if (isUrgent)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.red.shade100,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              'URGENT',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red.shade700,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    // Message
-                    Text(
-                      notification['message'],
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[700],
-                        height: 1.4,
-                      ),
-                    ),
-                    // Montant si présent
-                    if (notification['amount'] != null) ...[
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF49101).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          notification['amount'],
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFFF49101),
-                          ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 8),
-                    // Timestamp
-                    Text(
-                      _formatTimestamp(notification['timestamp']),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[500],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Actions
-              PopupMenuButton<String>(
-                onSelected: (action) =>
-                    _handleNotificationAction(action, notification),
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    value: 'mark_read',
-                    child: Row(
-                      children: [
-                        Icon(isRead
-                            ? Icons.mark_email_unread
-                            : Icons.mark_email_read),
-                        const SizedBox(width: 8),
-                        Text(isRead ? 'Marquer non lu' : 'Marquer comme lu'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete, color: Colors.red),
-                        SizedBox(width: 8),
-                        Text('Supprimer', style: TextStyle(color: Colors.red)),
-                      ],
-                    ),
-                  ),
-                ],
-                child: const Icon(Icons.more_vert, color: Colors.grey),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  bool _isSystemType(String type) {
+    final t = type.toLowerCase();
+    return t.startsWith('system') ||
+        t.startsWith('maintenance') ||
+        t.contains('systeme');
   }
 
   String _formatTimestamp(DateTime timestamp) {
@@ -543,49 +391,175 @@ class _NotificationsPageState extends State<NotificationsPage>
     }
   }
 
-  void _markAsRead(String id) {
-    setState(() {
-      final index = notifications.indexWhere((n) => n['id'] == id);
-      if (index != -1) {
-        notifications[index]['isRead'] = true;
-      }
-    });
+  Future<void> _markAsRead(String id) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('notifications_caisse')
+          .doc(id)
+          .update({'statut': 'lue'});
+    } catch (_) {}
   }
 
-  void _markAllAsRead() {
-    setState(() {
-      for (var notification in notifications) {
-        notification['isRead'] = true;
+  Future<void> _markAllAsRead() async {
+    try {
+      final snap = await _baseQuery().get();
+      final batch = FirebaseFirestore.instance.batch();
+      for (final d in snap.docs) {
+        if ((d.data()['statut'] ?? 'non_lue') != 'lue') {
+          batch.update(d.reference, {'statut': 'lue'});
+        }
       }
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Toutes les notifications ont été marquées comme lues'),
-        backgroundColor: Colors.green,
-      ),
-    );
+      await batch.commit();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('Toutes les notifications ont été marquées comme lues'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   void _handleNotificationAction(
       String action, Map<String, dynamic> notification) {
     switch (action) {
       case 'mark_read':
-        setState(() {
-          notification['isRead'] = !notification['isRead'];
-        });
+        _markAsRead(notification['id'] as String);
         break;
       case 'delete':
-        setState(() {
-          notifications.removeWhere((n) => n['id'] == notification['id']);
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Notification supprimée'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+        FirebaseFirestore.instance
+            .collection('notifications_caisse')
+            .doc(notification['id'] as String)
+            .delete();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Notification supprimée'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
         break;
+    }
+  }
+
+  // Transform Firestore docs to UI list
+  Widget _buildNotificationsListFromDocs(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    if (docs.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.0),
+          child: Text('Aucune notification'),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      itemCount: docs.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final d = docs[index];
+        final data = d.data();
+        final id = d.id;
+        final type = (data['type'] ?? 'info').toString();
+        final titre = (data['titre'] ?? data['title'] ?? '').toString();
+        final message = (data['message'] ?? '').toString();
+        final priorite = (data['priorite'] ?? 'normale').toString();
+        final ts = data['dateCreation'];
+        final when = ts is Timestamp ? ts.toDate() : DateTime.now();
+        final isRead = (data['statut'] ?? 'non_lue') == 'lue';
+
+        final (icon, color) = _iconAndColorFor(type, priorite);
+
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundColor: color.withOpacity(0.12),
+            foregroundColor: color,
+            child: Icon(icon),
+          ),
+          title: Text(
+            titre.isNotEmpty ? titre : _titleForType(type),
+            style: TextStyle(
+              fontWeight: isRead ? FontWeight.normal : FontWeight.w600,
+            ),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (message.isNotEmpty) Text(message),
+              const SizedBox(height: 4),
+              Text(
+                _formatTimestamp(when),
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+            ],
+          ),
+          trailing: PopupMenuButton<String>(
+            onSelected: (value) => _handleNotificationAction(value, {
+              'id': id,
+            }),
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'mark_read',
+                child: Text(
+                    isRead ? 'Marquer comme non lue' : 'Marquer comme lue'),
+              ),
+              const PopupMenuItem(
+                value: 'delete',
+                child: Text('Supprimer'),
+              ),
+            ],
+          ),
+          onTap: () => _markAsRead(id),
+        );
+      },
+    );
+  }
+
+  (IconData, Color) _iconAndColorFor(String type, String priorite) {
+    switch (type) {
+      case 'credit_overdue':
+        return (Icons.credit_card, Colors.red);
+      case 'prelevement_termine':
+        return (Icons.assignment_turned_in, Colors.indigo);
+      case 'collecte_recolte':
+        return (Icons.agriculture, Colors.green);
+      case 'collecte_scoop':
+        return (Icons.shopping_basket, Colors.teal);
+      case 'collecte_individuel':
+        return (Icons.person, Colors.blueGrey);
+      case 'collecte_miellerie':
+        return (Icons.hive, Colors.amber);
+      default:
+        return (Icons.notifications, Colors.blue);
+    }
+  }
+
+  String _titleForType(String type) {
+    switch (type) {
+      case 'credit_overdue':
+        return 'Crédit en retard (>= 30 jours)';
+      case 'prelevement_termine':
+        return 'Prélèvement terminé';
+      case 'collecte_recolte':
+        return 'Nouvelle collecte – Récoltes';
+      case 'collecte_scoop':
+        return 'Nouvel achat – SCOOP';
+      case 'collecte_individuel':
+        return 'Nouvel achat – Individuel';
+      case 'collecte_miellerie':
+        return 'Nouvelle collecte – Miellerie';
+      default:
+        return 'Notification';
     }
   }
 
@@ -613,13 +587,13 @@ class _NotificationsPageState extends State<NotificationsPage>
               ),
             ),
             // Header
-            Padding(
-              padding: const EdgeInsets.all(20),
+            const Padding(
+              padding: EdgeInsets.all(20),
               child: Row(
                 children: [
-                  const Icon(Icons.settings, color: Color(0xFFF49101)),
-                  const SizedBox(width: 12),
-                  const Text(
+                  Icon(Icons.settings, color: Color(0xFFF49101)),
+                  SizedBox(width: 12),
+                  Text(
                     'Paramètres des notifications',
                     style: TextStyle(
                       fontSize: 18,
@@ -690,7 +664,7 @@ class _NotificationsPageState extends State<NotificationsPage>
       trailing: Switch(
         value: value,
         onChanged: (newValue) {
-          // Ici vous pouvez gérer les changements de paramètres
+          // TODO: gérer le changement de paramètre si nécessaire
         },
         activeColor: const Color(0xFFF49101),
       ),

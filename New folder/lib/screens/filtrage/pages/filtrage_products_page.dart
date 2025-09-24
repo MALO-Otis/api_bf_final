@@ -1,13 +1,13 @@
-/// Page principale pour les produits attribués au filtrage (inspirée du module extraction)
-import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-import '../../controle_de_donnes/models/attribution_models_v2.dart';
-import '../services/filtrage_attribution_service.dart';
+import 'package:get/get.dart';
+import 'package:flutter/material.dart';
 import '../widgets/filtrage_form_modal.dart';
 import '../../../authentication/user_session.dart';
-import 'package:get/get.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/filtrage_attribution_service.dart';
+import '../../controle_de_donnes/models/attribution_models_v2.dart';
+
+/// Page principale pour les produits attribués au filtrage (inspirée du module extraction)
 
 class FiltrageProductsPage extends StatefulWidget {
   const FiltrageProductsPage({super.key});
@@ -735,16 +735,20 @@ class _FiltrageProductsPageState extends State<FiltrageProductsPage>
             children: [
               Icon(Icons.filter_alt, color: Colors.purple.shade600, size: 24),
               const SizedBox(width: 8),
-              Text(
-                isAdmin
-                    ? 'Produits pour FILTRAGE par Site'
-                    : 'Produits pour FILTRAGE - ${userSession.site}',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.purple.shade700,
+              Expanded(
+                child: Text(
+                  isAdmin
+                      ? 'Produits pour FILTRAGE par Site'
+                      : 'Produits pour FILTRAGE - ${userSession.site}',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.purple.shade700,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -890,11 +894,17 @@ class _FiltrageProductsPageState extends State<FiltrageProductsPage>
               Expanded(
                 child: DropdownButtonFormField<String>(
                   value: _sortBy,
+                  isExpanded: true,
                   decoration: InputDecoration(
-                    labelText: 'Trier par',
+                    label: const Text(
+                      'Trier par',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
+                    isDense: true,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 8,
@@ -903,7 +913,11 @@ class _FiltrageProductsPageState extends State<FiltrageProductsPage>
                   items: const [
                     DropdownMenuItem(
                       value: 'dateReception',
-                      child: Text('Date de réception'),
+                      child: Text(
+                        'Date de réception',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                     DropdownMenuItem(
                       value: 'poids',
@@ -915,7 +929,11 @@ class _FiltrageProductsPageState extends State<FiltrageProductsPage>
                     ),
                     DropdownMenuItem(
                       value: 'nature',
-                      child: Text('Nature du produit'),
+                      child: Text(
+                        'Nature du produit',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                   onChanged: (value) => _changeSorting(value!),
@@ -933,11 +951,17 @@ class _FiltrageProductsPageState extends State<FiltrageProductsPage>
               Expanded(
                 child: DropdownButtonFormField<String>(
                   value: _groupBy,
+                  isExpanded: true,
                   decoration: InputDecoration(
-                    labelText: 'Grouper par',
+                    label: const Text(
+                      'Grouper par',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
+                    isDense: true,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 8,
@@ -1156,10 +1180,18 @@ class _FiltrageProductsPageState extends State<FiltrageProductsPage>
                   ),
 
                   const Spacer(),
-                  Text(
-                    product.codeContenant,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w500,
+                  Flexible(
+                    child: Tooltip(
+                      message: product.codeContenant,
+                      child: Text(
+                        product.codeContenant,
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ),
                   ),
                 ],

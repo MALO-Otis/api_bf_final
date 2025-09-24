@@ -1,16 +1,15 @@
+import 'package:get/get.dart';
+import 'conditionnement_models.dart';
+import 'package:flutter/material.dart';
+import '../../utils/smart_appbar.dart';
+import 'pages/lots_disponibles_page.dart';
+import 'pages/stock_conditionne_page.dart';
+import 'pages/rapports_analytics_page.dart';
+import 'services/conditionnement_db_service.dart';
+
 /// 🧊 PAGE PRINCIPALE DU MODULE CONDITIONNEMENT
 ///
 /// Hub central avec navigation vers tous les sous-modules
-
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-
-import '../../utils/smart_appbar.dart';
-import 'condionnement_home.dart';
-import 'conditionnement_models.dart';
-import 'services/conditionnement_db_service.dart';
-import 'pages/stock_conditionne_page.dart';
-import 'pages/lots_disponibles_page.dart';
 
 class ConditionnementMainPage extends StatefulWidget {
   const ConditionnementMainPage({super.key});
@@ -34,7 +33,7 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
 
   // Données de statistiques
   Map<String, dynamic> _statistics = {};
-  bool _isLoading = true;
+  // bool _isLoading = true; // Supprimé: on s'appuie sur _service.isLoading
 
   @override
   void initState() {
@@ -95,12 +94,10 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
       final stats = await _service.getStatistiques();
       setState(() {
         _statistics = stats;
-        _isLoading = false;
       });
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
+      // En cas d'erreur, on peut déclencher un léger rebuild sans état spécifique
+      if (mounted) setState(() {});
     }
   }
 
@@ -376,7 +373,8 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
             crossAxisCount: isMobile ? 1 : 2,
             crossAxisSpacing: 16,
             mainAxisSpacing: 16,
-            childAspectRatio: isMobile ? 3.5 : 2.5,
+            // Increase height on mobile by reducing aspect ratio to prevent overflow
+            childAspectRatio: isMobile ? 1.9 : 2.2,
           ),
           itemCount: subModules.length,
           itemBuilder: (context, index) {
@@ -414,10 +412,14 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
                   ),
                   borderRadius: BorderRadius.circular(20),
                 ),
+                constraints: BoxConstraints(
+                  minHeight: isMobile ? 160 : 180,
+                ),
                 child: Padding(
                   padding: EdgeInsets.all(isMobile ? 16 : 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Row(
                         children: [
@@ -456,6 +458,7 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
                         ],
                       ),
                       const Spacer(),
+                      // Title with ellipsis to prevent overflow
                       Text(
                         module['title'] as String,
                         style: TextStyle(
@@ -463,14 +466,19 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
                           fontSize: isMobile ? 16 : 18,
                           fontWeight: FontWeight.bold,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
+                      // Subtitle with soft wrap/ellipsis
                       Text(
                         module['subtitle'] as String,
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.9),
                           fontSize: isMobile ? 12 : 14,
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 12),
                       Row(
@@ -503,6 +511,8 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
   }
 
   Widget _buildRecentActivity(bool isMobile) {
+    final recent = _service.conditionnements.take(5).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -522,36 +532,42 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
           ),
           child: Padding(
             padding: EdgeInsets.all(isMobile ? 16 : 20),
-            child: Column(
-              children: [
-                _buildActivityItem(
-                  'Nouveau lot conditionné',
-                  'Lot 2024-001 - 45kg de miel mille fleurs',
-                  '2 heures',
-                  Icons.check_circle,
-                  Colors.green,
-                  isMobile,
-                ),
-                const Divider(),
-                _buildActivityItem(
-                  'Lot filtré disponible',
-                  'Lot 2024-005 - 38kg prêt pour conditionnement',
-                  '5 heures',
-                  Icons.inventory,
-                  Colors.blue,
-                  isMobile,
-                ),
-                const Divider(),
-                _buildActivityItem(
-                  'Rapport généré',
-                  'Rapport mensuel du conditionnement',
-                  '1 jour',
-                  Icons.analytics,
-                  Colors.orange,
-                  isMobile,
-                ),
-              ],
-            ),
+            child: recent.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(
+                        'Aucune activité récente',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ),
+                  )
+                : Column(
+                    children: [
+                      ...List.generate(recent.length, (i) {
+                        final cond = recent[i];
+                        final title = 'Nouveau lot conditionné';
+                        final subtitle =
+                            'Lot ${cond.lotOrigine.lotOrigine} - ${cond.quantiteConditionnee.toStringAsFixed(0)}kg ${cond.lotOrigine.predominanceFlorale}';
+                        final since = _timeAgo(cond.dateConditionnement);
+                        final icon = Icons.check_circle;
+                        final color = Colors.green;
+                        final item = _buildActivityItem(
+                          title,
+                          subtitle,
+                          since,
+                          icon,
+                          color,
+                          isMobile,
+                        );
+                        return i == recent.length - 1
+                            ? item
+                            : Column(children: [item, const Divider()]);
+                      }),
+                    ],
+                  ),
           ),
         ),
       ],
@@ -632,13 +648,19 @@ class _ConditionnementMainPageState extends State<ConditionnementMainPage>
   }
 
   void _navigateToRapports() {
-    // TODO: Créer la page de rapports
-    Get.snackbar(
-      'En développement',
-      'La page Rapports & Analytics sera bientôt disponible',
-      backgroundColor: Colors.orange.shade600,
-      colorText: Colors.white,
-      icon: const Icon(Icons.construction, color: Colors.white),
+    Get.to(
+      () => const RapportsAnalyticsPage(),
+      transition: Transition.rightToLeftWithFade,
+      duration: const Duration(milliseconds: 300),
     );
+  }
+
+  String _timeAgo(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+    if (diff.inMinutes < 1) return 'à l\'instant';
+    if (diff.inMinutes < 60) return 'il y a ${diff.inMinutes} min';
+    if (diff.inHours < 24) return 'il y a ${diff.inHours} h';
+    return 'il y a ${diff.inDays} j';
   }
 }

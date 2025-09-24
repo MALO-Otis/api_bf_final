@@ -7,9 +7,6 @@ import '../../controle_de_donnes/models/quality_control_models.dart';
 import '../../controle_de_donnes/models/attribution_models_v2.dart'; // Pour ProductControle
 /// Widget pour afficher une carte de collecte avec ses informations de contrôle
 /// et les options d'attribution - VERSION DÉTAILLÉE ET DIAGNOSTIQUE
-library;
-
-
 
 class CollecteAttributionCard extends StatefulWidget {
   final BaseCollecte collecte;
@@ -781,9 +778,11 @@ class _CollecteAttributionCardState extends State<CollecteAttributionCard> {
                               predominanceFlorale: 'Standard',
                               estConforme: true,
                               dateControle: DateTime.now(),
-                              siteOrigine: _getCollecteLocation(widget.collecte),
+                              siteOrigine:
+                                  _getCollecteLocation(widget.collecte),
                               collecteId: widget.collecte.id,
-                              typeCollecte: _determineSection(widget.collecte).toString(),
+                              typeCollecte:
+                                  _determineSection(widget.collecte).toString(),
                               dateCollecte: widget.collecte.date,
                             ))
                         .toList();
@@ -881,8 +880,6 @@ class _CollecteAttributionCardState extends State<CollecteAttributionCard> {
         return Icons.build;
     }
   }
-
-
 
   /// Widget pour afficher les informations de poids
   Widget _buildWeightItem(
