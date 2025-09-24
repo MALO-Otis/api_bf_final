@@ -1,5 +1,5 @@
-import 'dart:io';
 import 'package:get/get.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -21,26 +21,39 @@ class PushNotificationsService {
   bool _initialized = false;
 
   Future<void> init() async {
-    // Skip initialization on unsupported platforms (e.g., Windows/Linux)
-    if (!(kIsWeb || Platform.isAndroid || Platform.isIOS || Platform.isMacOS)) {
+    // Messaging is supported on Web, Android, iOS and macOS.
+    // For other platforms (Windows, Linux, Fuchsia), gracefully skip.
+    if (!kIsWeb &&
+        !(defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS)) {
       return;
     }
     if (_initialized) return;
     _initialized = true;
 
     // Permissions: iOS/macOS, and also Web
-    if (kIsWeb) {
-      await _messaging.requestPermission();
-    } else if (Platform.isIOS || Platform.isMacOS) {
-      await _messaging.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
+    try {
+      if (kIsWeb) {
+        // On web this will trigger the browser permission prompt.
+        await _messaging.requestPermission();
+      } else if (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS) {
+        await _messaging.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+      }
+    } catch (_) {
+      // Ignore permission errors to avoid breaking app startup on web.
     }
 
     // Background handler
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    // Not applicable to Web (background handled by service worker)
+    if (!kIsWeb) {
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    }
 
     // Foreground messages (optionally show a snackbar or update UI)
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -58,25 +71,34 @@ class PushNotificationsService {
   }
 
   Future<void> _registerToken() async {
-    final token = kIsWeb
-        ? await _messaging.getToken(
-            vapidKey: _webVapidKey.isEmpty ? null : _webVapidKey,
-          )
-        : await _messaging.getToken();
-    if (token != null) {
-      await _saveToken(token);
+    try {
+      final token = kIsWeb
+          ? await _messaging
+              .getToken(vapidKey: _webVapidKey.isEmpty ? null : _webVapidKey)
+              .timeout(const Duration(seconds: 10))
+          : await _messaging.getToken().timeout(const Duration(seconds: 10));
+      if (token != null) {
+        await _saveToken(token);
+      }
+    } catch (_) {
+      // On web, this can throw if service worker is missing or VAPID key isn't set.
+      // We swallow to keep the UI from getting stuck on a white screen.
     }
   }
 
   // Public method to resync token metadata (uid/site) after login
   Future<void> resyncTokenMetadata() async {
-    final token = kIsWeb
-        ? await _messaging.getToken(
-            vapidKey: _webVapidKey.isEmpty ? null : _webVapidKey,
-          )
-        : await _messaging.getToken();
-    if (token != null) {
-      await _saveToken(token);
+    try {
+      final token = kIsWeb
+          ? await _messaging
+              .getToken(vapidKey: _webVapidKey.isEmpty ? null : _webVapidKey)
+              .timeout(const Duration(seconds: 10))
+          : await _messaging.getToken().timeout(const Duration(seconds: 10));
+      if (token != null) {
+        await _saveToken(token);
+      }
+    } catch (_) {
+      // ignore
     }
   }
 
@@ -91,19 +113,7 @@ class PushNotificationsService {
         'token': token,
         'uid': uid,
         'site': site,
-        'platform': kIsWeb
-            ? 'web'
-            : Platform.isAndroid
-                ? 'android'
-                : Platform.isIOS
-                    ? 'ios'
-                    : Platform.isWindows
-                        ? 'windows'
-                        : Platform.isMacOS
-                            ? 'macos'
-                            : Platform.isLinux
-                                ? 'linux'
-                                : 'unknown',
+        'platform': _platformLabel(),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (_) {}
@@ -112,5 +122,23 @@ class PushNotificationsService {
   String _tokenDocId(String token) {
     // Avoid slashes; token is URL-safe, but to be safe use its hashCode
     return token.hashCode.toString();
+  }
+
+  String _platformLabel() {
+    if (kIsWeb) return 'web';
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return 'android';
+      case TargetPlatform.iOS:
+        return 'ios';
+      case TargetPlatform.macOS:
+        return 'macos';
+      case TargetPlatform.windows:
+        return 'windows';
+      case TargetPlatform.linux:
+        return 'linux';
+      case TargetPlatform.fuchsia:
+        return 'fuchsia';
+    }
   }
 }
