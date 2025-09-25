@@ -554,7 +554,7 @@ class _DashboardHeaderState extends State<DashboardHeader> {
                 ),
               ),
             SizedBox(width: widget.isMobile ? 6 : 12),
-            // Notifications bell with live unread count
+            // Notifications bell with live unread count (caisse + admin notifications)
             StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: (() {
                 final session = Get.find<UserSession>();
@@ -567,41 +567,113 @@ class _DashboardHeaderState extends State<DashboardHeader> {
                 }
                 return q.snapshots();
               })(),
-              builder: (context, snap) {
-                final unread = snap.hasData ? snap.data!.size : 0;
-                return IconButton(
-                  icon: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Icon(
-                        Icons.notifications,
-                        color: kHighlightColor,
-                        size: widget.isMobile ? 18 : 22,
-                      ),
-                      if (unread > 0)
-                        Positioned(
-                          right: -2,
-                          top: -2,
-                          child: CircleAvatar(
-                            backgroundColor: Colors.redAccent,
-                            radius: 7,
-                            child: Text(
-                              unread > 99 ? '99+' : unread.toString(),
-                              style: const TextStyle(
-                                  fontSize: 9, color: Colors.white),
+              builder: (context, caisseSnap) {
+                final caisseUnread =
+                    caisseSnap.hasData ? caisseSnap.data!.size : 0;
+                // Pour les admins: additionner les admin_notifications non lues (readBy ne contient pas uid)
+                final session = Get.find<UserSession>();
+                final role = (session.role ?? '').toLowerCase();
+                final uid = session.uid ?? '';
+                final site = session.site ?? '';
+
+                if (role != 'admin') {
+                  final total = caisseUnread;
+                  return IconButton(
+                    icon: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Icon(
+                          Icons.notifications,
+                          color: kHighlightColor,
+                          size: widget.isMobile ? 18 : 22,
+                        ),
+                        if (total > 0)
+                          Positioned(
+                            right: -2,
+                            top: -2,
+                            child: CircleAvatar(
+                              backgroundColor: Colors.redAccent,
+                              radius: 7,
+                              child: Text(
+                                total > 99 ? '99+' : total.toString(),
+                                style: const TextStyle(
+                                    fontSize: 9, color: Colors.white),
+                              ),
                             ),
                           ),
-                        ),
-                    ],
-                  ),
-                  onPressed: () {
-                    Get.to(
-                      () => const NotificationsPage(),
-                      transition: Transition.rightToLeftWithFade,
-                      duration: const Duration(milliseconds: 300),
+                      ],
+                    ),
+                    onPressed: () {
+                      Get.to(
+                        () => const NotificationsPage(),
+                        transition: Transition.rightToLeftWithFade,
+                        duration: const Duration(milliseconds: 300),
+                      );
+                    },
+                    tooltip: 'Notifications',
+                  );
+                }
+
+                // Admin: écouter aussi admin_notifications et sommer localement les non lues
+                return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: (() {
+                    Query<Map<String, dynamic>> q = FirebaseFirestore.instance
+                        .collection('admin_notifications')
+                        .orderBy('serverTime', descending: true)
+                        .limit(200);
+                    if (site.isNotEmpty) {
+                      q = q.where('site', isEqualTo: site);
+                    }
+                    return q.snapshots();
+                  })(),
+                  builder: (context, adminSnap) {
+                    int adminUnread = 0;
+                    if (adminSnap.hasData) {
+                      for (final doc in adminSnap.data!.docs) {
+                        final data = doc.data();
+                        final List<dynamic> readBy =
+                            (data['readBy'] ?? []) as List<dynamic>;
+                        if (!readBy.contains(uid)) {
+                          adminUnread++;
+                        }
+                      }
+                    }
+                    final total = caisseUnread + adminUnread;
+                    return IconButton(
+                      icon: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Icon(
+                            Icons.notifications,
+                            color: kHighlightColor,
+                            size: widget.isMobile ? 18 : 22,
+                          ),
+                          if (total > 0)
+                            Positioned(
+                              right: -2,
+                              top: -2,
+                              child: CircleAvatar(
+                                backgroundColor: Colors.redAccent,
+                                radius: 7,
+                                child: Text(
+                                  total > 99 ? '99+' : total.toString(),
+                                  style: const TextStyle(
+                                      fontSize: 9, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      onPressed: () {
+                        Get.to(
+                          () => const NotificationsPage(),
+                          transition: Transition.rightToLeftWithFade,
+                          duration: const Duration(milliseconds: 300),
+                        );
+                      },
+                      tooltip: 'Notifications',
                     );
                   },
-                  tooltip: 'Notifications',
                 );
               },
             ),

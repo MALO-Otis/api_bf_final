@@ -393,17 +393,6 @@ class UserListWidget extends StatelessWidget {
                 onUserResetPassword(user);
               },
             ),
-            // Nouvelles actions
-            if (onVerifyEmail != null && !user.emailVerified)
-              _buildActionTile(
-                Icons.verified,
-                'Vérifier l\'email',
-                () {
-                  Get.back();
-                  onVerifyEmail!(user);
-                },
-                color: Colors.green,
-              ),
             if (onResendVerificationEmail != null)
               _buildActionTile(
                 Icons.email,
@@ -413,16 +402,6 @@ class UserListWidget extends StatelessWidget {
                   onResendVerificationEmail!(user);
                 },
                 color: Colors.blue,
-              ),
-            if (onGenerateTemporaryPassword != null)
-              _buildActionTile(
-                Icons.password,
-                'Générer mot de passe temporaire',
-                () {
-                  Get.back();
-                  onGenerateTemporaryPassword!(user);
-                },
-                color: Colors.orange,
               ),
             if (onToggleAccess != null)
               _buildActionTile(

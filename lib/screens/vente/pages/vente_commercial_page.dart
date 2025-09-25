@@ -346,57 +346,82 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
 
   /// Dropdown de tri
   Widget _buildSortDropdown() {
-    return Obx(() => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Trier par',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey,
-              ),
+    return Obx(() {
+      final isVerySmall = MediaQuery.of(Get.context!).size.width < 380;
+      // Libellés compacts pour écrans étroits
+      final items = [
+        (
+          'date_desc',
+          isVerySmall ? '📅 Récent → Anc.' : '📅 Date (récent → ancien)'
+        ),
+        (
+          'date_asc',
+          isVerySmall ? '📅 Anc. → Récent' : '📅 Date (ancien → récent)'
+        ),
+        (
+          'valeur_desc',
+          isVerySmall ? '💰 Valeur ↓' : '💰 Valeur (élevée → faible)'
+        ),
+        (
+          'valeur_asc',
+          isVerySmall ? '💰 Valeur ↑' : '💰 Valeur (faible → élevée)'
+        ),
+        (
+          'quantite_desc',
+          isVerySmall ? '📦 Qté ↓' : '📦 Quantité (élevée → faible)'
+        ),
+        (
+          'quantite_asc',
+          isVerySmall ? '📦 Qté ↑' : '📦 Quantité (faible → élevée)'
+        ),
+        ('produit_asc', isVerySmall ? '🏷️ Prod A→Z' : '🏷️ Produit (A → Z)'),
+        ('produit_desc', isVerySmall ? '🏷️ Prod Z→A' : '🏷️ Produit (Z → A)'),
+      ];
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Trier par',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey,
             ),
-            const SizedBox(height: 4),
-            DropdownButtonFormField<String>(
-              value: _sortBy.value,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          ),
+          const SizedBox(height: 4),
+          DropdownButtonFormField<String>(
+            value: _sortBy.value,
+            isDense: true,
+            decoration: InputDecoration(
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
               ),
-              items: const [
-                DropdownMenuItem(
-                    value: 'date_desc',
-                    child: Text('📅 Date (récent → ancien)')),
-                DropdownMenuItem(
-                    value: 'date_asc',
-                    child: Text('📅 Date (ancien → récent)')),
-                DropdownMenuItem(
-                    value: 'valeur_desc',
-                    child: Text('💰 Valeur (élevée → faible)')),
-                DropdownMenuItem(
-                    value: 'valeur_asc',
-                    child: Text('💰 Valeur (faible → élevée)')),
-                DropdownMenuItem(
-                    value: 'quantite_desc',
-                    child: Text('📦 Quantité (élevée → faible)')),
-                DropdownMenuItem(
-                    value: 'quantite_asc',
-                    child: Text('📦 Quantité (faible → élevée)')),
-                DropdownMenuItem(
-                    value: 'produit_asc', child: Text('🏷️ Produit (A → Z)')),
-                DropdownMenuItem(
-                    value: 'produit_desc', child: Text('🏷️ Produit (Z → A)')),
-              ],
-              onChanged: (value) {
-                if (value != null) _sortBy.value = value;
-              },
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
-          ],
-        ));
+            items: items
+                .map(
+                  (t) => DropdownMenuItem(
+                    value: t.$1,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 220),
+                      child: Text(
+                        t.$2,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value != null) _sortBy.value = value;
+            },
+          ),
+        ],
+      );
+    });
   }
 
   /// Filtre par type de produit
@@ -482,14 +507,32 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
           ),
           const SizedBox(height: 8),
           RangeSlider(
-            values: RangeValues(_minValue.value, _maxValue.value),
+            values: RangeValues(
+              // Clamp et normalisation pour éviter les assertions Flutter
+              _minValue.value.clamp(0, maxValueInData - 0.0001),
+              _maxValue.value.clamp(0, maxValueInData),
+            ),
             min: 0,
-            max: maxValueInData,
+            max: maxValueInData <= 0 ? 1 : maxValueInData,
             divisions: 20,
             activeColor: Colors.purple[600],
             onChanged: (RangeValues values) {
-              _minValue.value = values.start;
-              _maxValue.value = values.end;
+              double start = values.start;
+              double end = values.end;
+              // Garantir l'ordre et les bornes
+              if (end < start) {
+                final tmp = start;
+                start = end;
+                end = tmp;
+              }
+              // Empêcher une plage vide totale (Flutter assertion quand max==min)
+              if (maxValueInData <= 0) {
+                start = 0;
+                end = 1; // plage minimale artificielle
+              }
+              // Appliquer clamp final
+              _minValue.value = start.clamp(0, maxValueInData);
+              _maxValue.value = end.clamp(0, maxValueInData);
             },
           ),
         ],

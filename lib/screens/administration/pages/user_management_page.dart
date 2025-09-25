@@ -318,9 +318,7 @@ class _UserManagementPageState extends State<UserManagementPage>
                     onUserChangeSite: _showChangeSiteModal,
                     onUserResetPassword: _resetUserPassword,
                     onUserDelete: _deleteUser,
-                    onVerifyEmail: _verifyUserEmail,
                     onResendVerificationEmail: _resendVerificationEmail,
-                    onGenerateTemporaryPassword: _generateTemporaryPassword,
                     onToggleAccess: _toggleUserAccess,
                   ),
                 )
@@ -833,49 +831,7 @@ class _UserManagementPageState extends State<UserManagementPage>
     }
   }
 
-  void _verifyUserEmail(AppUser user) {
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Vérifier l\'email'),
-        content: Text(
-          'Marquer l\'email de ${user.nomComplet} comme vérifié ?\n\n'
-          'Cette action permettra à l\'utilisateur d\'accéder à la plateforme sans cliquer sur le lien de vérification.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Get.back(),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Get.back();
-              final success = await _userService.verifyUserEmail(user.id);
-              if (success) {
-                Get.snackbar(
-                  'Succès',
-                  'Email vérifié avec succès',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: Colors.green,
-                  colorText: Colors.white,
-                );
-                _refreshData();
-              } else {
-                Get.snackbar(
-                  'Erreur',
-                  'Impossible de vérifier l\'email',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: Colors.red,
-                  colorText: Colors.white,
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text('Vérifier'),
-          ),
-        ],
-      ),
-    );
-  }
+  // Supprimé: Vérification manuelle d'email (non souhaitée dans les actions)
 
   void _resendVerificationEmail(AppUser user) {
     Get.dialog(
@@ -918,86 +874,7 @@ class _UserManagementPageState extends State<UserManagementPage>
     );
   }
 
-  void _generateTemporaryPassword(AppUser user) {
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Générer mot de passe temporaire'),
-        content: Text(
-          'Générer un nouveau mot de passe temporaire pour ${user.nomComplet} ?\n\n'
-          'Le mot de passe sera affiché une seule fois.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Get.back(),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Get.back();
-              final tempPassword =
-                  await _userService.generateTemporaryPassword(user.id);
-              if (tempPassword != null) {
-                Get.dialog(
-                  AlertDialog(
-                    title: const Text('Mot de passe temporaire généré'),
-                    content: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Utilisateur : ${user.nomComplet}'),
-                        Text('Email : ${user.email}'),
-                        const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[100],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.grey[300]!),
-                          ),
-                          child: SelectableText(
-                            tempPassword,
-                            style: const TextStyle(
-                              fontFamily: 'monospace',
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          '⚠️ Copiez ce mot de passe maintenant. Il ne sera plus affiché.',
-                          style: TextStyle(
-                            color: Colors.orange,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    actions: [
-                      ElevatedButton(
-                        onPressed: () => Get.back(),
-                        child: const Text('Fermer'),
-                      ),
-                    ],
-                  ),
-                );
-              } else {
-                Get.snackbar(
-                  'Erreur',
-                  'Impossible de générer le mot de passe',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: Colors.red,
-                  colorText: Colors.white,
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text('Générer'),
-          ),
-        ],
-      ),
-    );
-  }
+  // (supprimé) _generateTemporaryPassword: l'action et le flux ne sont plus exposés dans l'UI.
 
   void _toggleUserAccess(AppUser user) {
     final hasAccess = user.metadata?['hasAccess'] ?? true;
@@ -1167,7 +1044,8 @@ class _UserManagementPageState extends State<UserManagementPage>
       Get.snackbar(
         'Aucun utilisateur',
         'Pas d\'utilisateur disponible pour le test',
-        snackPosition: SnackPosition.BOTTOM,
+        // Supprimé: génération de mot de passe temporaire
+
         backgroundColor: Colors.orange,
         colorText: Colors.white,
       );
@@ -1217,33 +1095,16 @@ class _UserManagementPageState extends State<UserManagementPage>
       return;
     }
 
-    final testUser = _users.first;
     Get.dialog(
       AlertDialog(
-        title: Text('Test d\'Action sur ${testUser.nomComplet}'),
+        title: const Text('Tests d\'Action Utilisateur'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Utilisateur de test: ${testUser.email}'),
-            const SizedBox(height: 16),
-            const Text('Actions de test disponibles:'),
+            const Text('Actions de test désactivées pour cette version.'),
             const SizedBox(height: 12),
-            ListTile(
-              leading: const Icon(Icons.verified, color: Colors.green),
-              title: const Text('Test Vérification Email'),
-              onTap: () {
-                Get.back();
-                _testVerifyEmail(testUser);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.swap_horiz, color: Colors.blue),
-              title: const Text('Test Changement Statut'),
-              onTap: () {
-                Get.back();
-                _testToggleStatus(testUser);
-              },
-            ),
+            const Text(
+                'Utilisez les actions réelles dans la liste des utilisateurs.'),
           ],
         ),
         actions: [
@@ -1256,76 +1117,45 @@ class _UserManagementPageState extends State<UserManagementPage>
     );
   }
 
-  void _testVerifyEmail(AppUser user) async {
-    print('🧪 TEST: Vérification email pour ${user.nomComplet}');
-    final success = await _userService.verifyUserEmail(user.id);
-    if (success) {
-      Get.snackbar(
-        'Test Email ✅',
-        'Vérification réussie - Vérifiez la console',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-      );
-      _refreshData();
-    } else {
-      Get.snackbar(
-        'Test Email ❌',
-        'Échec - Vérifiez la console pour les détails',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-    }
-  }
-
-  void _testToggleStatus(AppUser user) async {
-    print('🧪 TEST: Changement de statut pour ${user.nomComplet}');
-    final newStatus = !user.isActive;
-    final success = await _userService.toggleUserStatus(user.id, newStatus);
-    if (success) {
-      Get.snackbar(
-        'Test Statut ✅',
-        'Changement réussi - Vérifiez la console',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-      );
-      _refreshData();
-    } else {
-      Get.snackbar(
-        'Test Statut ❌',
-        'Échec - Vérifiez la console pour les détails',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-    }
-  }
+  // Supprimé: Génération de mot de passe temporaire (non souhaitée dans les actions)
 }
 
-/// Classe déléguée pour créer un header persistant
+/// Classe déléguée pour créer un header persistant des onglets
 class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   _SliverAppBarDelegate(this._tabBar);
 
   final TabBar _tabBar;
+  // Ajout de 1px pour compenser la bordure inférieure et éviter l'overflow
+  static const double _borderThickness = 1.0;
 
   @override
-  double get minExtent => _tabBar.preferredSize.height;
+  double get minExtent => _tabBar.preferredSize.height + _borderThickness;
+
   @override
-  double get maxExtent => _tabBar.preferredSize.height;
+  double get maxExtent => _tabBar.preferredSize.height + _borderThickness;
 
   @override
   Widget build(
       BuildContext context, double shrinkOffset, bool overlapsContent) {
     return Container(
       color: Colors.white,
-      child: _tabBar,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: Colors.grey.shade300, width: 1),
+              ),
+            ),
+            child: _tabBar,
+          ),
+        ],
+      ),
     );
   }
 
   @override
-  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
-    return false;
-  }
+  bool shouldRebuild(covariant SliverPersistentHeaderDelegate oldDelegate) =>
+      false;
 }

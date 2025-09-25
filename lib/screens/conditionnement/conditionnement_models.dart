@@ -1,10 +1,10 @@
+import 'package:flutter/foundation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 /// 🎯 MODÈLES DE DONNÉES POUR LE MODULE CONDITIONNEMENT
 ///
 /// Modèles optimisés pour un workflow de conditionnement moderne
 /// avec calculs automatiques et validation stricte
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 
 /// Enum pour les modes de vente
 enum VenteMode {
@@ -442,17 +442,36 @@ class ConditionnementData {
             'Champ "emballages" manquant dans le document ${doc.id}');
       }
 
-      // Reconstruction du lot (données minimales)
+      // Normalisation des champs compacts
+      final lotFiltrageId = data['lotFiltrageId'] ?? data['lotId'] ?? doc.id;
+      final lotCode = data['lotOrigine'] ?? data['lot'] ?? 'LOT-${doc.id}';
+      final siteFromData = data['site'] as String?;
+      // Essayer de dériver le site depuis le chemin du document: conditionnement/{site}/conditionnements/{doc}
+      String? siteFromPath;
+      final segments = doc.reference.path.split('/');
+      final siteIndex = segments.indexOf('conditionnement');
+      if (siteIndex != -1 && siteIndex + 1 < segments.length) {
+        siteFromPath = segments[siteIndex + 1];
+      }
+
+      // Quantités (compact: qteConditionnee, qteRestante)
+      final qteCond =
+          (data['quantiteConditionnee'] ?? data['qteConditionnee'] ?? 0)
+              .toDouble();
+      final qteRest =
+          (data['quantiteRestante'] ?? data['qteRestante'] ?? 0).toDouble();
+
       final lotOrigine = LotFiltre(
-        id: data['lotFiltrageId'] ?? doc.id,
-        lotOrigine: data['lotOrigine'] ?? 'LOT-${doc.id}',
+        id: lotFiltrageId,
+        lotOrigine: lotCode,
         collecteId: data['collecteId'] ?? '',
-        quantiteRecue: (data['quantiteRecue'] ?? 0).toDouble(),
-        quantiteRestante: (data['quantiteRestante'] ?? 0).toDouble(),
+        quantiteRecue:
+            (data['quantiteRecue'] ?? (qteCond + qteRest)).toDouble(),
+        quantiteRestante: qteRest,
         predominanceFlorale: data['predominanceFlorale'] ?? 'Mille fleurs',
-        dateFiltrage: DateTime.now(), // Placeholder
-        site: data['site'] ?? 'Inconnu',
-        technicien: data['technicien'] ?? 'Inconnu',
+        dateFiltrage: DateTime.now(), // Placeholder faute d'info
+        site: siteFromData ?? siteFromPath ?? 'Inconnu',
+        technicien: data['technicien'] ?? data['user'] ?? 'Inconnu',
         estConditionne: true,
       );
 
@@ -472,20 +491,55 @@ class ConditionnementData {
           final embDataMap = embData as Map<String, dynamic>;
           final typeId =
               embDataMap['typeId'] ?? embDataMap['type'] ?? embDataMap['nom'];
+          final nb = (embDataMap['nombreSaisi'] ??
+                  embDataMap['nb'] ??
+                  embDataMap['nombre'] ??
+                  0)
+              .toInt();
+          final contenance = (embDataMap['kg'] ??
+                  embDataMap['contenance'] ??
+                  embDataMap['contenanceKg'] ??
+                  0)
+              .toDouble();
 
-          debugPrint('   📦 Emballage $i: typeId=$typeId, data=$embDataMap');
+          debugPrint(
+              '   📦 Emballage $i: typeId=$typeId, nb=$nb, contenance=$contenance, raw=$embDataMap');
 
-          final emballageType = EmballagesConfig.getEmballageById(typeId);
+          var emballageType = EmballagesConfig.getEmballageById(typeId);
+          // Résolution par nom si non trouvé
+          if (emballageType == null && typeId != null) {
+            try {
+              emballageType = EmballagesConfig.emballagesDisponibles.firstWhere(
+                  (t) =>
+                      t.nom.toLowerCase() == typeId.toString().toLowerCase());
+            } catch (_) {}
+          }
+
+          // Création d'un type temporaire si toujours introuvable mais contenance connue
+          if (emballageType == null && contenance > 0) {
+            debugPrint('   ➕ Création type temporaire pour $typeId');
+            emballageType = EmballageType(
+              id: 'temp_${typeId}_${contenance.toStringAsFixed(2)}',
+              nom: typeId?.toString() ?? 'Temp',
+              contenanceKg: contenance,
+              prixUnitaireMilleFleurs: 0,
+              prixUnitaireMonoFleur: 0,
+              modeVenteObligatoire: VenteMode.detail,
+              icone: '📦',
+              couleur: '#CCCCCC',
+            );
+          }
+
           if (emballageType != null) {
             emballages.add(EmballageSelectionne(
               type: emballageType,
-              nombreSaisi: (embDataMap['nombreSaisi'] ?? 0).toInt(),
+              nombreSaisi: nb,
               typeFlorale: lotOrigine.typeFlorale,
             ));
-            debugPrint(
-                '   ✅ Emballage ajouté: ${emballageType.nom} x ${embDataMap['nombreSaisi']}');
+            debugPrint('   ✅ Emballage ajouté: ${emballageType.nom} x $nb');
           } else {
-            debugPrint('   ⚠️ Type d\'emballage non trouvé pour: $typeId');
+            debugPrint(
+                '   ⚠️ Type d\'emballage introuvable (aucune contenance) pour: $typeId');
           }
         } catch (e) {
           debugPrint('   ❌ Erreur parsing emballage $i: $e');
@@ -517,12 +571,12 @@ class ConditionnementData {
         dateConditionnement: dateConditionnement,
         lotOrigine: lotOrigine,
         emballages: emballages,
-        quantiteConditionnee: (data['quantiteConditionnee'] ?? 0).toDouble(),
-        quantiteRestante: (data['quantiteRestante'] ?? 0).toDouble(),
-        prixTotal: (data['prixTotal'] ?? 0).toDouble(),
-        nbTotalPots: (data['nbTotalPots'] ?? 0).toInt(),
+        quantiteConditionnee: qteCond,
+        quantiteRestante: qteRest,
+        prixTotal: (data['prixTotal'] ?? data['prix'] ?? 0).toDouble(),
+        nbTotalPots: (data['nbTotalPots'] ?? data['nbPots'] ?? 0).toInt(),
         createdAt: createdAt,
-        observations: data['observations']?.toString(),
+        observations: (data['observations'] ?? data['notes'])?.toString(),
       );
 
       debugPrint(

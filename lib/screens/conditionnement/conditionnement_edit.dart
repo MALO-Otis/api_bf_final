@@ -1,17 +1,17 @@
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import 'conditionnement_models.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../utils/smart_appbar.dart';
+import 'package:flutter/foundation.dart';
+import 'services/conditionnement_db_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 /// 🎯 PAGE D'ÉDITION DE CONDITIONNEMENT MODERNE
 ///
 /// Interface simplifiée et fonctionnelle avec calculs en temps réel
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 
-import '../../utils/smart_appbar.dart';
-import 'conditionnement_models.dart';
-import 'services/conditionnement_db_service.dart';
 
 class ConditionnementEditController extends GetxController {
   // Données du lot filtré
@@ -66,6 +66,30 @@ class ConditionnementEditController extends GetxController {
 
     // 🚀 NOUVEAU : Initialiser immédiatement les stats pour tous les emballages
     _initializeInitialStats();
+
+    // 👁️‍🗨️ AUTO-CLOSE LISTENER : si un enregistrement est détecté (sécurité supplémentaire)
+    bool _autoClosed = false; // variable locale capturée
+    ever<String?>(_service.lastSaveId, (id) {
+      if (id != null && !_autoClosed && Get.isOverlaysOpen == false) {
+        // Si pour une raison quelconque la navigation dans saveConditionnement n'a pas fermé la page
+        _autoClosed = true;
+        Future.microtask(() {
+          if (Get.isOverlaysOpen == false) {
+            // Retour latence sécurité si pas déjà effectué
+            if (Get.isDialogOpen == true) {
+              Get.back();
+            }
+            if (Get.key.currentContext != null) {
+              Get.back(result: {
+                'action': 'refresh',
+                'type': quantiteRestante.value <= 0.1 ? 'complet' : 'partiel',
+                'source': 'listener'
+              });
+            }
+          }
+        });
+      }
+    });
   }
 
   @override

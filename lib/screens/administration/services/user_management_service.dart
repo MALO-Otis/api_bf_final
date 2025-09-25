@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import '../../../services/email_service.dart';
 import '../models/user_management_models.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import '../../../authentication/user_session.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Résultat paginé pour l'historique des actions
@@ -23,6 +25,11 @@ class UserManagementService extends GetxService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final UserSession _userSession = Get.find<UserSession>();
   final EmailService _emailService = Get.put(EmailService());
+
+  /// Cooldown pour éviter le spam d'envoi de mails de vérification
+  final Duration _resendCooldown = const Duration(minutes: 1);
+  final Map<String, DateTime> _lastVerificationResend =
+      {}; // key: userId ou email
 
   /// États observables
   final RxBool _isLoadingStats = false.obs;
@@ -221,23 +228,48 @@ class UserManagementService extends GetxService {
       final tempPassword =
           password.length < 8 ? _generateTemporaryPassword() : password;
 
-      // Créer l'utilisateur dans Firebase Auth
-      final userCredential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: tempPassword,
-      );
-
-      final user = userCredential.user;
-      if (user == null) {
-        print('❌ Erreur: user credential null');
-        return false;
+      // IMPORTANT: Utiliser une app Firebase secondaire pour ne PAS déconnecter l'admin courant
+      // car createUserWithEmailAndPassword sur l'instance principale remplace la session.
+      FirebaseApp? secondaryApp;
+      User? createdUser;
+      try {
+        final primary = Firebase.app();
+        secondaryApp = await Firebase.initializeApp(
+          name: 'SecondaryUserCreationApp',
+          options: primary.options,
+        );
+        final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
+        final userCredential =
+            await secondaryAuth.createUserWithEmailAndPassword(
+          email: email,
+          password: tempPassword,
+        );
+        createdUser = userCredential.user;
+        if (createdUser == null) {
+          print('❌ Erreur: user credential null sur secondaire');
+          await secondaryApp.delete();
+          return false;
+        }
+        print(
+            '✅ Utilisateur Firebase (app secondaire) créé: ${createdUser.uid}');
+      } catch (e) {
+        print(
+            '❌ Echec création via app secondaire, tentative fallback direct: $e');
+        // Fallback (gardera la session -> pas idéal mais on ne bloque pas tout)
+        final userCredential = await _auth.createUserWithEmailAndPassword(
+          email: email,
+          password: tempPassword,
+        );
+        createdUser = userCredential.user;
+        if (createdUser == null) {
+          print('❌ Erreur: user credential null (fallback)');
+          return false;
+        }
       }
-
-      print('✅ Utilisateur Firebase Auth créé: ${user.uid}');
 
       // Créer le document utilisateur dans Firestore
       final appUser = AppUser(
-        id: user.uid,
+        id: createdUser.uid,
         email: email,
         nom: nom,
         prenom: prenom,
@@ -250,12 +282,16 @@ class UserManagementService extends GetxService {
       );
 
       // Utiliser l'uid comme ID du document
-      await _usersCollection.doc(user.uid).set(appUser.toFirestore());
+      await _usersCollection.doc(createdUser.uid).set(appUser.toFirestore());
       print('✅ Document Firestore créé');
 
-      // Envoyer l'email de vérification Firebase (par défaut)
-      await user.sendEmailVerification();
-      print('✅ Email de vérification Firebase envoyé');
+      // Envoyer l'email de vérification Firebase (si possible sur createdUser)
+      try {
+        await createdUser.sendEmailVerification();
+        print('✅ Email de vérification Firebase envoyé (createdUser)');
+      } catch (e) {
+        print('⚠️ Impossible d\'envoyer l\'email de vérification Firebase: $e');
+      }
 
       // Envoyer l'email de bienvenue personnalisé avec les informations de connexion
       final emailSent = await _emailService.sendWelcomeEmailLocal(
@@ -275,7 +311,7 @@ class UserManagementService extends GetxService {
 
       // Enregistrer l'action
       await _logUserAction(
-        userId: user.uid,
+        userId: createdUser.uid,
         type: UserActionType.created,
         description:
             'Utilisateur créé par ${_userSession.email}. Email de confirmation envoyé.',
@@ -290,6 +326,16 @@ class UserManagementService extends GetxService {
         userName: '$prenom $nom',
         tempPassword: tempPassword,
       );
+
+      // Nettoyer l'app secondaire si utilisée
+      if (secondaryApp != null) {
+        try {
+          await secondaryApp.delete();
+          print('🧹 App secondaire supprimée');
+        } catch (e) {
+          print('⚠️ Échec suppression app secondaire: $e');
+        }
+      }
 
       return true;
     } catch (e) {
@@ -470,9 +516,24 @@ class UserManagementService extends GetxService {
   /// Renvoyer l'email de vérification
   Future<void> _resendVerificationEmail(String email) async {
     try {
-      final user = _auth.currentUser;
-      if (user != null && user.email == email) {
-        await user.sendEmailVerification();
+      // Cooldown basé sur l'email
+      final last = _lastVerificationResend[email];
+      if (last != null && DateTime.now().difference(last) < _resendCooldown) {
+        Get.snackbar(
+          'Patience',
+          'Veuillez réessayer dans ${(_resendCooldown - DateTime.now().difference(last)).inSeconds}s',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.orange[100],
+          colorText: Colors.orange[900],
+        );
+        return;
+      }
+
+      // 1) Tenter via Firebase (impersonation avec app secondaire + custom token)
+      final sent = await _resendVerificationEmailViaFirebase(email: email);
+
+      if (sent) {
+        _lastVerificationResend[email] = DateTime.now();
         Get.back();
         Get.snackbar(
           'Email renvoyé',
@@ -480,16 +541,34 @@ class UserManagementService extends GetxService {
           snackPosition: SnackPosition.TOP,
           backgroundColor: Colors.green[100],
           colorText: Colors.green[900],
-          duration: Duration(seconds: 4),
+          duration: const Duration(seconds: 4),
         );
       } else {
-        Get.snackbar(
-          'Erreur',
-          'Impossible de renvoyer l\'email de vérification',
-          snackPosition: SnackPosition.TOP,
-          backgroundColor: Colors.red[100],
-          colorText: Colors.red[900],
+        // 2) Fallback local (simulation / provider externe si configuré)
+        final fallback = await _emailService.sendCustomVerificationEmailLocal(
+          userEmail: email,
+          userName: email,
         );
+        if (fallback) {
+          _lastVerificationResend[email] = DateTime.now();
+          Get.back();
+          Get.snackbar(
+            'Email renvoyé (fallback)',
+            'Un email de vérification a été renvoyé à $email (méthode alternative)',
+            snackPosition: SnackPosition.TOP,
+            backgroundColor: Colors.green[100],
+            colorText: Colors.green[900],
+            duration: const Duration(seconds: 4),
+          );
+        } else {
+          Get.snackbar(
+            'Erreur',
+            'Impossible de renvoyer l\'email de vérification',
+            snackPosition: SnackPosition.TOP,
+            backgroundColor: Colors.red[100],
+            colorText: Colors.red[900],
+          );
+        }
       }
     } catch (e) {
       Get.back();
@@ -500,6 +579,61 @@ class UserManagementService extends GetxService {
         backgroundColor: Colors.red[100],
         colorText: Colors.red[900],
       );
+    }
+  }
+
+  /// Renvoi d'email via Firebase Auth pour un utilisateur cible
+  /// Stratégie: Cloud Function onCall -> custom token pour uid/email ->
+  /// app secondaire -> signInWithCustomToken -> sendEmailVerification -> cleanup
+  Future<bool> _resendVerificationEmailViaFirebase(
+      {String? email, String? uid}) async {
+    try {
+      final callable = FirebaseFunctions.instanceFor(region: 'africa-south1')
+          .httpsCallable('issueCustomTokenForUser');
+      final payload = <String, dynamic>{};
+      if (email != null) payload['email'] = email;
+      if (uid != null) payload['uid'] = uid;
+      final result = await callable.call(payload);
+      final data = result.data as Map?;
+      final token = data != null ? data['token'] as String? : null;
+      if (token == null || token.isEmpty) return false;
+
+      // App secondaire pour ne pas toucher la session admin
+      final primary = Firebase.app();
+      final tempAppName = 'SecondaryEmailVerifyApp';
+      FirebaseApp? secondaryApp;
+      try {
+        secondaryApp = await Firebase.initializeApp(
+          name: tempAppName,
+          options: primary.options,
+        );
+      } catch (_) {
+        // Si déjà existante
+        try {
+          secondaryApp = Firebase.app(tempAppName);
+        } catch (e) {
+          rethrow;
+        }
+      }
+      final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp!);
+      final cred = await secondaryAuth.signInWithCustomToken(token);
+      final target = cred.user ?? secondaryAuth.currentUser;
+      if (target == null) {
+        await secondaryApp.delete();
+        return false;
+      }
+
+      // ActionCodeSettings optionnels (laisser défaut si non configuré)
+      try {
+        await target.sendEmailVerification();
+      } finally {
+        await secondaryAuth.signOut();
+        await secondaryApp.delete();
+      }
+      return true;
+    } catch (e) {
+      print('⚠️ Resend via Firebase failed: $e');
+      return false;
     }
   }
 
@@ -970,22 +1104,30 @@ class UserManagementService extends GetxService {
       final user = await getUserById(userId);
       if (user == null) return false;
 
-      // Trouver l'utilisateur Firebase par email
-      final methods = await _auth.fetchSignInMethodsForEmail(user.email);
-      if (methods.isEmpty) {
-        print('Utilisateur Firebase non trouvé pour l\'email: ${user.email}');
+      // Cooldown par userId
+      final last = _lastVerificationResend[userId];
+      if (last != null && DateTime.now().difference(last) < _resendCooldown) {
+        final remaining = _resendCooldown - DateTime.now().difference(last);
+        print(
+            '⏳ Cooldown actif pour ${user.email}, ${remaining.inSeconds}s restants');
         return false;
       }
 
-      // Pour renvoyer l'email, nous devons nous connecter temporairement comme l'utilisateur
-      // Ceci est une limitation de Firebase Auth - seul l'utilisateur connecté peut renvoyer son email
-      // Nous allons utiliser le service d'email personnalisé à la place
-      final emailSent = await _emailService.sendCustomVerificationEmailLocal(
-        userEmail: user.email,
-        userName: user.nomComplet,
-      );
+      // D'abord via Firebase impersonation
+      bool emailSent = await _resendVerificationEmailViaFirebase(uid: user.id);
+      if (!emailSent) {
+        // Fallback local
+        emailSent = await _emailService.sendCustomVerificationEmailLocal(
+          userEmail: user.email,
+          userName: user.nomComplet,
+        );
+      }
 
       if (emailSent) {
+        _lastVerificationResend[userId] = DateTime.now();
+        await _usersCollection.doc(userId).update({
+          'lastVerificationEmailSentAt': FieldValue.serverTimestamp(),
+        });
         await _logUserAction(
           userId: userId,
           type: UserActionType.emailResent,
@@ -993,7 +1135,6 @@ class UserManagementService extends GetxService {
               'Email de vérification renvoyé par ${_userSession.email}',
         );
       }
-
       return emailSent;
     } catch (e) {
       print('Erreur lors du renvoi de l\'email de vérification: $e');

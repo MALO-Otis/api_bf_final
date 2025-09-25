@@ -153,6 +153,30 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.4.8"
+  cloud_functions:
+    dependency: "direct main"
+    description:
+      name: cloud_functions
+      sha256: "9b9ba945618d5b2bd4adfa9be5dd0aef66948edd77c4775233959ff264ff4ca8"
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.6.0"
+  cloud_functions_platform_interface:
+    dependency: transitive
+    description:
+      name: cloud_functions_platform_interface
+      sha256: b590368ecc1ea3a01d79884acc7e402ea5ae8984e164e31a282629ec4a0853db
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.8.0"
+  cloud_functions_web:
+    dependency: transitive
+    description:
+      name: cloud_functions_web
+      sha256: d0c7d313a31937850b337d56f695b54ba282b6c6b0cd96e1c1431fb1dbb3cd6a
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.11.3"
   cloudinary_public:
     dependency: "direct main"
     description:
@@ -314,7 +338,7 @@ packages:
     source: hosted
     version: "0.9.3+4"
   firebase_app_check:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: firebase_app_check
       sha256: a1a5255b8d19e22f2d7e9ff1a1138268cd74d2c12b31dcb487612a371d7a21e9
@@ -385,14 +409,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.24.0"
-  firebase_data_connect:
-    dependency: "direct main"
-    description:
-      name: firebase_data_connect
-      sha256: e9866cffa2e0e9a069481cb5729fa501a1461d72e8f310a12ad5b853e938b01e
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.1.0"
   firebase_messaging:
     dependency: "direct main"
     description:
@@ -576,14 +592,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.7.2"
-  google_identity_services_web:
-    dependency: transitive
-    description:
-      name: google_identity_services_web
-      sha256: "5d187c46dc59e02646e10fe82665fc3884a9b71bc1c90c2b8b749316d33ee454"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.3.3+1"
   google_maps:
     dependency: transitive
     description:
@@ -632,14 +640,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.5.12"
-  googleapis_auth:
-    dependency: transitive
-    description:
-      name: googleapis_auth
-      sha256: befd71383a955535060acde8792e7efc11d2fccd03dd1d3ec434e85b68775938
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.6.0"
   gotrue:
     dependency: transitive
     description:
@@ -648,14 +648,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.12.0"
-  grpc:
-    dependency: transitive
-    description:
-      name: grpc
-      sha256: e93ee3bce45c134bf44e9728119102358c7cd69de7832d9a874e2e74eb8cab40
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.2.4"
   gtk:
     dependency: transitive
     description:
@@ -680,14 +672,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.0"
-  http2:
-    dependency: transitive
-    description:
-      name: http2
-      sha256: "382d3aefc5bd6dc68c6b892d7664f29b5beb3251611ae946a98d35158a82bbfa"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.3.1"
   http_parser:
     dependency: transitive
     description:
@@ -1056,14 +1040,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.0.4"
-  protobuf:
-    dependency: transitive
-    description:
-      name: protobuf
-      sha256: "68645b24e0716782e58948f8467fd42a880f255096a821f9e7d0ec625b00c84d"
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.1.0"
   pub_semver:
     dependency: transitive
     description:
@@ -1390,7 +1366,7 @@ packages:
     source: hosted
     version: "3.1.4"
   uuid:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: uuid
       sha256: a5be9ef6618a7ac1e964353ef476418026db906c4facdedaa299b7a2e71690ff

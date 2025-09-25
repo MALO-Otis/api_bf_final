@@ -1,8 +1,8 @@
-import 'dart:convert';
+import 'dart:async';
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
+import '../services/place_search_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class LocationResult {
@@ -39,6 +39,12 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   double? _altitude;
   bool loading = true;
   String? error;
+  bool _pendingAnimate =
+      false; // Indique que nous devons animer la caméra quand le contrôleur sera prêt
+  static const LatLng defaultCameraTarget = LatLng(12.252356, -2.325412);
+
+  // Anciennes bornes spécifiques Burkina supprimées (recherche désormais mondiale)
+  // On conserve la possibilité future d'ajouter un mode restreint via un flag.
 
   // Nouvelles fonctionnalités
   double _zoneRadius = 100.0; // Rayon initial en mètres
@@ -46,10 +52,16 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _searchResults = [];
   bool _isSearching = false;
+  late final PlaceSearchService _placeSearchService;
+  static const String _googleApiKey =
+      'AIzaSyBEkGG3-e3pGzTmtYkhs94sJBSZRH2Tn60'; // RESTRICTION NECESSAIRE
+
+  Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
+    _placeSearchService = PlaceSearchService(_googleApiKey);
     _init();
   }
 
@@ -60,17 +72,16 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   }
 
   Future<void> _init() async {
+    // Position par défaut: Burkina (Koudougou approximatif) si aucune info disponible, pour éviter (0,0)
+    const LatLng bfFallback = LatLng(12.252356, -2.325412);
+    final LatLng defaultPosition = LatLng(
+      widget.initialLat ?? bfFallback.latitude,
+      widget.initialLng ?? bfFallback.longitude,
+    );
     try {
-      // Position par défaut (si pas d'initial ou si geolocation échoue)
-      LatLng defaultPosition = LatLng(
-        widget.initialLat ?? 5.3364, // Abidjan par défaut
-        widget.initialLng ?? -4.0267,
-      );
-
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         _marker = defaultPosition;
-        error = null; // Pas d'erreur, on utilise la position par défaut
       } else {
         LocationPermission perm = await Geolocator.checkPermission();
         if (perm == LocationPermission.denied) {
@@ -79,33 +90,40 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
         if (perm == LocationPermission.deniedForever ||
             perm == LocationPermission.denied) {
           _marker = defaultPosition;
-          error = null; // Pas d'erreur bloquante
         } else {
-          try {
-            Position pos = await Geolocator.getCurrentPosition(
-                desiredAccuracy: LocationAccuracy.high);
-            _marker = LatLng(widget.initialLat ?? pos.latitude,
-                widget.initialLng ?? pos.longitude);
-            _accuracy = pos.accuracy;
-            _altitude = pos.altitude;
-          } catch (e) {
-            // Si geolocation échoue, utiliser position par défaut
+          // 1. Position rapide: dernière position connue
+          final last = await Geolocator.getLastKnownPosition();
+          if (last != null) {
+            _marker = LatLng(widget.initialLat ?? last.latitude,
+                widget.initialLng ?? last.longitude);
+            _accuracy = last.accuracy;
+            _altitude = last.altitude;
+          } else {
             _marker = defaultPosition;
           }
+          // Animation différée si contrôleur pas prêt
+          _pendingAnimate = true;
+          // 2. Raffinement haute précision
+          _refreshHighAccuracyPosition(animate: true);
         }
       }
     } catch (e) {
-      // En cas d'erreur totale, position par défaut
-      _marker = LatLng(
-        widget.initialLat ?? 5.3364,
-        widget.initialLng ?? -4.0267,
-      );
-      error = null;
+      _marker = defaultPosition;
+      error = null; // on garde silencieux
     }
     if (mounted) setState(() => loading = false);
+    // Sécurité: si jamais (0,0), rebasculer sur fallback
+    if (_marker != null &&
+        _marker!.latitude.abs() < 0.0001 &&
+        _marker!.longitude.abs() < 0.0001) {
+      setState(() => _marker = bfFallback);
+    }
   }
 
+  // (normalize helper removed; no longer used)
+
   void _onMapTap(LatLng latLng) {
+    // Sélection libre mondiale désormais
     setState(() {
       _marker = latLng;
       _updateCoordinatesRealTime(latLng);
@@ -118,53 +136,100 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   }
 
   Future<void> _searchLocation(String query) async {
-    if (query.trim().isEmpty) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
       setState(() {
         _searchResults = [];
         _isSearching = false;
       });
       return;
     }
-
     setState(() => _isSearching = true);
-
-    try {
-      // Utilisation de Nominatim (OpenStreetMap) pour éviter les frais Google Places API
-      final encodedQuery = Uri.encodeComponent(query);
-      final url =
-          'https://nominatim.openstreetmap.org/search?q=$encodedQuery&format=json&limit=5&addressdetails=1';
-
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        setState(() {
-          _searchResults = data
-              .map((item) => {
-                    'display_name': item['display_name'],
-                    'lat': double.parse(item['lat']),
-                    'lon': double.parse(item['lon']),
-                  })
-              .toList();
-          _isSearching = false;
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _searchResults = [];
-        _isSearching = false;
-      });
-      Get.snackbar('Erreur', 'Impossible de rechercher cette localisation');
+    // 1) Google Autocomplete (léger)
+    List<PlaceAutocompleteResult> places =
+        await _placeSearchService.autocomplete(trimmed,
+            biasLat: _marker?.latitude, biasLng: _marker?.longitude);
+    // 2) Si vide -> Google Text Search (renvoie aussi des lat/lng)
+    if (places.isEmpty) {
+      places = await _placeSearchService.textSearch(trimmed,
+          biasLat: _marker?.latitude, biasLng: _marker?.longitude);
+    }
+    // 3) Si encore vide -> Nominatim fallback (global)
+    if (places.isEmpty) {
+      places = await _placeSearchService.fallbackNominatim(trimmed);
+    }
+    if (!mounted) return;
+    setState(() {
+      _searchResults = places
+          .map((p) => {
+                'id': p.placeId,
+                'primary': p.primaryText,
+                'secondary': p.secondaryText,
+                'full': p.fullText,
+                'lat': p.lat, // présent si fallback nominatim
+                'lon': p.lng,
+              })
+          .toList();
+      _isSearching = false;
+    });
+    if (places.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Aucun résultat.'),
+        duration: Duration(seconds: 3),
+      ));
     }
   }
 
   void _selectSearchResult(Map<String, dynamic> result) {
-    final latLng = LatLng(result['lat'], result['lon']);
-    setState(() {
-      _marker = latLng;
-      _searchResults = [];
-      _searchController.clear();
+    // Si déjà lat/lon (fallback OSM) on utilise direct.
+    if (result['lat'] != null && result['lon'] != null) {
+      final latLng = LatLng(result['lat'], result['lon']);
+      setState(() {
+        _marker = latLng;
+        _searchResults = [];
+        _searchController.clear();
+      });
+      _mapController?.animateCamera(CameraUpdate.newLatLng(latLng));
+      return;
+    }
+    // Sinon aller chercher les détails Google Places
+    final placeId = result['id'] as String?;
+    if (placeId == null || placeId.isEmpty) return;
+    _placeSearchService.details(placeId).then((details) {
+      if (details == null || details.lat == null || details.lng == null) return;
+      if (!mounted) return;
+      final target = LatLng(details.lat!, details.lng!);
+      setState(() {
+        _marker = target;
+        _searchResults = [];
+        _searchController.clear();
+      });
+      _mapController?.animateCamera(CameraUpdate.newLatLng(target));
     });
-    _mapController?.animateCamera(CameraUpdate.newLatLng(latLng));
+  }
+
+  Future<void> _refreshHighAccuracyPosition({bool animate = false}) async {
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+      final newLatLng = LatLng(widget.initialLat ?? pos.latitude,
+          widget.initialLng ?? pos.longitude);
+      if (!mounted) return;
+      setState(() {
+        _marker = newLatLng;
+        _accuracy = pos.accuracy;
+        _altitude = pos.altitude;
+      });
+      if (animate) {
+        if (_mapController != null) {
+          _mapController!.animateCamera(CameraUpdate.newLatLng(newLatLng));
+        } else {
+          _pendingAnimate = true; // animera quand contrôleur prêt
+        }
+      }
+    } catch (e) {
+      // silencieux
+    }
   }
 
   void _confirm() {
@@ -235,11 +300,18 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                               ),
                             ),
                             onChanged: (value) {
-                              if (value.length > 2) {
-                                _searchLocation(value);
-                              } else {
-                                setState(() => _searchResults = []);
+                              _searchDebounce?.cancel();
+                              if (value.trim().length < 3) {
+                                setState(() {
+                                  _searchResults = [];
+                                  _isSearching = false;
+                                });
+                                return;
                               }
+                              _searchDebounce = Timer(
+                                const Duration(milliseconds: 450),
+                                () => _searchLocation(value),
+                              );
                             },
                           ),
                           if (_searchResults.isNotEmpty)
@@ -260,17 +332,30 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                               child: ListView.builder(
                                 itemCount: _searchResults.length,
                                 itemBuilder: (context, index) {
-                                  final result = _searchResults[index];
+                                  final r = _searchResults[index];
                                   return ListTile(
-                                    title: Text(
-                                      result['display_name'],
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 14),
-                                    ),
                                     leading:
                                         const Icon(Icons.location_on, size: 20),
-                                    onTap: () => _selectSearchResult(result),
+                                    title: Text(
+                                      r['primary'] ?? r['full'] ?? '',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                    subtitle: (r['secondary'] != null &&
+                                            (r['secondary'] as String)
+                                                .isNotEmpty)
+                                        ? Text(
+                                            r['secondary'],
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style:
+                                                const TextStyle(fontSize: 12),
+                                          )
+                                        : null,
+                                    onTap: () => _selectSearchResult(r),
                                   );
                                 },
                               ),
@@ -305,12 +390,29 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                     Expanded(
                       child: GoogleMap(
                         initialCameraPosition: CameraPosition(
-                          target: _marker ?? const LatLng(0, 0),
+                          target: (_marker == null ||
+                                  (_marker!.latitude.abs() < 0.0001 &&
+                                      _marker!.longitude.abs() < 0.0001))
+                              ? defaultCameraTarget
+                              : _marker!,
                           zoom: 16,
                         ),
                         myLocationEnabled: true,
                         myLocationButtonEnabled: true,
-                        onMapCreated: (c) => _mapController = c,
+                        onMapCreated: (c) {
+                          _mapController = c;
+                          // Si nous avons une marque et animation en attente -> effectuer
+                          if (_marker != null && _pendingAnimate) {
+                            _pendingAnimate = false;
+                            c.animateCamera(CameraUpdate.newLatLng(_marker!));
+                          } else if (_marker != null) {
+                            // Always ensure camera matches marker at creation
+                            c.moveCamera(CameraUpdate.newLatLng(_marker!));
+                          } else {
+                            // Essayer de récupérer la localisation et centrer automatiquement
+                            _refreshHighAccuracyPosition(animate: true);
+                          }
+                        },
                         onTap: _onMapTap,
                         markers: _marker != null
                             ? {

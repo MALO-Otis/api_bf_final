@@ -5,17 +5,20 @@
  */
 
 import { setGlobalOptions } from "firebase-functions/v2";
+import { onCall } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
+import { getAuth } from "firebase-admin/auth";
 
 // Initialize Admin SDK once
 initializeApp();
 const db = getFirestore();
 const messaging = getMessaging();
+const auth = getAuth();
 
 // Use same region as Firestore to reduce latency
 setGlobalOptions({ region: "africa-south1" });
@@ -244,3 +247,39 @@ export const pushOnNotificationCreated = onDocumentCreated(
         });
     }
 );
+
+// ============ Admin: issue custom token to resend email verification ============
+export const issueCustomTokenForUser = onCall({ region: "africa-south1" }, async (request) => {
+    try {
+        const callerUid = request.auth?.uid;
+        if (!callerUid) {
+            throw new Error("UNAUTHENTICATED");
+        }
+        // Verify caller is Admin by checking Firestore user doc
+        const callerDoc = await db.collection("utilisateurs").doc(callerUid).get();
+        const callerData = callerDoc.data();
+        if (!callerData || (callerData["role"] as string) !== "Admin") {
+            throw new Error("PERMISSION_DENIED");
+        }
+
+        const email: string | undefined = request.data?.email;
+        const uid: string | undefined = request.data?.uid;
+        if (!email && !uid) {
+            throw new Error("INVALID_ARGUMENT");
+        }
+        let targetUid = uid;
+        if (!targetUid && email) {
+            const userRecord = await auth.getUserByEmail(email);
+            targetUid = userRecord.uid;
+        }
+        if (!targetUid) {
+            throw new Error("NOT_FOUND");
+        }
+        const token = await auth.createCustomToken(targetUid, { reason: "emailVerificationResend" });
+        return { token };
+    } catch (err: any) {
+        // Map errors to structured responses
+        const code = (err?.message as string) ?? "UNKNOWN";
+        return { error: code };
+    }
+});

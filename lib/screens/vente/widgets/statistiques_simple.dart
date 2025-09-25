@@ -1,12 +1,11 @@
+import 'package:intl/intl.dart';
+import 'package:flutter/material.dart';
+import '../models/commercial_models.dart';
+import '../services/commercial_service.dart';
+
 /// 📊 ONGLET STATISTIQUES SIMPLIFIÉ
 ///
 /// Version robuste sans complexité GetX pour éviter les erreurs
-
-import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-
-import '../models/commercial_models.dart';
-import '../services/commercial_service.dart';
 
 class StatistiquesSimple extends StatefulWidget {
   final CommercialService commercialService;
@@ -155,6 +154,7 @@ class _StatistiquesSimpleState extends State<StatistiquesSimple> {
 
   Widget _buildStatisticsView() {
     return SingleChildScrollView(
+      primary: false, // évite de réutiliser le PrimaryScrollController
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

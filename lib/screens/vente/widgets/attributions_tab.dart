@@ -610,25 +610,31 @@ class _AttributionsTabState extends State<AttributionsTab>
   }
 
   Widget _buildStatutFilter() {
-    return Obx(() => DropdownButtonFormField<String>(
-          value: _currentStatutFilter.value,
-          decoration: InputDecoration(
-            labelText: 'Statut du lot',
-            prefixIcon: const Icon(Icons.flag, size: 18),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          ),
-          items: const [
-            DropdownMenuItem(value: 'all', child: Text('Tous statuts')),
-            DropdownMenuItem(
-                value: 'partielAttribue',
-                child: Text('Partiellement attribué')),
-            DropdownMenuItem(
-                value: 'completAttribue', child: Text('Complètement attribué')),
-          ],
-          onChanged: (value) => _currentStatutFilter.value = value ?? 'all',
-        ));
+    return LayoutBuilder(builder: (context, constraints) {
+      final isTight = constraints.maxWidth < 220; // zone compacte mobile
+      return Obx(() => DropdownButtonFormField<String>(
+            value: _currentStatutFilter.value,
+            isDense: true,
+            iconSize: isTight ? 18 : 24,
+            menuMaxHeight: 320,
+            decoration: InputDecoration(
+              labelText: isTight ? 'Statut' : 'Statut du lot',
+              prefixIcon: const Icon(Icons.flag, size: 16),
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              contentPadding: EdgeInsets.symmetric(
+                  horizontal: 10, vertical: isTight ? 6 : 8),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'all', child: Text('Tous')),
+              DropdownMenuItem(
+                  value: 'partielAttribue', child: Text('Partiel attribué')),
+              DropdownMenuItem(
+                  value: 'completAttribue', child: Text('Complet attribué')),
+            ],
+            onChanged: (value) => _currentStatutFilter.value = value ?? 'all',
+          ));
+    });
   }
 
   Widget _buildClearFiltersButton() {
@@ -682,6 +688,7 @@ class _AttributionsTabState extends State<AttributionsTab>
     }
 
     return ListView.builder(
+      primary: false, // évite le partage du PrimaryScrollController
       padding: const EdgeInsets.all(16),
       itemCount: _attributionsFiltrees.length,
       itemBuilder: (context, index) {
@@ -700,6 +707,7 @@ class _AttributionsTabState extends State<AttributionsTab>
     }
 
     return ListView.builder(
+      primary: false,
       padding: const EdgeInsets.all(16),
       itemCount: _lotsAvecAttributions.length,
       itemBuilder: (context, index) {

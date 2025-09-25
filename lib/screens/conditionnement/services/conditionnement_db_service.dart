@@ -1,14 +1,13 @@
+import 'package:get/get.dart';
+import '../conditionnement_models.dart';
+import 'package:flutter/foundation.dart';
+import '../../../authentication/user_session.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 /// 🎯 SERVICE CONDITIONNEMENT CONNECTÉ À LA BASE DE DONNÉES
 ///
 /// Service optimisé pour récupérer les lots filtrés depuis la vraie structure Firestore
 /// et gérer le conditionnement avec filtrage par site selon le rôle utilisateur
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
-import 'package:get/get.dart';
-
-import '../../../authentication/user_session.dart';
-import '../conditionnement_models.dart';
 
 /// Service principal pour le conditionnement connecté à la DB
 class ConditionnementDbService extends GetxService {
@@ -31,6 +30,13 @@ class ConditionnementDbService extends GetxService {
   final RxList<ConditionnementData> _conditionnements =
       <ConditionnementData>[].obs;
 
+  /// Nouveaux états pour suivi d'enregistrement
+  final RxBool isSaving = false.obs; // indique un enregistrement en cours
+  final RxnString lastSaveId =
+      RxnString(); // id du dernier conditionnement enregistré
+  final RxnString lastSaveError = RxnString(); // erreur éventuelle
+  void Function(String id)? onConditionnementSaved; // callback externe UI
+
   // Getters
   bool get isLoading => _isLoading.value;
   List<LotFiltre> get lotsDisponibles => _lotsDisponibles;
@@ -42,14 +48,22 @@ class ConditionnementDbService extends GetxService {
 
     // 🔥 Décaler les chargements pour éviter les erreurs de build
     Future.microtask(() async {
-      await _loadLotsDisponibles();
-      await _loadConditionnements();
+      // Chargement unifié en parallèle pour éviter le clignotement des stats
+      _isLoading.value = true;
+      try {
+        await Future.wait([
+          _loadLotsDisponibles(),
+          _loadConditionnements(),
+        ]);
+        _applySafetyPurge();
+      } finally {
+        _isLoading.value = false;
+      }
     });
   }
 
   /// 🔄 CHARGEMENT DES LOTS FILTRÉS DISPONIBLES POUR CONDITIONNEMENT
   Future<void> _loadLotsDisponibles() async {
-    _isLoading.value = true;
     try {
       debugPrint('🔄 [ConditionnementDB] Chargement des lots filtrés...');
 
@@ -192,17 +206,20 @@ class ConditionnementDbService extends GetxService {
       }
 
       // 🔥 FILTRER SEULEMENT LES LOTS NON CONDITIONNÉS
-      final lotsNonConditionnes =
-          lots.where((lot) => lot.peutEtreConditionne).toList();
+      final idsConditionnesExistants =
+          _conditionnements.map((c) => c.lotOrigine.id).toSet();
+      final lotsNonConditionnes = lots
+          .where((lot) =>
+              lot.peutEtreConditionne &&
+              !idsConditionnesExistants.contains(lot.id))
+          .toList();
 
       _lotsDisponibles.value = lotsNonConditionnes;
       debugPrint(
           '✅ [ConditionnementDB] ${lots.length} lots filtrés trouvés, ${lotsNonConditionnes.length} disponibles pour conditionnement');
     } catch (e) {
       debugPrint('❌ [ConditionnementDB] Erreur chargement lots: $e');
-    } finally {
-      _isLoading.value = false;
-    }
+    } finally {}
   }
 
   /// 🔄 CHARGEMENT DES CONDITIONNEMENTS EXISTANTS
@@ -359,8 +376,29 @@ class ConditionnementDbService extends GetxService {
 
   /// 🔄 RECHARGEMENT FORCÉ DES DONNÉES
   Future<void> refreshData() async {
-    await _loadLotsDisponibles();
-    await _loadConditionnements();
+    _isLoading.value = true;
+    try {
+      await Future.wait([
+        _loadLotsDisponibles(),
+        _loadConditionnements(),
+      ]);
+      _applySafetyPurge();
+    } finally {
+      _isLoading.value = false;
+    }
+  }
+
+  /// 🧹 Purge centralisée pour retirer les lots déjà conditionnés après chargements parallèles
+  void _applySafetyPurge() {
+    // Purge de sécurité : retirer tout lot déjà conditionné
+    final idsConditionnes =
+        _conditionnements.map((c) => c.lotOrigine.id).toSet();
+    final before = _lotsDisponibles.length;
+    _lotsDisponibles.removeWhere((l) => idsConditionnes.contains(l.id));
+    if (before != _lotsDisponibles.length) {
+      debugPrint(
+          '🧹 [ConditionnementDB] Purge lots conditionnés fantômes: ${before - _lotsDisponibles.length} retirés');
+    }
   }
 
   /// 🏢 DÉTERMINATION DES SITES AUTORISÉS SELON LE RÔLE
@@ -381,6 +419,12 @@ class ConditionnementDbService extends GetxService {
     // Autres rôles : pas d'accès
     return [];
   }
+
+  /// Accès public (lecture) aux sites autorisés
+  List<String> get sitesAutorises => _getSitesAutorises();
+
+  /// Nombre global de lots disponibles (tous sites si admin, sinon filtrés) sans ceux déjà conditionnés
+  int get totalLotsDisponiblesGlobal => _lotsDisponibles.length;
 
   /// 🔄 CONVERSION DES FILTERED_PRODUCTS EN LOT FILTRÉ
   Future<LotFiltre?> _convertirFilteredProductsEnLot(
@@ -687,6 +731,8 @@ class ConditionnementDbService extends GetxService {
   Future<String> enregistrerConditionnement(
       ConditionnementData conditionnement) async {
     try {
+      isSaving.value = true;
+      lastSaveError.value = null;
       debugPrint('🔄 [ConditionnementDB] Enregistrement du conditionnement...');
 
       // Validation stricte
@@ -766,9 +812,27 @@ class ConditionnementDbService extends GetxService {
 
       debugPrint(
           '✅ [ConditionnementDB] Conditionnement enregistré avec ID: ${conditionnementRef.id}');
+
+      // Retirer proactivement le lot correspondant de la liste locale (si présent)
+      _lotsDisponibles
+          .removeWhere((l) => l.id == conditionnement.lotOrigine.id);
+
+      // Notifier UI
+      lastSaveId.value = conditionnementRef.id;
+      isSaving.value = false;
+      if (onConditionnementSaved != null) {
+        try {
+          onConditionnementSaved!(conditionnementRef.id);
+        } catch (e) {
+          debugPrint(
+              '⚠️ [ConditionnementDB] Erreur callback onConditionnementSaved: $e');
+        }
+      }
       return conditionnementRef.id;
     } catch (e) {
       debugPrint('❌ [ConditionnementDB] Erreur enregistrement: $e');
+      lastSaveError.value = e.toString();
+      isSaving.value = false;
       rethrow;
     }
   }

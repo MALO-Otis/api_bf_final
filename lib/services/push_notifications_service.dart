@@ -5,7 +5,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:apisavana_gestion/authentication/user_session.dart';
 
-
 // Top-level handler for background messages (required by firebase_messaging)
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -15,7 +14,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 class PushNotificationsService {
   PushNotificationsService._();
   static final PushNotificationsService instance = PushNotificationsService._();
-  static const String _webVapidKey = String.fromEnvironment('FIREBASE_WEB_VAPID_KEY');
+  static const String _webVapidKey =
+      String.fromEnvironment('FIREBASE_WEB_VAPID_KEY');
 
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   bool _initialized = false;
@@ -25,8 +25,8 @@ class PushNotificationsService {
     // For other platforms (Windows, Linux, Fuchsia), gracefully skip.
     if (!kIsWeb &&
         !(defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS ||
-          defaultTargetPlatform == TargetPlatform.macOS)) {
+            defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.macOS)) {
       return;
     }
     if (_initialized) return;
@@ -104,15 +104,21 @@ class PushNotificationsService {
 
   Future<void> _saveToken(String token) async {
     try {
-      final session = Get.isRegistered<UserSession>() ? Get.find<UserSession>() : null;
+      final session =
+          Get.isRegistered<UserSession>() ? Get.find<UserSession>() : null;
       final uid = session?.uid ?? 'anonymous';
       final site = session?.site ?? '';
+      final role = session?.role ?? '';
 
       final docId = _tokenDocId(token);
-      await FirebaseFirestore.instance.collection('device_tokens').doc(docId).set({
+      await FirebaseFirestore.instance
+          .collection('device_tokens')
+          .doc(docId)
+          .set({
         'token': token,
         'uid': uid,
         'site': site,
+        'role': role,
         'platform': _platformLabel(),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -139,6 +145,36 @@ class PushNotificationsService {
         return 'linux';
       case TargetPlatform.fuchsia:
         return 'fuchsia';
+    }
+  }
+
+  /// Crée une notification Firestore visible par les administrateurs.
+  /// Usage: après création d'une attribution.
+  Future<void> createAdminAttributionNotification({
+    required String attributionId,
+    required String lotNumero,
+    required double quantiteAttribuee,
+    required String commercialNom,
+    required String site,
+  }) async {
+    try {
+      final now = DateTime.now();
+      await FirebaseFirestore.instance.collection('admin_notifications').add({
+        'type': 'attribution_created',
+        'attributionId': attributionId,
+        'lot': lotNumero,
+        'quantite': quantiteAttribuee,
+        'commercial': commercialNom,
+        'site': site,
+        'readBy': <String>[],
+        'createdAt': now.toIso8601String(),
+        'serverTime': FieldValue.serverTimestamp(),
+        'message':
+            'Nouvelle attribution de $quantiteAttribuee kg sur lot $lotNumero pour $commercialNom',
+      });
+    } catch (e) {
+      debugPrint(
+          '❌ [PushNotificationsService] Erreur creation notif admin: $e');
     }
   }
 }

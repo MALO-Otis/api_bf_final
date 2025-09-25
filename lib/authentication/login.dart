@@ -1,8 +1,8 @@
-import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
+import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:get/get.dart';
+import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
 import 'package:apisavana_gestion/authentication/user_session.dart';
 
 class LoginPage extends StatefulWidget {
@@ -73,8 +73,11 @@ class _LoginPageState extends State<LoginPage> {
         setState(() => isLoading = false);
         print(
             '🚫 Tentative de connexion avec email non vérifié: ${userCred.user!.email}');
-        _showEmailNotVerifiedDialog(userCred.user!);
-        await FirebaseAuth.instance.signOut(); // Déconnecte l'utilisateur
+        // IMPORTANT: Attendre la fermeture du dialogue avant de déconnecter,
+        // sinon sendEmailVerification() échoue avec no-current-user
+        await _showEmailNotVerifiedDialog(userCred.user!);
+        await FirebaseAuth.instance
+            .signOut(); // Déconnecte l'utilisateur après le dialogue
         return;
       }
 
@@ -136,8 +139,8 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  void _showEmailNotVerifiedDialog(User user) {
-    showDialog(
+  Future<void> _showEmailNotVerifiedDialog(User user) {
+    return showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {

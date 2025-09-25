@@ -1,16 +1,15 @@
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter/material.dart';
+import '../models/commercial_models.dart';
+import '../widgets/attribution_modal.dart';
+import '../services/commercial_service.dart';
+import '../widgets/attribution_multiple_modal.dart';
+
 /// 📦 ONGLET LOTS DISPONIBLES - AFFICHAGE UNIQUEMENT DES RESTES
 ///
 /// Interface optimisée montrant seulement les produits avec quantité restante > 0
 /// Masque automatiquement les lots complètement attribués
-
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:intl/intl.dart';
-
-import '../models/commercial_models.dart';
-import '../services/commercial_service.dart';
-import '../widgets/attribution_modal.dart';
-import '../widgets/attribution_multiple_modal.dart';
 
 class LotsDisponiblesTab extends StatefulWidget {
   final CommercialService commercialService;
@@ -362,7 +361,10 @@ class _LotsDisponiblesTabState extends State<LotsDisponiblesTab>
 
     final isMobile = MediaQuery.of(context).size.width < 600;
 
+    // ⚠️ Important: primary:false pour éviter de partager le PrimaryScrollController
+    // avec le NestedScrollView parent (sinon erreur ScrollController attaché 2 fois)
     return ListView.builder(
+      primary: false,
       padding: const EdgeInsets.all(16),
       itemCount: _lotsFiltres.length,
       itemBuilder: (context, index) {

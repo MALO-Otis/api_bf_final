@@ -38,6 +38,8 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
   final RxInt _nombreLots = 0.obs;
   final RxInt _nombreAttributions = 0.obs;
   final RxDouble _valeurTotale = 0.0.obs;
+  // Versionnement pour forcer le rebuild des onglets après MAJ (ex: attribution)
+  final RxInt _tabsVersion = 0.obs;
 
   @override
   void initState() {
@@ -104,8 +106,8 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
         '🔄 [NouvelleGestionCommerciale] Mise à jour des compteurs et rechargement des données');
 
     try {
-      // Utiliser le cache si récent pour éviter surcharge; sinon stats internes feront refresh ciblé
-      await _commercialService.getLotsAvecCache(forceRefresh: false);
+      // Rafraîchir toutes les données pour propager aux autres onglets
+      await _commercialService.rafraichirToutesLesDonnees();
 
       // Mettre à jour les compteurs avec les nouvelles données
       final lots = _commercialService.lots;
@@ -118,6 +120,8 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
 
       debugPrint(
           '✅ [NouvelleGestionCommerciale] Compteurs mis à jour: ${_nombreLots.value} lots, ${_nombreAttributions.value} attributions');
+      // Forcer un rebuild des onglets pour refléter les nouvelles données
+      _tabsVersion.value++;
     } catch (e) {
       debugPrint(
           '❌ [NouvelleGestionCommerciale] Erreur lors de la mise à jour: $e');
@@ -130,6 +134,8 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
       _nombreAttributions.value = attributions.length;
       _valeurTotale.value =
           lots.fold(0.0, (sum, lot) => sum + lot.valeurRestante);
+      // Même en fallback, on force un léger rebuild pour synchroniser l'affichage
+      _tabsVersion.value++;
     }
   }
 
@@ -583,51 +589,65 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
       builder: (context, child) {
         return Opacity(
           opacity: _fadeAnimation.value,
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              // Onglet 1: Produits disponibles
-              _buildTabWithHeader(
-                LotsDisponiblesTab(
-                  commercialService: _commercialService,
-                  searchText: _searchText,
-                  onLotsUpdated: _updateCounters,
-                ),
-              ),
+          child: Obx(() {
+            // Utiliser NestedScrollView pour rendre le header (métriques) scrollable avec le contenu
+            final version = _tabsVersion.value; // déclenche le rebuild
+            return NestedScrollView(
+              headerSliverBuilder: (context, innerBoxIsScrolled) => [
+                SliverToBoxAdapter(child: _buildQuickMetrics(context)),
+              ],
+              body: TabBarView(
+                controller: _tabController,
+                children: [
+                  // Onglet 1: Produits disponibles
+                  KeyedSubtree(
+                    key: ValueKey('tab-produits-v$version'),
+                    child: LotsDisponiblesTab(
+                      commercialService: _commercialService,
+                      searchText: _searchText,
+                      onLotsUpdated: _updateCounters,
+                    ),
+                  ),
 
-              // Onglet 2: Attributions
-              _buildTabWithHeader(
-                AttributionsTab(
-                  commercialService: _commercialService,
-                  searchText: _searchText,
-                  onAttributionsUpdated: _updateCounters,
-                ),
-              ),
+                  // Onglet 2: Attributions
+                  KeyedSubtree(
+                    key: ValueKey('tab-attributions-v$version'),
+                    child: AttributionsTab(
+                      commercialService: _commercialService,
+                      searchText: _searchText,
+                      onAttributionsUpdated: _updateCounters,
+                    ),
+                  ),
 
-              // Onglet 3: Statistiques
-              _buildTabWithHeader(
-                StatistiquesSimple(
-                  commercialService: _commercialService,
-                ),
-              ),
+                  // Onglet 3: Statistiques
+                  KeyedSubtree(
+                    key: ValueKey('tab-stats-v$version'),
+                    child: StatistiquesSimple(
+                      commercialService: _commercialService,
+                    ),
+                  ),
 
-              // Onglet 4: Gestion des commerciaux
-              _buildTabWithHeader(
-                GestionCommerciauxTab(
-                  commercialService: _commercialService,
-                ),
-              ),
+                  // Onglet 4: Gestion des commerciaux
+                  KeyedSubtree(
+                    key: ValueKey('tab-commerciaux-v$version'),
+                    child: GestionCommerciauxTab(
+                      commercialService: _commercialService,
+                    ),
+                  ),
 
-              // Onglet 5: Administration ou Accès restreint
-              _buildTabWithHeader(
-                _commercialService.estAdmin
-                    ? AdminPanelWidget(
-                        commercialService: _commercialService,
-                      )
-                    : _buildRestrictedAdminView(context),
+                  // Onglet 5: Administration ou Accès restreint
+                  KeyedSubtree(
+                    key: ValueKey('tab-admin-v$version'),
+                    child: _commercialService.estAdmin
+                        ? AdminPanelWidget(
+                            commercialService: _commercialService,
+                          )
+                        : _buildRestrictedAdminView(context),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          }),
         );
       },
     );
@@ -667,16 +687,7 @@ class _NouvelleGestionCommercialeState extends State<NouvelleGestionCommerciale>
     );
   }
 
-  /// Construire un onglet avec header scrollable
-  Widget _buildTabWithHeader(Widget content) {
-    // Utiliser un layout en colonne pour éviter les overflows sur petits écrans
-    return Column(
-      children: [
-        _buildQuickMetrics(context),
-        Expanded(child: content),
-      ],
-    );
-  }
+  // Supprimé: l'ancien wrapper _buildTabWithHeader n'est plus utilisé
 
   Widget _buildQuickMetrics(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 600;

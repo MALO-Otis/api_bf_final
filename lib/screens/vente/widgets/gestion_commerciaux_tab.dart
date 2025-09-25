@@ -459,6 +459,7 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
       }
 
       return ListView.builder(
+        primary: false,
         padding: const EdgeInsets.all(16),
         itemCount: commerciaux.length,
         itemBuilder: (context, index) {

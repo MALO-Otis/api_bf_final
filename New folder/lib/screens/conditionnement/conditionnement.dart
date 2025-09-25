@@ -1,8 +1,9 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
+import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
-import 'dart:async';
+import '../../authentication/user_session.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 // Prix automatiques selon la nature du miel
 const Map<String, double> prixGrosMilleFleurs = {
@@ -228,19 +229,102 @@ class ConditionnementController extends GetxController {
         });
       }
     }
-    await FirebaseFirestore.instance.collection('conditionnement').add({
-      'date': dateConditionnement.value,
-      'lotOrigine': lotOrigine.value,
-      'predominanceFlorale': predominanceFlorale.value,
-      'emballages': emballages,
-      'nbTotalPots': nbTotalPots.value,
-      'prixTotal': prixTotal.value,
-      'quantiteRecue': quantiteRecue.value,
-      'quantiteRestante': quantiteRestante.value,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    Get.snackbar("Succès", "Conditionnement enregistré !");
-    reset();
+    try {
+      // Récupérer le site via UserSession (optionnel, fallback générique)
+      String site = 'Site_Inconnu';
+      try {
+        final session =
+            Get.isRegistered<UserSession>() ? Get.find<UserSession>() : null;
+        if (session?.site != null && session!.site!.isNotEmpty) {
+          site = session.site!;
+        }
+      } catch (_) {}
+
+      final firestore = FirebaseFirestore.instance;
+      final batch = firestore.batch();
+
+      // 1. Document original (flat) pour compatibilité existante
+      final flatRef = firestore.collection('conditionnement').doc();
+      batch.set(flatRef, {
+        'date': dateConditionnement.value,
+        'lotOrigine': lotOrigine.value,
+        'predominanceFlorale': predominanceFlorale.value,
+        'emballages': emballages,
+        'nbTotalPots': nbTotalPots.value,
+        'prixTotal': prixTotal.value,
+        'quantiteRecue': quantiteRecue.value,
+        'quantiteRestante': quantiteRestante.value,
+        'createdAt': FieldValue.serverTimestamp(),
+        'site': site,
+      });
+
+      final conditionnementId = flatRef.id; // Réutilisé pour hiérarchie compat
+
+      // 2. Mise à jour du lot filtrage -> statut 'conditionné'
+      if (lotOrigine.value != null) {
+        final lotRef = firestore.collection('filtrage').doc(lotOrigine.value);
+        batch.update(lotRef, {
+          'statutFiltrage': 'conditionné',
+          'quantiteRestanteApresConditionnement': quantiteRestante.value,
+          'dateDernierConditionnement': FieldValue.serverTimestamp(),
+        });
+      }
+
+      // 3. Création structure attendue par VenteService (Conditionnement/{site}/processus/{id})
+      final processRef = firestore
+          .collection('Conditionnement')
+          .doc(site)
+          .collection('processus')
+          .doc(conditionnementId);
+
+      batch.set(processRef, {
+        'dateConditionnement': dateConditionnement.value,
+        'numeroLot': lotOrigine.value, // mapping
+        'lotOrigine': lotOrigine.value,
+        'predominanceFlorale': predominanceFlorale.value,
+        'nbTotalPots': nbTotalPots.value,
+        'quantiteRecue': quantiteRecue.value,
+        'quantiteRestante': quantiteRestante.value,
+        'site': site,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      // Subcollection "emballages_produits" dérivée de l'array emballages
+      // Mapping des contenances en kilogrammes selon le type d'emballage
+      const Map<String, double> contenanceKgMap = {
+        '1.5Kg': 1.5,
+        '1Kg': 1.0,
+        '720g': 0.72,
+        '500g': 0.5,
+        '250g': 0.25,
+        '30g': 0.03,
+        'Stick 20g': 0.02,
+        '7kg': 7.0,
+      };
+      for (final e in emballages) {
+        final embRef = processRef.collection('emballages_produits').doc();
+        batch.set(embRef, {
+          'type': e['type'],
+          'contenanceKg': contenanceKgMap[e['type']] ?? 0.0,
+          // contenanceKg : dérivation simple selon type si nécessaire plus tard
+          'nombre': e['nombre'],
+          'quantiteDisponible': e['nombre'],
+          'prixUnitaire': e['prixUnitaire'],
+          'prixTotal': e['prixTotal'],
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      await batch.commit();
+
+      // 4. Retirer le lot de la liste locale (feedback immédiat UI)
+      lotsFiltrage.removeWhere((l) => l['id'] == lotOrigine.value);
+
+      Get.snackbar("Succès", "Conditionnement enregistré et synchronisé !");
+      reset();
+    } catch (e) {
+      Get.snackbar('Erreur', 'Échec enregistrement: $e');
+    }
   }
 
   void reset() {
