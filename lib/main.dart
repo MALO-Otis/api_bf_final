@@ -36,7 +36,6 @@ void main() async {
   if (kIsWeb) {
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: false,
-      webExperimentalAutoDetectLongPolling: true,
       // Force long polling to avoid WebChannel/WebSocket issues on some hosts
       webExperimentalForceLongPolling: true,
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
