@@ -1,24 +1,24 @@
-import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
-import 'package:apisavana_gestion/authentication/user_session.dart';
 import 'package:intl/intl.dart';
-import 'package:geolocator/geolocator.dart';
-import '../../../data/models/collecte_models.dart';
-import 'widget_individuel/section_periode_collecte.dart';
-import 'widget_individuel/section_producteur.dart';
-import 'widget_individuel/section_observations.dart';
-import 'widget_individuel/section_resume.dart';
-import 'widget_individuel/bouton_enregistrement.dart';
-import 'widget_individuel/modal_selection_producteur_reactive.dart';
-import 'widget_individuel/modal_nouveau_producteur.dart';
-import 'widget_individuel/section_contenants.dart';
-import 'widget_individuel/section_champs_manquants.dart';
-import 'widget_individuel/section_progression_formulaire.dart';
-import 'widget_individuel/section_message_erreur.dart';
-import 'widget_individuel/dialogue_confirmation_collecte.dart';
 import 'historiques_collectes.dart';
+import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'widget_individuel/section_resume.dart';
+import '../../../data/models/collecte_models.dart';
+import 'widget_individuel/section_producteur.dart';
+import 'widget_individuel/section_contenants.dart';
+import 'widget_individuel/section_observations.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'widget_individuel/bouton_enregistrement.dart';
+import 'widget_individuel/section_message_erreur.dart';
+import 'widget_individuel/section_periode_collecte.dart';
+import 'widget_individuel/modal_nouveau_producteur.dart';
+import 'widget_individuel/section_champs_manquants.dart';
 import '../../services/universal_container_id_service.dart';
+import 'widget_individuel/section_progression_formulaire.dart';
+import 'widget_individuel/dialogue_confirmation_collecte.dart';
+import 'package:apisavana_gestion/authentication/user_session.dart';
+import 'widget_individuel/modal_selection_producteur_reactive.dart';
 
 // Page principale
 class NouvelleCollecteIndividuellePage extends StatefulWidget {
@@ -904,6 +904,7 @@ class _NouvelleCollecteIndividuellePageState
         collecteurNom: _userSession.nom ?? '',
         observations: _observationsController.text,
         createdAt: Timestamp.now(),
+        geolocationData: _geolocationData, // Inclure les données GPS
       );
 
       print("🟡 Modèle créé avec succès");
@@ -1012,7 +1013,7 @@ class _NouvelleCollecteIndividuellePageState
           .doc(_producteurSelectionne!.id);
 
       print(
-          "� Récupération document producteur dans listes_prod: ${_producteurSelectionne!.id}");
+          "📥 Récupération document producteur dans listes_prod: ${_producteurSelectionne!.id}");
 
       // VÉRIFICATION ULTRA-STRICTE si le document producteur existe (méthode compatible web)
       final producteurSnapshot = await producteurRef.get();
@@ -1099,7 +1100,7 @@ class _NouvelleCollecteIndividuellePageState
           rethrow;
         }
       } else {
-        print("� ALERTE CRITIQUE: Document producteur introuvable!");
+        print("⚠️ ALERTE CRITIQUE: Document producteur introuvable!");
         print("🔴 Producteur ID: ${_producteurSelectionne!.id}");
         print("🔴 Producteur Nom: ${_producteurSelectionne!.nomPrenom}");
         print(
@@ -1181,7 +1182,7 @@ class _NouvelleCollecteIndividuellePageState
           }
 
           // MIGRATION rétro-compatible: si le noeud du mois est numérique, on le convertit en objet { total: <valeur> }
-          final siteData = siteStatsSnapshot.data() as Map<String, dynamic>?;
+          final siteData = siteStatsSnapshot.data();
           final dynamic cpmNode = (siteData?['contenant_collecter_par_mois']
               as Map<String, dynamic>?)?[currentMonth];
           if (cpmNode is num) {

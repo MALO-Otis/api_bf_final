@@ -119,17 +119,26 @@ const List<TechnicienInfo> techniciensApisavana = [
   ),
 ];
 
-// Sites disponibles
+// Sites disponibles (Mielleries)
 const List<String> sitesApisavana = [
   'Koudougou',
-  'Bobo',
-  'Mangodara',
-  'Po',
-  'Sindou',
-  'Orodara',
-  'Sapouy',
-  'Leo',
+  'Bingo',
+  'Soaw',
+  'Dalo',
+  'Dassa',
+  'Léo',
+  'PÔ',
   'Bagré',
+  'Bobo Dioulasso',
+  'Dereguan',
+  'Sifarasso',
+  'Mahon',
+  'Mangodara',
+  'Niantono',
+  'Nalere',
+  'Tourni',
+  'Bougoula',
+  'Bouroum Bouroum',
 ];
 
 // Prédominances florales nettoyées - Uniquement des noms d'arbres et plantes mellifères
@@ -197,5 +206,129 @@ class PersonnelUtils {
   static bool validateTechnicienSite(String technicienName, String site) {
     final technicien = findTechnicienByName(technicienName);
     return technicien?.site.toLowerCase() == site.toLowerCase();
+  }
+}
+
+// ============================================================================
+// 👥 PERSONNEL COMMERCIAL APISAVANA
+// ============================================================================
+
+/// Classe principale pour gérer le personnel APISAVANA
+class PersonnelApisavana {
+  /// Liste des commerciaux APISAVANA avec leurs zones d'intervention
+  static const List<Map<String, String>> commerciaux = [
+    // KOUDOUGOU
+    {
+      'nom': 'YAMEOGO Rose',
+      'email': 'rose.yameogo@apisavana.bf',
+      'telephone': '70123456',
+      'zone': 'Koudougou',
+    },
+
+    // OUAGADOUGOU
+    {
+      'nom': 'KANSIEMO Marceline',
+      'email': 'marceline.kansiemo@apisavana.bf',
+      'telephone': '70234567',
+      'zone': 'Ouagadougou',
+    },
+    {
+      'nom': 'YAMEOGO Angeline',
+      'email': 'angeline.yameogo@apisavana.bf',
+      'telephone': '70345678',
+      'zone': 'Ouagadougou',
+    },
+    {
+      'nom': 'BAGUE SAFIATA',
+      'email': 'safiata.bague@apisavana.bf',
+      'telephone': '70456789',
+      'zone': 'Ouagadougou',
+    },
+    {
+      'nom': 'KIENTEGA Sidonie',
+      'email': 'sidonie.kientega@apisavana.bf',
+      'telephone': '70567890',
+      'zone': 'Ouagadougou',
+    },
+    {
+      'nom': 'BARA DOUKIATOU',
+      'email': 'doukiatou.bara@apisavana.bf',
+      'telephone': '70678901',
+      'zone': 'Ouagadougou',
+    },
+
+    // BOBO DIOULASSO
+    {
+      'nom': 'SEMDE OUMAROU',
+      'email': 'oumarou.semde@apisavana.bf',
+      'telephone': '70789012',
+      'zone': 'Bobo Dioulasso',
+    },
+    {
+      'nom': 'TAPSOBA ZONABOU',
+      'email': 'zonabou.tapsoba@apisavana.bf',
+      'telephone': '70890123',
+      'zone': 'Bobo Dioulasso',
+    },
+
+    // BAGRE
+    {
+      'nom': 'SEMDE KARIM',
+      'email': 'karim.semde@apisavana.bf',
+      'telephone': '70901234',
+      'zone': 'Bagre',
+    },
+
+    // MANGODARA
+    {
+      'nom': 'YAMEOGO INNOCENT',
+      'email': 'innocent.yameogo@apisavana.bf',
+      'telephone': '55756926',
+      'zone': 'Mangodara',
+    },
+
+    // PÔ
+    {
+      'nom': 'ZOUNGRANA HYPOLITE',
+      'email': 'hypolite.zoungrana@apisavana.bf',
+      'telephone': '71012345',
+      'zone': 'Pô',
+    },
+  ];
+
+  /// Obtient la liste de tous les commerciaux
+  static List<Map<String, String>> getTousCommerciaux() => commerciaux;
+
+  /// Recherche un commercial par email
+  static Map<String, String>? getCommercialByEmail(String email) {
+    try {
+      return commerciaux.firstWhere((c) => c['email'] == email);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Recherche des commerciaux par zone
+  static List<Map<String, String>> getCommerciauxByZone(String zone) {
+    return commerciaux
+        .where((c) => c['zone']?.toLowerCase() == zone.toLowerCase())
+        .toList();
+  }
+
+  /// Obtient tous les noms des commerciaux
+  static List<String> getNomsCommerciaux() {
+    return commerciaux
+        .map((c) => c['nom'] ?? '')
+        .where((nom) => nom.isNotEmpty)
+        .toList();
+  }
+
+  /// Obtient toutes les zones commerciales
+  static List<String> getZonesCommerciales() {
+    return commerciaux
+        .map((c) => c['zone'] ?? '')
+        .where((zone) => zone.isNotEmpty)
+        .toSet()
+        .toList();
   }
 }

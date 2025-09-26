@@ -1,19 +1,19 @@
-// Dialog de détails d'une collecte
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+import 'stat_card.dart';
+import 'package:get/get.dart';
+import '../utils/formatters.dart';
+import 'quality_control_form.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
 import '../models/collecte_models.dart';
+import 'package:flutter/foundation.dart';
 import '../models/quality_control_models.dart';
-import '../utils/formatters.dart';
-import '../services/quality_control_service.dart';
 import '../services/global_refresh_service.dart';
 import '../services/firestore_data_service.dart';
-import '../../../authentication/user_session.dart';
-import 'stat_card.dart';
-import 'quality_control_form.dart';
 import '../../../data/geographe/geographie.dart';
+import '../services/quality_control_service.dart';
+import '../../../authentication/user_session.dart';
+// Dialog de détails d'une collecte
 
 class DetailsDialog extends StatefulWidget {
   final bool isOpen;
@@ -352,13 +352,17 @@ class _DetailsDialogState extends State<DetailsDialog> {
           ),
           const SizedBox(height: 4),
           Expanded(
-            child: Text(
-              value,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
+            child: Tooltip(
+              message: value,
+              child: Text(
+                value,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                softWrap: false,
               ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 2,
             ),
           ),
         ],
@@ -388,7 +392,7 @@ class _DetailsDialogState extends State<DetailsDialog> {
                 StatMini(
                   label: 'Montant total',
                   value: Formatters.formatFCFA(widget.item!.totalAmount),
-                  icon: Icons.attach_money,
+                  icon: Icons.text_fields,
                   color: Colors.orange.shade600,
                 ),
                 StatMini(
@@ -1045,11 +1049,17 @@ class _DetailsDialogState extends State<DetailsDialog> {
           ),
           if (!isVerySmall) ...[
             const SizedBox(height: 8),
-            Text(
-              'ID: ${widget.item!.id}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontFamily: 'monospace',
+            Tooltip(
+              message: widget.item!.id,
+              child: Text(
+                'ID: ${widget.item!.id}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontFamily: 'monospace',
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
               ),
             ),
           ],
@@ -1086,7 +1096,7 @@ class _DetailsDialogState extends State<DetailsDialog> {
                   context,
                   'Montant total',
                   Formatters.formatFCFA(widget.item!.totalAmount),
-                  Icons.attach_money,
+                  Icons.text_fields,
                   isVerySmall,
                 ),
               ),
@@ -1237,10 +1247,16 @@ class _DetailsDialogState extends State<DetailsDialog> {
             ),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: isVerySmall ? 11 : null,
+            child: Tooltip(
+              message: value,
+              child: Text(
+                value,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontSize: isVerySmall ? 11 : null,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
               ),
             ),
           ),
@@ -1619,11 +1635,21 @@ class _DetailsDialogState extends State<DetailsDialog> {
                 ),
               ),
               const SizedBox(width: 10),
-              Text(
-                'Informations géographiques',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.primary,
+              // Titre: ellipsize pour éviter les débordements horizontaux
+              Flexible(
+                child: Tooltip(
+                  message: 'Informations géographiques',
+                  waitDuration: const Duration(milliseconds: 400),
+                  child: Text(
+                    'Informations géographiques',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
                 ),
               ),
               const Spacer(),
@@ -1646,18 +1672,35 @@ class _DetailsDialogState extends State<DetailsDialog> {
 
           const SizedBox(height: 16),
 
-          // Grille des informations géographiques
+          // Grille des informations géographiques (adaptée aux petites largeurs)
           LayoutBuilder(
             builder: (context, constraints) {
               final isMobile = constraints.maxWidth < 600;
+              final w = constraints.maxWidth;
+              // Sur très petites largeurs, passer en 1 colonne et augmenter la hauteur des tuiles
+              final crossCount = !isMobile ? 4 : (w < 360 ? 1 : 2);
+              double aspect;
+              if (!isMobile) {
+                aspect = 3.0;
+              } else if (w < 320) {
+                aspect = 2.25; // plus de hauteur
+              } else if (w < 360) {
+                aspect = 2.5;
+              } else if (w < 410) {
+                aspect = 2.9;
+              } else if (w < 480) {
+                aspect = 2.5;
+              } else {
+                aspect = 2.8;
+              }
 
               return GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: isMobile ? 2 : 4,
+                crossAxisCount: crossCount,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                childAspectRatio: isMobile ? 2.5 : 3.0,
+                childAspectRatio: aspect,
                 children: [
                   _buildInfoField(context, 'Région', region ?? '—'),
                   _buildInfoField(context, 'Province', province ?? '—'),
@@ -1751,12 +1794,28 @@ class _DetailsDialogState extends State<DetailsDialog> {
   Widget _buildControlButton(BuildContext context, String containerCode,
       bool isControlled, bool isLoading,
       {bool isDesktop = false}) {
-    final userSession = Get.find<UserSession>();
-    final userRole = userSession.role?.toLowerCase() ?? '';
-    final isAdmin = userRole.contains('admin');
+    // Récupérer rôle et site de l'utilisateur
+    bool isAdmin = false;
+    bool canControl = false;
+    try {
+      final userSession = Get.find<UserSession>();
+      final role = (userSession.role ?? '').toLowerCase();
+      final userSite = (userSession.site ?? '').trim();
+      isAdmin = role.contains('admin');
+      // Les contrôleurs ne peuvent agir que sur leur propre site
+      if (!isAdmin && userSite.isNotEmpty) {
+        canControl = widget.item != null && widget.item!.site == userSite;
+      }
+    } catch (_) {
+      // Par défaut: aucune permission si la session n'est pas disponible
+      isAdmin = false;
+      canControl = false;
+    }
+
+    final hasPermission = isAdmin || canControl;
 
     if (isControlled) {
-      if (!isAdmin) {
+      if (!hasPermission) {
         // Contrôleur: Afficher un message informatif
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -1801,7 +1860,9 @@ class _DetailsDialogState extends State<DetailsDialog> {
       return FilledButton.icon(
         onPressed: isLoading
             ? null
-            : () => _handleControlAction(context, containerCode),
+            : (hasPermission
+                ? () => _handleControlAction(context, containerCode)
+                : null),
         icon: isLoading
             ? SizedBox(
                 width: 16,
@@ -1822,6 +1883,34 @@ class _DetailsDialogState extends State<DetailsDialog> {
 
   /// Gère l'action de contrôle (création ou modification)
   void _handleControlAction(BuildContext context, String containerCode) async {
+    // Vérifier permissions: admin = OK, contrôleur = même site uniquement
+    bool isAdmin = false;
+    bool canControl = false;
+    try {
+      final userSession = Get.find<UserSession>();
+      final role = (userSession.role ?? '').toLowerCase();
+      final userSite = (userSession.site ?? '').trim();
+      isAdmin = role.contains('admin');
+      if (!isAdmin && userSite.isNotEmpty) {
+        canControl = widget.item != null && widget.item!.site == userSite;
+      }
+    } catch (_) {
+      isAdmin = false;
+      canControl = false;
+    }
+
+    if (!(isAdmin || canControl)) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Vous n\'avez pas l\'autorisation de contrôler ce contenant.'),
+          ),
+        );
+      }
+      return;
+    }
+
     final qualityService = QualityControlService();
     final existingControl = await qualityService.getQualityControl(
         containerCode, widget.item!.date,
@@ -1840,26 +1929,36 @@ class _DetailsDialogState extends State<DetailsDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header du contenant avec bouton contrôler
-            Row(
-              children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    'Contenant $containerCode',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.onPrimaryContainer,
+            // Header du contenant avec bouton contrôler (responsive pour très petits écrans)
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isUltraNarrow = constraints.maxWidth < 340;
+                final labelChip = Flexible(
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Tooltip(
+                      message: 'Contenant $containerCode',
+                      waitDuration: const Duration(milliseconds: 400),
+                      child: Text(
+                        'Contenant $containerCode',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onPrimaryContainer,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-                const Spacer(),
-                ValueListenableBuilder<int>(
+                );
+
+                final controlButton = ValueListenableBuilder<int>(
                   valueListenable: _refreshKey,
                   builder: (context, refreshValue, child) {
                     return FutureBuilder<bool>(
@@ -1871,12 +1970,40 @@ class _DetailsDialogState extends State<DetailsDialog> {
                         final isLoading =
                             snapshot.connectionState == ConnectionState.waiting;
                         return _buildControlButton(
-                            context, containerCode, isControlled, isLoading);
+                          context,
+                          containerCode,
+                          isControlled,
+                          isLoading,
+                        );
                       },
                     );
                   },
-                ),
-              ],
+                );
+
+                if (!isUltraNarrow) {
+                  // Ligne unique: le label s'ellipsise, le bouton reste visible
+                  return Row(
+                    children: [
+                      labelChip,
+                      const SizedBox(width: 8),
+                      controlButton,
+                    ],
+                  );
+                }
+
+                // Très petit écran: bouton sur la ligne suivante, aligné à droite
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [labelChip]),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: controlButton,
+                    ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 12),
             // Détails du contenant
@@ -1957,10 +2084,17 @@ class _DetailsDialogState extends State<DetailsDialog> {
               ),
             ),
             Expanded(
-              child: Text(
-                value,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w500,
+              child: Tooltip(
+                message: value,
+                waitDuration: const Duration(milliseconds: 400),
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ),

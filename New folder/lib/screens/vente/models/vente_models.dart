@@ -1,9 +1,9 @@
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 /// 🛒 MODÈLES DE DONNÉES POUR LE MODULE DE VENTE
 ///
 /// Gestion complète des ventes, prélèvements, restitutions et pertes
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart';
 
 /// 📦 PRODUIT CONDITIONNÉ DISPONIBLE POUR LA VENTE
 class ProduitConditionne {
@@ -270,10 +270,7 @@ class Vente {
         (m) => m.name == map['modePaiement'],
         orElse: () => ModePaiement.espece,
       ),
-      statut: StatutVente.values.firstWhere(
-        (s) => s.name == map['statut'],
-        orElse: () => StatutVente.terminee,
-      ),
+      statut: _mapLegacyStatutVente(map['statut']),
       observations: map['observations'],
     );
   }
@@ -579,11 +576,18 @@ class Client {
   final String? email;
   final String? adresse;
   final String? ville;
+  final String? nomBoutique;
+  final String? site;
   final TypeClient type;
   final DateTime dateCreation;
   final double totalAchats;
   final int nombreAchats;
   final bool estActif;
+  // 📍 Géolocalisation
+  final double? latitude;
+  final double? longitude;
+  final double? altitude;
+  final double? precision;
 
   const Client({
     required this.id,
@@ -592,11 +596,17 @@ class Client {
     this.email,
     this.adresse,
     this.ville,
+    this.nomBoutique,
+    this.site,
     required this.type,
     required this.dateCreation,
     required this.totalAchats,
     required this.nombreAchats,
     required this.estActif,
+    this.latitude,
+    this.longitude,
+    this.altitude,
+    this.precision,
   });
 
   factory Client.fromMap(Map<String, dynamic> map) {
@@ -607,15 +617,21 @@ class Client {
       email: map['email'],
       adresse: map['adresse'],
       ville: map['ville'],
+      nomBoutique: map['nomBoutique'],
+      site: map['site'],
       type: TypeClient.values.firstWhere(
-        (t) => t.name == map['type'],
+        (t) => t.name == (map['type'] ?? map['typeClient']),
         orElse: () => TypeClient.particulier,
       ),
       dateCreation:
           (map['dateCreation'] as Timestamp?)?.toDate() ?? DateTime.now(),
       totalAchats: (map['totalAchats'] ?? 0.0).toDouble(),
       nombreAchats: map['nombreAchats'] ?? 0,
-      estActif: map['estActif'] ?? true,
+      estActif: map['estActif'] ?? map['actif'] ?? true,
+      latitude: (map['latitude'] as num?)?.toDouble(),
+      longitude: (map['longitude'] as num?)?.toDouble(),
+      altitude: (map['altitude'] as num?)?.toDouble(),
+      precision: (map['precision'] as num?)?.toDouble(),
     );
   }
 
@@ -627,11 +643,19 @@ class Client {
       'email': email,
       'adresse': adresse,
       'ville': ville,
+      if (nomBoutique != null) 'nomBoutique': nomBoutique,
+      if (site != null) 'site': site,
       'type': type.name,
+      'typeClient': type.name, // Compat legacy
       'dateCreation': Timestamp.fromDate(dateCreation),
       'totalAchats': totalAchats,
       'nombreAchats': nombreAchats,
       'estActif': estActif,
+      'actif': estActif, // Compat legacy
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
+      if (altitude != null) 'altitude': altitude,
+      if (precision != null) 'precision': precision,
     };
   }
 }
@@ -663,11 +687,67 @@ enum ModePaiement {
   credit,
 }
 
+// Nouveau mapping des statuts de vente demandé :
+//  - Credit en attente
+//  - Payer en totaliter (sic) => statut final payé
+//  - Credit Rembourser => crédit soldé après paiement
+// On conserve l'ancien enum sous forme de compatibilité dans fromMap.
 enum StatutVente {
-  terminee,
-  enAttente,
-  annulee,
-  remboursee,
+  creditEnAttente, // Ancien: enAttente quand montantRestant > 0 à la création
+  payeeEnTotalite, // Ancien: terminee (vente réglée directement)
+  creditRembourse, // Ancien: remboursee (soldée après crédit) / pourrait provenir d'une mise à jour
+  annulee, // On garde annulee pour cohérence historique
+}
+
+/// Méthodes utilitaires spécifiques aux nouveaux statuts de vente.
+extension StatutVenteX on StatutVente {
+  String get label {
+    switch (this) {
+      case StatutVente.creditEnAttente:
+        return 'Credit en attente';
+      case StatutVente.payeeEnTotalite:
+        return 'Payer en totaliter';
+      case StatutVente.creditRembourse:
+        return 'Credit Rembourser';
+      case StatutVente.annulee:
+        return 'Annulée';
+    }
+  }
+
+  bool get estCreditActif => this == StatutVente.creditEnAttente;
+  bool get estSolde =>
+      this == StatutVente.payeeEnTotalite ||
+      this == StatutVente.creditRembourse;
+}
+
+// Conversion des anciens statuts vers les nouveaux
+// Ancien -> Nouveau :
+// terminee -> payeeEnTotalite
+// enAttente -> creditEnAttente
+// remboursee -> creditRembourse
+// annulee -> annulee
+// Si null/inconnu: payeeEnTotalite (valeur « neutre »)
+StatutVente _mapLegacyStatutVente(dynamic raw) {
+  if (raw is String) {
+    switch (raw) {
+      case 'terminee':
+        return StatutVente.payeeEnTotalite;
+      case 'enAttente':
+        return StatutVente.creditEnAttente;
+      case 'remboursee':
+        return StatutVente.creditRembourse;
+      case 'annulee':
+        return StatutVente.annulee;
+      // Déjà nouveaux noms (sécurité double écriture)
+      case 'creditEnAttente':
+        return StatutVente.creditEnAttente;
+      case 'payeeEnTotalite':
+        return StatutVente.payeeEnTotalite;
+      case 'creditRembourse':
+        return StatutVente.creditRembourse;
+    }
+  }
+  return StatutVente.payeeEnTotalite;
 }
 
 enum TypeRestitution {
@@ -687,8 +767,7 @@ enum TypePerte {
 
 enum TypeClient {
   particulier,
-  professionnel,
-  revendeur,
+  semiGrossiste,
   grossiste,
 }
 

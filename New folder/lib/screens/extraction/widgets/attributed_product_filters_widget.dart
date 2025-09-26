@@ -489,17 +489,16 @@ class _AttributedProductFiltersWidgetState
   ) {
     return TextFormField(
       decoration: InputDecoration(
+        isDense: true,
         label: Text(
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        isDense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
         ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         suffixIcon: value != null
             ? IconButton(
                 icon: const Icon(Icons.clear),

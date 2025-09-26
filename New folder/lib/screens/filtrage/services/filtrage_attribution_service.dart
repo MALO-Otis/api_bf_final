@@ -1,6 +1,8 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
+import 'package:get/get.dart';
 import 'package:flutter/foundation.dart';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:apisavana_gestion/authentication/user_session.dart';
 import '../../controle_de_donnes/models/attribution_models_v2.dart';
 
 /// Service pour récupérer les produits pour filtrage (attribués + extraits)
@@ -10,61 +12,160 @@ class FiltrageAttributionService {
   factory FiltrageAttributionService() => _instance;
   FiltrageAttributionService._internal();
 
-  /// ✅ NOUVEAU: Récupère les produits pour filtrage (attribués + extraits)
+  // Liste centralisée des sites gérés par l'application
+  static const List<String> _coreSites = <String>[
+    'Koudougou',
+    'Ouagadougou',
+    'Bobo-Dioulasso',
+    'Kaya',
+    'Mangodara',
+    'Bagre',
+    'Pô',
+  ];
+
+  // ✅ NOUVEAU: Cache pour optimiser les performances
+  List<ProductControle>? _cachedProducts;
+  DateTime? _cacheTimestamp;
+  Map<String, dynamic>? _cachedStats;
+  static const Duration _cacheDuration = Duration(minutes: 5);
+
+  // ✅ NOUVEAU: Flag pour le chargement en arrière-plan
+  bool _isBackgroundLoading = false;
+
+  /// Calcule la liste des sites cibles selon le rôle et la session utilisateur
+  List<String> _getSitesCibles() {
+    final userSession = Get.find<UserSession>();
+    final role = (userSession.role ?? '').toLowerCase();
+    final isAdmin = role.contains('admin') || role.contains('coordinateur');
+    final siteSession = (userSession.site ?? '').trim();
+
+    if (isAdmin) {
+      debugPrint(
+          '👑 Admin détecté — Accès tous sites: ${_coreSites.join(', ')}');
+      return _coreSites;
+    }
+
+    if (siteSession.isEmpty) {
+      debugPrint(
+          '⚠️ Aucun site dans la session du contrôleur — aucun résultat renvoyé.');
+      return const [];
+    }
+
+    debugPrint('👤 Contrôleur — Accès limité au site: $siteSession');
+    return [siteSession];
+  }
+
+  /// ✅ OPTIMISÉ: Récupère les produits pour filtrage avec cache
   Future<List<ProductControle>> getProduitsFilterage(
-      {String? searchQuery}) async {
+      {String? searchQuery, bool forceRefresh = false}) async {
     try {
-      debugPrint('🔍 ===== RÉCUPÉRATION PRODUITS FILTRAGE =====');
-      debugPrint('   📁 Service: FiltrageAttributionService');
-      debugPrint('   🎯 Source: Attribution filtrage + Extractions terminées');
-      debugPrint('   🏷️ Filtre: type = "filtrage" + miel liquide extrait');
-      debugPrint('   🔍 Recherche: ${searchQuery ?? "Aucune"}');
-      debugPrint('=============================================');
-
-      final List<ProductControle> produitsFiltrage = [];
-
-      // 1️⃣ Récupérer les produits attribués pour filtrage
-      await _getProduitsAttribuesFiltrage(produitsFiltrage, searchQuery);
-
-      // 2️⃣ Récupérer les produits extraits (miel liquide à filtrer)
-      await _getProduitsExtraits(produitsFiltrage, searchQuery);
-
-      debugPrint('🎊 ===== RÉSULTAT FINAL =====');
-      debugPrint('   ✅ Total produits filtrage: ${produitsFiltrage.length}');
-
-      // Statistiques par source
-      final parSource = <String, int>{};
-      final parNature = <String, int>{};
-      for (final produit in produitsFiltrage) {
-        final source = produit.estAttribue ? 'Attribution' : 'Extraction';
-        parSource[source] = (parSource[source] ?? 0) + 1;
-
-        final nature = produit.nature.label;
-        parNature[nature] = (parNature[nature] ?? 0) + 1;
+      // Vérifier le cache si pas de force refresh
+      if (!forceRefresh && _isCacheValid()) {
+        debugPrint(
+            '⚡ [Cache] Utilisation du cache filtrage (${_cachedProducts!.length} produits)');
+        return _applySearchFilter(_cachedProducts!, searchQuery);
       }
 
-      debugPrint('   📊 Répartition par source:');
-      parSource.forEach((source, count) {
-        debugPrint('      - $source: $count produits');
-      });
-      debugPrint('   📊 Répartition par nature:');
-      parNature.forEach((nature, count) {
-        debugPrint('      - $nature: $count produits');
-      });
-      debugPrint('================================');
+      debugPrint(
+          '🔄 [Filtrage] Chargement ${forceRefresh ? "(forcé)" : ""}...');
 
-      return produitsFiltrage;
+      // Chargement optimisé en parallèle
+      final List<ProductControle> produitsFiltrage = [];
+      final List<ProductControle> produitsAttribues = [];
+      final List<ProductControle> produitsExtraits = [];
+
+      // Lancer les deux requêtes en parallèle pour réduire le temps total
+      await Future.wait([
+        _getProduitsAttribuesFiltrage(
+            produitsAttribues, null), // Pas de filtre ici, on filtre après
+        _getProduitsExtraits(produitsExtraits, null),
+      ]);
+
+      // Combiner les résultats
+      produitsFiltrage.addAll(produitsAttribues);
+      produitsFiltrage.addAll(produitsExtraits);
+
+      // Mettre à jour le cache
+      _cachedProducts = produitsFiltrage;
+      _cacheTimestamp = DateTime.now();
+
+      debugPrint(
+          '✅ [Filtrage] ${produitsFiltrage.length} produits chargés et mis en cache');
+
+      // Déclencher un pré-chargement en arrière-plan pour le prochain appel
+      _preloadInBackground();
+
+      return _applySearchFilter(produitsFiltrage, searchQuery);
     } catch (e) {
       debugPrint('❌ ERREUR dans getProduitsFilterage: $e');
+      // En cas d'erreur, retourner le cache si disponible
+      if (_cachedProducts != null) {
+        debugPrint('🔄 Fallback vers le cache en cas d\'erreur');
+        return _applySearchFilter(_cachedProducts!, searchQuery);
+      }
       return [];
     }
+  }
+
+  /// Vérifie si le cache est encore valide
+  bool _isCacheValid() {
+    return _cachedProducts != null &&
+        _cacheTimestamp != null &&
+        DateTime.now().difference(_cacheTimestamp!) < _cacheDuration;
+  }
+
+  /// Applique le filtre de recherche sur une liste de produits
+  List<ProductControle> _applySearchFilter(
+      List<ProductControle> products, String? searchQuery) {
+    if (searchQuery == null || searchQuery.isEmpty) {
+      return products;
+    }
+    return products
+        .where((product) => _matchSearchQuery(product, searchQuery))
+        .toList();
+  }
+
+  /// Pré-charge les données en arrière-plan pour le prochain appel
+  void _preloadInBackground() {
+    if (_isBackgroundLoading) return;
+
+    _isBackgroundLoading = true;
+    // Programmer un rafraîchissement dans 3 minutes
+    Future.delayed(const Duration(minutes: 3), () async {
+      try {
+        debugPrint('🔄 [Background] Pré-chargement des données filtrage...');
+        await getProduitsFilterage(forceRefresh: true);
+        debugPrint('✅ [Background] Pré-chargement terminé');
+      } catch (e) {
+        debugPrint('⚠️ [Background] Erreur pré-chargement: $e');
+      } finally {
+        _isBackgroundLoading = false;
+      }
+    });
+  }
+
+  /// Version rapide pour l'initialisation - retourne le cache ou lance le chargement
+  Future<List<ProductControle>> getProduitsFilterageQuick(
+      {String? searchQuery}) async {
+    if (_isCacheValid()) {
+      debugPrint('⚡ [Quick] Cache valide - retour immédiat');
+      return _applySearchFilter(_cachedProducts!, searchQuery);
+    }
+
+    // Pas de cache valide, mais ne pas bloquer l'UI
+    debugPrint('🚀 [Quick] Lancement chargement asynchrone...');
+    getProduitsFilterage(searchQuery: searchQuery); // Pas d'await - asynchrone
+
+    // Retourner une liste vide temporairement
+    return [];
   }
 
   /// Récupère les produits attribués pour filtrage
   Future<void> _getProduitsAttribuesFiltrage(
       List<ProductControle> produitsFiltrage, String? searchQuery) async {
     final firestore = FirebaseFirestore.instance;
-    final sites = ['Koudougou', 'Ouagadougou', 'Bobo-Dioulasso'];
+    // Déterminer sites selon rôle
+    final sites = _getSitesCibles();
 
     debugPrint('📋 1️⃣ PRODUITS ATTRIBUÉS POUR FILTRAGE:');
 
@@ -120,7 +221,8 @@ class FiltrageAttributionService {
   Future<void> _getProduitsExtraits(
       List<ProductControle> produitsFiltrage, String? searchQuery) async {
     final firestore = FirebaseFirestore.instance;
-    final sites = ['Koudougou', 'Ouagadougou', 'Bobo-Dioulasso'];
+    // Déterminer sites selon rôle
+    final sites = _getSitesCibles();
 
     debugPrint('🍯 2️⃣ MIEL LIQUIDE EXTRAIT À FILTRER:');
 
@@ -237,33 +339,18 @@ class FiltrageAttributionService {
   Future<bool> _verifierSiProduitFiltre(String codeContenant) async {
     try {
       final firestore = FirebaseFirestore.instance;
+      // Rechercher globalement (collectionGroup) si le code est déjà filtré
+      final filtrageSnapshot = await firestore
+          .collectionGroup('produits_filtres')
+          .where('codeContenant', isEqualTo: codeContenant)
+          .limit(1)
+          .get();
 
-      // Sites disponibles
-      final sites = [
-        'Koudougou',
-        'Ouagadougou',
-        'Bobo-Dioulasso',
-        'Mangodara',
-        'Bagre',
-        'Pô'
-      ];
-
-      // Rechercher dans toutes les collections de filtrage de tous les sites
-      for (final site in sites) {
-        final filtrageSnapshot = await firestore
-            .collectionGroup('produits_filtres')
-            .where('codeContenant', isEqualTo: codeContenant)
-            .limit(1)
-            .get();
-
-        if (filtrageSnapshot.docs.isNotEmpty) {
-          debugPrint(
-              '   🔍 Produit $codeContenant trouvé dans filtrage du site $site');
-          return true;
-        }
+      final found = filtrageSnapshot.docs.isNotEmpty;
+      if (found) {
+        debugPrint('   🔍 Produit $codeContenant déjà présent dans Filtrage');
       }
-
-      return false;
+      return found;
     } catch (e) {
       debugPrint('   ⚠️ Erreur vérification filtrage pour $codeContenant: $e');
       return false; // En cas d'erreur, on considère le produit comme non filtré
@@ -294,7 +381,8 @@ class FiltrageAttributionService {
       double poidsTotal = 0.0;
       double rendementMoyen = 0.0;
 
-      final sites = ['Koudougou', 'Ouagadougou', 'Bobo-Dioulasso'];
+      // Calculer selon rôle/site
+      final sites = _getSitesCibles();
 
       for (final site in sites) {
         debugPrint('   📊 Analyse site: $site');
@@ -402,14 +490,7 @@ class FiltrageAttributionService {
       final Map<String, dynamic> statsSites = {};
 
       // Liste des sites à analyser
-      final sites = siteSpecifique != null
-          ? [siteSpecifique]
-          : [
-              'Koudougou',
-              'Ouagadougou',
-              'Bobo-Dioulasso',
-              'Kaya'
-            ]; // Sites principaux
+      final sites = siteSpecifique != null ? [siteSpecifique] : _coreSites;
 
       for (final site in sites) {
         debugPrint('   📊 Analyse du site: $site (FILTRAGE uniquement)');

@@ -1,14 +1,14 @@
+import 'package:get/get.dart';
+import 'package:flutter/material.dart';
+import '../../utils/smart_appbar.dart';
+import 'pages/vente_commercial_page.dart';
+import '../../authentication/user_session.dart';
+import 'pages/nouvelle_gestion_commerciale.dart';
+import 'controllers/espace_commercial_controller.dart';
+
 /// 🛒 PAGE PRINCIPALE DU MODULE DE VENTE
 ///
 /// Point d'entrée du module de gestion des ventes
-
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-
-import '../../utils/smart_appbar.dart';
-import '../../authentication/user_session.dart';
-import 'pages/vente_admin_page.dart';
-import 'pages/vente_commercial_page.dart';
 
 class VenteMainPage extends StatelessWidget {
   const VenteMainPage({super.key});
@@ -18,6 +18,12 @@ class VenteMainPage extends StatelessWidget {
     final isMobile = MediaQuery.of(context).size.width < 600;
     final userSession = Get.find<UserSession>();
     final userRole = userSession.role ?? '';
+
+    // ⚡ IMPORTANT: Initialiser le controller central dès l'entrée dans le module vente
+    if (!Get.isRegistered<EspaceCommercialController>()) {
+      Get.put(EspaceCommercialController(), permanent: true);
+      debugPrint('🔧 [VenteMainPage] EspaceCommercialController initialisé');
+    }
 
     // Déterminer les permissions
     final isAdmin = userRole == 'Admin';
@@ -31,7 +37,7 @@ class VenteMainPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: SmartAppBar(
-        title: "🛒 Gestion des Ventes",
+        title: "Gestion des Ventes",
         backgroundColor: const Color(0xFF1976D2),
         onBackPressed: () => Get.back(),
       ),
@@ -74,14 +80,15 @@ class VenteMainPage extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: const Text('🛒', style: TextStyle(fontSize: 32)),
+            child:
+                const Icon(Icons.point_of_sale, color: Colors.white, size: 28),
           ),
-          const SizedBox(width: 20),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -128,33 +135,56 @@ class VenteMainPage extends StatelessWidget {
   }
 
   Widget _buildAccessCards(bool isMobile, bool canManageStock, bool canSell) {
+    if (isMobile) {
+      return Column(
+        children: [
+          if (canManageStock)
+            _buildAccessCard(
+              'Gestion Commerciale',
+              'Lots, attributions en temps réel et statistiques avancées',
+              Icons.auto_graph,
+              const Color(0xFF1976D2),
+              () => Get.to(() => const NouvelleGestionCommerciale()),
+              isMobile,
+              isNew: true,
+            ),
+          if (canManageStock && canSell) const SizedBox(height: 16),
+          if (canSell)
+            _buildAccessCard(
+              'Espace Commercial',
+              'Effectuer des ventes, restitutions et déclarer des pertes',
+              Icons.point_of_sale,
+              const Color(0xFF9C27B0),
+              () => Get.to(() => const VenteCommercialPage()),
+              isMobile,
+            ),
+          if (!canManageStock && !canSell) _buildRestrictedAccessNotice(),
+        ],
+      );
+    }
+
+    // Desktop/tablette
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Accès aux fonctionnalités',
-          style: TextStyle(
-            fontSize: isMobile ? 18 : 22,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey.shade800,
-          ),
-        ),
-        const SizedBox(height: 16),
-        if (isMobile)
-          Column(
-            children: [
-              if (canManageStock)
-                _buildAccessCard(
-                  'Gestion Stock & Prélèvements',
-                  'Gérer les produits conditionnés et créer des prélèvements pour les commerciaux',
-                  Icons.inventory_2,
+        Row(
+          children: [
+            if (canManageStock)
+              Expanded(
+                child: _buildAccessCard(
+                  'Gestion Commerciale',
+                  'Lots, attributions en temps réel et statistiques avancées',
+                  Icons.auto_graph,
                   const Color(0xFF1976D2),
-                  () => Get.to(() => const VenteAdminPage()),
+                  () => Get.to(() => const NouvelleGestionCommerciale()),
                   isMobile,
+                  isNew: true,
                 ),
-              const SizedBox(height: 16),
-              if (canSell)
-                _buildAccessCard(
+              ),
+            if (canManageStock && canSell) const SizedBox(width: 16),
+            if (canSell)
+              Expanded(
+                child: _buildAccessCard(
                   'Espace Commercial',
                   'Effectuer des ventes, restitutions et déclarer des pertes',
                   Icons.point_of_sale,
@@ -162,61 +192,40 @@ class VenteMainPage extends StatelessWidget {
                   () => Get.to(() => const VenteCommercialPage()),
                   isMobile,
                 ),
-            ],
-          )
-        else
-          Row(
-            children: [
-              if (canManageStock)
-                Expanded(
-                  child: _buildAccessCard(
-                    'Gestion Stock & Prélèvements',
-                    'Gérer les produits conditionnés et créer des prélèvements pour les commerciaux',
-                    Icons.inventory_2,
-                    const Color(0xFF1976D2),
-                    () => Get.to(() => const VenteAdminPage()),
-                    isMobile,
-                  ),
-                ),
-              if (canManageStock && canSell) const SizedBox(width: 16),
-              if (canSell)
-                Expanded(
-                  child: _buildAccessCard(
-                    'Espace Commercial',
-                    'Effectuer des ventes, restitutions et déclarer des pertes',
-                    Icons.point_of_sale,
-                    const Color(0xFF9C27B0),
-                    () => Get.to(() => const VenteCommercialPage()),
-                    isMobile,
-                  ),
-                ),
-            ],
-          ),
-        if (!canManageStock && !canSell)
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.orange.shade50,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.orange.shade200),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.lock, color: Colors.orange.shade700),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Accès restreint. Contactez votre administrateur pour obtenir les permissions nécessaires.',
-                    style: TextStyle(
-                      color: Colors.orange.shade700,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+          ],
+        ),
+        if (!canManageStock && !canSell) ...[
+          const SizedBox(height: 16),
+          _buildRestrictedAccessNotice(),
+        ]
       ],
+    );
+  }
+
+  Widget _buildRestrictedAccessNotice() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.lock, color: Colors.orange.shade700),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Accès restreint. Contactez votre administrateur pour obtenir les permissions nécessaires.',
+              style: TextStyle(
+                color: Colors.orange.shade700,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -226,8 +235,9 @@ class VenteMainPage extends StatelessWidget {
     IconData icon,
     Color color,
     VoidCallback onTap,
-    bool isMobile,
-  ) {
+    bool isMobile, {
+    bool isNew = false,
+  }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -260,16 +270,60 @@ class VenteMainPage extends StatelessWidget {
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: isMobile ? 16 : 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey.shade800,
-                    ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: isMobile ? 16 : 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade800,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
+                      if (isNew)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF1976D2), Color(0xFF42A5F5)],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.auto_awesome,
+                                color: Colors.white,
+                                size: 12,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'NOUVEAU',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: isMobile ? 9 : 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                Icon(Icons.arrow_forward_ios, color: color, size: 16),
+                const SizedBox(width: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minWidth: 16, maxWidth: 20),
+                  child: Icon(Icons.arrow_forward_ios, color: color, size: 16),
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -321,13 +375,13 @@ class VenteMainPage extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             'Le module de gestion des ventes permet de :\n\n'
-            '• 📦 Gérer les produits conditionnés disponibles\n'
-            '• 🛒 Créer des prélèvements pour les commerciaux\n'
-            '• 💰 Enregistrer les ventes avec détails clients\n'
-            '• 🔄 Traiter les restitutions de produits invendus\n'
-            '• ⚠️ Déclarer et valider les pertes\n'
-            '• 📊 Suivre les statistiques de performance\n\n'
-            'Chaque action est tracée et les stocks sont automatiquement mis à jour.',
+            '• Gérer les produits conditionnés disponibles\n'
+            '• Créer des prélèvements pour les commerciaux\n'
+            '• Enregistrer les ventes avec détails clients\n'
+            '• Traiter les restitutions de produits invendus\n'
+            '• Déclarer et valider les pertes\n'
+            '• Suivre les statistiques de performance\n\n'
+            'Chaque action est tracée et les stocks sont automatiquement mises à jour.',
             style: TextStyle(
               fontSize: isMobile ? 14 : 16,
               color: Colors.grey.shade600,

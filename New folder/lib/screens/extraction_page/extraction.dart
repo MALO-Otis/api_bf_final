@@ -409,7 +409,7 @@ class ExtractionPage extends StatelessWidget {
                         if (e['prixUnitaire'] != null)
                           Row(
                             children: [
-                              Icon(Icons.attach_money,
+                              Icon(Icons.text_fields,
                                   color: Colors.green[700], size: 16),
                               SizedBox(width: 2),
                               Text(

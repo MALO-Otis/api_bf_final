@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/material.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
@@ -22,7 +22,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'conditionnement': false,
     'gestion': false,
     'ventes': true,
-    'rapports': false,
+    // 'rapports': false, // module rapports supprimé
   };
 
   @override
@@ -210,30 +210,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         {'name': 'Suivi distributions', 'active': false},
       ],
     },
-    {
-      'key': 'ventes',
-      'title': 'VENTES',
-      'icon': Icons.shopping_cart,
-      'badge': 7,
-      'subItems': [
-        {'name': 'Nouvelle vente', 'active': true},
-        {'name': 'Ventes en cours', 'active': false},
-        {'name': 'Crédit/Recouvrement', 'active': false},
-        {'name': 'Historique ventes', 'active': false},
-      ],
-    },
-    {
-      'key': 'rapports',
-      'title': 'RAPPORTS',
-      'icon': Icons.bar_chart,
-      'badge': 0,
-      'subItems': [
-        {'name': 'Rapport mensuel', 'active': false},
-        {'name': 'Analyse performance', 'active': false},
-        {'name': 'Export données', 'active': false},
-        {'name': 'Tableaux de bord', 'active': false},
-      ],
-    },
+    // Module RAPPORTS retiré du sidebar
   ];
 
   @override

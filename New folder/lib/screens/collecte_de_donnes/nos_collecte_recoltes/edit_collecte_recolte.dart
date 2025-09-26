@@ -139,42 +139,89 @@ class _EditCollecteRecoltePageState extends State<EditCollecteRecoltePage> {
     try {
       DocumentSnapshot? doc;
 
-      // Essayer de charger depuis la nouvelle structure (par site) d'abord
-      if (widget.siteId != null || currentUserSite != null) {
-        final siteId = widget.siteId ?? currentUserSite!;
-        try {
-          doc = await FirebaseFirestore.instance
-              .collection(siteId)
-              .doc('collectes_recolte')
-              .collection('collectes_recolte')
-              .doc(widget.collecteId)
-              .get();
+      print('🔄 EDIT RECOLTE: Chargement collecte ${widget.collecteId}');
+      print('🔄 EDIT RECOLTE: Site: ${widget.siteId ?? currentUserSite}');
+      print('🔄 EDIT RECOLTE: Collection: ${widget.collection}');
 
-          if (!doc.exists) {
-            // Fallback: essayer l'ancienne structure
+      // Essayer avec le chemin fourni d'abord (nouvelle approche)
+      if (widget.collection != null) {
+        try {
+          doc = await FirebaseFirestore.instance.doc(widget.collection!).get();
+          print(
+              '🔄 EDIT RECOLTE: Tentative avec collection fournie: ${widget.collection}');
+          if (doc.exists) {
+            print('✅ EDIT RECOLTE: Collecte trouvée avec collection fournie');
+          }
+        } catch (e) {
+          print('❌ EDIT RECOLTE: Erreur avec collection fournie: $e');
+        }
+      }
+
+      // Si pas trouvé, essayer la structure Sites/{site}/nos_collectes_recoltes/{id}
+      if (doc == null || !doc.exists) {
+        if (widget.siteId != null || currentUserSite != null) {
+          final siteId = widget.siteId ?? currentUserSite!;
+          final path =
+              'Sites/$siteId/nos_collectes_recoltes/${widget.collecteId}';
+          print('🔄 EDIT RECOLTE: Tentative avec chemin Sites: $path');
+
+          try {
+            doc = await FirebaseFirestore.instance.doc(path).get();
+            if (doc.exists) {
+              print(
+                  '✅ EDIT RECOLTE: Collecte trouvée dans Sites/$siteId/nos_collectes_recoltes');
+            }
+          } catch (e) {
+            print('❌ EDIT RECOLTE: Erreur avec chemin Sites: $e');
+          }
+        }
+      }
+
+      // Fallback: essayer les anciennes structures
+      if (doc == null || !doc.exists) {
+        print('🔄 EDIT RECOLTE: Tentative avec anciennes structures');
+
+        // Essayer l'ancienne structure par site
+        if (widget.siteId != null || currentUserSite != null) {
+          final siteId = widget.siteId ?? currentUserSite!;
+          try {
+            doc = await FirebaseFirestore.instance
+                .collection(siteId)
+                .doc('collectes_recolte')
+                .collection('collectes_recolte')
+                .doc(widget.collecteId)
+                .get();
+            if (doc.exists) {
+              print(
+                  '✅ EDIT RECOLTE: Collecte trouvée dans ancienne structure par site');
+            }
+          } catch (e) {
+            print('❌ EDIT RECOLTE: Erreur ancienne structure par site: $e');
+          }
+        }
+
+        // Dernier recours: collection globale
+        if (doc == null || !doc.exists) {
+          try {
             doc = await FirebaseFirestore.instance
                 .collection('collectes_recolte')
                 .doc(widget.collecteId)
                 .get();
+            if (doc.exists) {
+              print('✅ EDIT RECOLTE: Collecte trouvée dans collection globale');
+            }
+          } catch (e) {
+            print('❌ EDIT RECOLTE: Erreur collection globale: $e');
           }
-        } catch (e) {
-          // Si erreur avec la nouvelle structure, essayer l'ancienne
-          doc = await FirebaseFirestore.instance
-              .collection('collectes_recolte')
-              .doc(widget.collecteId)
-              .get();
         }
-      } else {
-        // Si pas de site, essayer directement l'ancienne structure
-        doc = await FirebaseFirestore.instance
-            .collection('collectes_recolte')
-            .doc(widget.collecteId)
-            .get();
       }
 
-      if (!doc.exists) {
+      if (doc == null || !doc.exists) {
+        print(
+            '❌ EDIT RECOLTE: Collecte non trouvée dans toutes les tentatives');
         setState(() {
-          statusMessage = 'Collecte introuvable';
+          statusMessage =
+              'Collecte introuvable - Vérifiez que la collecte existe dans la bonne collection';
           isLoading = false;
         });
         return;
@@ -884,7 +931,7 @@ class _EditCollecteRecoltePageState extends State<EditCollecteRecoltePage> {
                 _summaryChip(
                     'Montant total',
                     '${totalAmount.toStringAsFixed(0)} FCFA',
-                    Icons.attach_money,
+                    Icons.text_fields,
                     Colors.orange),
               ],
             ),

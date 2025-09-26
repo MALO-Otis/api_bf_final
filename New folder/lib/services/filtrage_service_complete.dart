@@ -1,7 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
+import 'package:flutter/foundation.dart';
 import '../authentication/user_session.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../screens/controle_de_donnes/models/attribution_models_v2.dart';
 
 /// Service complet pour la gestion du filtrage avec sauvegarde en base
@@ -124,14 +124,21 @@ class FiltrageServiceComplete {
         dateFiltrage: dateFiltrage,
       );
 
-      // 4. Marquer les produits d'extraction comme filtrés
-      await _marquerProduitsExtraitsCommeFiltres(
-        produitsSelectionnes, 
-        numeroLot, 
-        site
+      // 4. Marquer les produits D'ATTRIBUTION comme filtrés (mise à jour des tableaux produits)
+      await _marquerProduitsAttribuesCommeFiltres(
+        produitsSelectionnes,
+        numeroLot,
+        site,
       );
 
-      // 5. Mettre à jour les compteurs globaux du site
+      // 5. Marquer les produits d'extraction comme filtrés
+      await _marquerProduitsExtraitsCommeFiltres(
+        produitsSelectionnes,
+        numeroLot,
+        site,
+      );
+
+      // 6. Mettre à jour les compteurs globaux du site
       await _mettreAJourCompteursGlobaux(
           site, quantiteFiltree, produitsSelectionnes.length);
 
@@ -253,42 +260,45 @@ class FiltrageServiceComplete {
     String site,
   ) async {
     try {
-      debugPrint('🔄 [FiltrageService] Marquage des produits extraits comme filtrés...');
-      
+      debugPrint(
+          '🔄 [FiltrageService] Marquage des produits extraits comme filtrés...');
+
       final batch = _firestore.batch();
       int produitsMisAJour = 0;
-      
+
       for (final produit in produitsSelectionnes) {
         // Identifier les produits provenant d'extraction (ID commence par 'extraction_')
         if (produit.id.startsWith('extraction_')) {
           final extractionId = produit.id.replaceFirst('extraction_', '');
-          
+
           debugPrint('   📦 Marquage extraction: $extractionId');
           debugPrint('   🏷️ Code contenant: ${produit.codeContenant}');
-          
+
           // Mettre à jour le document d'extraction
           final extractionDoc = _firestore
               .collection('Extraction')
               .doc(site)
               .collection('extractions')
               .doc(extractionId);
-          
+
           batch.update(extractionDoc, {
             'estFiltre': true,
             'numeroLotFiltrage': numeroLot,
             'dateMarquageFiltrage': FieldValue.serverTimestamp(),
             'codeContenant': produit.codeContenant, // ✅ Ajout du code contenant
           });
-          
+
           produitsMisAJour++;
         }
       }
-      
+
       if (produitsMisAJour > 0) {
         await batch.commit();
-        debugPrint('✅ [FiltrageService] $produitsMisAJour extractions marquées comme filtrées');
+        debugPrint(
+            '✅ [FiltrageService] $produitsMisAJour extractions marquées comme filtrées');
       } else {
-        debugPrint('ℹ️ [FiltrageService] Aucune extraction à marquer (produits du contrôle uniquement)');
+        debugPrint(
+            'ℹ️ [FiltrageService] Aucune extraction à marquer (produits du contrôle uniquement)');
       }
     } catch (e) {
       debugPrint('❌ [FiltrageService] Erreur marquage extractions: $e');
@@ -318,6 +328,76 @@ class FiltrageServiceComplete {
       debugPrint('✅ [FiltrageService] Compteurs globaux mis à jour');
     } catch (e) {
       debugPrint('❌ [FiltrageService] Erreur compteurs globaux: $e');
+    }
+  }
+
+  /// ✅ Marque les produits ATTRIBUÉS (dans attribution_reçu) comme filtrés
+  Future<void> _marquerProduitsAttribuesCommeFiltres(
+    List<ProductControle> produitsSelectionnes,
+    String numeroLot,
+    String site,
+  ) async {
+    try {
+      debugPrint(
+          '🔄 [FiltrageService] Marquage des produits attribués comme filtrés...');
+
+      if (produitsSelectionnes.isEmpty) return;
+
+      final codesAFiltrer =
+          produitsSelectionnes.map((p) => p.codeContenant).toSet();
+
+      final attributionsRef = _firestore
+          .collection('attribution_reçu')
+          .doc(site)
+          .collection('attributions')
+          .where('type', isEqualTo: 'filtrage');
+
+      final snapshot = await attributionsRef.get();
+      int docsModifies = 0;
+
+      final batch = _firestore.batch();
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final produits =
+            (data['produits'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+        bool aChange = false;
+        final produitsMaj = <Map<String, dynamic>>[];
+        for (final p in produits) {
+          final code = (p['codeContenant'] ?? '').toString();
+          if (codesAFiltrer.contains(code)) {
+            aChange = true;
+            produitsMaj.add({
+              ...p,
+              'estFiltre': true,
+              'numeroLotFiltrage': numeroLot,
+              'dateFiltrage': FieldValue.serverTimestamp(),
+            });
+          } else {
+            produitsMaj.add(p);
+          }
+        }
+
+        if (aChange) {
+          batch.update(doc.reference, {
+            'produits': produitsMaj,
+            'derniereMiseAJour': FieldValue.serverTimestamp(),
+          });
+          docsModifies++;
+        }
+      }
+
+      if (docsModifies > 0) {
+        await batch.commit();
+        debugPrint(
+            '✅ [FiltrageService] $docsModifies document(s) d\'attribution mis à jour (estFiltre=true)');
+      } else {
+        debugPrint(
+            'ℹ️ [FiltrageService] Aucun document d\'attribution nécessitant une mise à jour');
+      }
+    } catch (e) {
+      debugPrint('❌ [FiltrageService] Erreur marquage produits attribués: $e');
     }
   }
 

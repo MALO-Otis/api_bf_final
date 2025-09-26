@@ -126,6 +126,12 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
       setState(() => _errorMessage = 'Veuillez sélectionner l\'appartenance');
       return;
     }
+    // Validation Prédominance florale (obligatoire)
+    if (_predominancesFloralesSelectionnees.isEmpty) {
+      setState(() => _errorMessage =
+          'Veuillez sélectionner au moins une prédominance florale');
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -376,8 +382,8 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
                             const SizedBox(height: 12),
                             _buildTextField(
                               _numeroController,
-                              'Numéro unique *',
-                              Icons.tag,
+                              'Numéro de téléphone *',
+                              Icons.phone,
                               validator: (value) =>
                                   value?.isEmpty ?? true ? 'Obligatoire' : null,
                             ),
@@ -424,8 +430,8 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
                                 Expanded(
                                   child: _buildTextField(
                                     _numeroController,
-                                    'Numéro unique *',
-                                    Icons.tag,
+                                    'Numéro de téléphone *',
+                                    Icons.phone,
                                     validator: (value) => value?.isEmpty ?? true
                                         ? 'Obligatoire'
                                         : null,
@@ -525,13 +531,13 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
 
                       const SizedBox(height: 20),
 
-                      // Section Prédominance florale
+                      // Section Prédominance florale (obligatoire)
                       _buildSection(
-                        'Prédominance florale',
+                        'Prédominance florale *',
                         Icons.local_florist,
                         [
                           Text(
-                            'Sélectionnez les prédominances florales (optionnel)',
+                            'Sélectionnez au moins une prédominance florale',
                             style: TextStyle(
                               fontSize: isSmallScreen ? 14 : 16,
                               color: Colors.grey.shade600,
@@ -644,49 +650,113 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
                           if (_communeSelectionnee.isNotEmpty) ...[
                             const SizedBox(height: 12),
                             // Option : Village de la liste ou personnalisé
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: RadioListTile<bool>(
-                                    title: Text('Village de la liste',
-                                        style: TextStyle(
-                                            fontSize: isSmallScreen ? 12 : 14)),
-                                    value: false,
-                                    groupValue: _villagePersonnaliseActive,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _villagePersonnaliseActive = value!;
-                                        if (!_villagePersonnaliseActive) {
-                                          _villagePersonnaliseController
-                                              .clear();
-                                        } else {
-                                          _villageSelectionne = '';
-                                        }
-                                      });
-                                    },
-                                  ),
-                                ),
-                                Expanded(
-                                  child: RadioListTile<bool>(
-                                    title: Text('Village non répertorié',
-                                        style: TextStyle(
-                                            fontSize: isSmallScreen ? 12 : 14)),
-                                    value: true,
-                                    groupValue: _villagePersonnaliseActive,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _villagePersonnaliseActive = value!;
-                                        if (!_villagePersonnaliseActive) {
-                                          _villagePersonnaliseController
-                                              .clear();
-                                        } else {
-                                          _villageSelectionne = '';
-                                        }
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ],
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final isVerySmallScreen =
+                                    constraints.maxWidth < 350;
+
+                                if (isVerySmallScreen) {
+                                  // Sur très petits écrans : disposition verticale
+                                  return Column(
+                                    children: [
+                                      RadioListTile<bool>(
+                                        title: Text('Village de la liste',
+                                            style: TextStyle(fontSize: 12)),
+                                        value: false,
+                                        groupValue: _villagePersonnaliseActive,
+                                        onChanged: (value) {
+                                          setState(() {
+                                            _villagePersonnaliseActive = value!;
+                                            if (!_villagePersonnaliseActive) {
+                                              _villagePersonnaliseController
+                                                  .clear();
+                                            } else {
+                                              _villageSelectionne = '';
+                                            }
+                                          });
+                                        },
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                horizontal: 4),
+                                        dense: true,
+                                      ),
+                                      RadioListTile<bool>(
+                                        title: Text('Village non répertorié',
+                                            style: TextStyle(fontSize: 12)),
+                                        value: true,
+                                        groupValue: _villagePersonnaliseActive,
+                                        onChanged: (value) {
+                                          setState(() {
+                                            _villagePersonnaliseActive = value!;
+                                            if (!_villagePersonnaliseActive) {
+                                              _villagePersonnaliseController
+                                                  .clear();
+                                            } else {
+                                              _villageSelectionne = '';
+                                            }
+                                          });
+                                        },
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                horizontal: 4),
+                                        dense: true,
+                                      ),
+                                    ],
+                                  );
+                                } else {
+                                  // Sur écrans normaux : disposition horizontale
+                                  return Row(
+                                    children: [
+                                      Expanded(
+                                        child: RadioListTile<bool>(
+                                          title: Text('Village de la liste',
+                                              style: TextStyle(
+                                                  fontSize:
+                                                      isSmallScreen ? 12 : 14)),
+                                          value: false,
+                                          groupValue:
+                                              _villagePersonnaliseActive,
+                                          onChanged: (value) {
+                                            setState(() {
+                                              _villagePersonnaliseActive =
+                                                  value!;
+                                              if (!_villagePersonnaliseActive) {
+                                                _villagePersonnaliseController
+                                                    .clear();
+                                              } else {
+                                                _villageSelectionne = '';
+                                              }
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: RadioListTile<bool>(
+                                          title: Text('Village non répertorié',
+                                              style: TextStyle(
+                                                  fontSize:
+                                                      isSmallScreen ? 12 : 14)),
+                                          value: true,
+                                          groupValue:
+                                              _villagePersonnaliseActive,
+                                          onChanged: (value) {
+                                            setState(() {
+                                              _villagePersonnaliseActive =
+                                                  value!;
+                                              if (!_villagePersonnaliseActive) {
+                                                _villagePersonnaliseController
+                                                    .clear();
+                                              } else {
+                                                _villageSelectionne = '';
+                                              }
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }
+                              },
                             ),
                             const SizedBox(height: 12),
                             // Dropdown des villages ou champ de saisie selon le choix

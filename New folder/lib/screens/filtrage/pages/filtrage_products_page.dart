@@ -60,8 +60,41 @@ class _FiltrageProductsPageState extends State<FiltrageProductsPage>
   void initState() {
     super.initState();
     _initializeAnimations();
-    _loadData();
+    _preloadDataQuick(); // ✅ Chargement rapide initial
     _startClock();
+  }
+
+  /// ✅ NOUVEAU: Chargement rapide initial avec cache
+  Future<void> _preloadDataQuick() async {
+    setState(() => _isLoading = true);
+
+    try {
+      // Tentative de chargement rapide depuis le cache
+      final products = await _service.getProduitsFilterageQuick(
+        searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
+      );
+
+      if (products.isNotEmpty) {
+        // Cache disponible - mise à jour immédiate
+        debugPrint(
+            '⚡ [Quick] ${products.length} produits chargés depuis le cache');
+        setState(() {
+          _allProducts = products;
+          _filteredProducts = _applyLocalFilters(products);
+          _isLoading = false;
+        });
+
+        // Lancer le chargement complet en arrière-plan
+        _loadData(forceRefresh: false);
+      } else {
+        // Pas de cache - chargement normal
+        debugPrint('🔄 [Quick] Pas de cache - chargement complet...');
+        _loadData();
+      }
+    } catch (e) {
+      debugPrint('❌ [Quick] Erreur chargement rapide: $e');
+      _loadData(); // Fallback vers chargement normal
+    }
   }
 
   @override
@@ -143,8 +176,8 @@ class _FiltrageProductsPageState extends State<FiltrageProductsPage>
     });
   }
 
-  /// Charge les données depuis le service (inspiré du module extraction)
-  Future<void> _loadData() async {
+  /// Charge les données depuis le service avec optimisations de performance
+  Future<void> _loadData({bool forceRefresh = false}) async {
     setState(() => _isLoading = true);
 
     try {
@@ -155,9 +188,11 @@ class _FiltrageProductsPageState extends State<FiltrageProductsPage>
           userSession.role == 'admin' || userSession.role == 'coordinateur';
       final userSite = userSession.site;
 
-      // ✅ SPÉCIFIQUE FILTRAGE: Récupérer produits liquides attribués + extraits du même site
+      // ✅ OPTIMISÉ: Utiliser le cache et chargement parallèle
       final products = await _service.getProduitsFilterage(
-          searchQuery: null); // Pas de filtre de recherche pour l'instant
+        searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
+        forceRefresh: forceRefresh,
+      );
       final stats = await _service.getStatistiquesFiltrage();
 
       // Récupérer les statistiques de contrôle par site pour le filtrage
@@ -366,7 +401,7 @@ class _FiltrageProductsPageState extends State<FiltrageProductsPage>
 
   Future<void> _refresh() async {
     _refreshController.forward();
-    await _loadData();
+    await _loadData(forceRefresh: true);
     _refreshController.reset();
   }
 
@@ -420,6 +455,9 @@ class _FiltrageProductsPageState extends State<FiltrageProductsPage>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isMobile = MediaQuery.of(context).size.width < 600;
+    final userSession = Get.find<UserSession>();
+    final isAdmin = (userSession.role ?? '').toLowerCase().contains('admin') ||
+        (userSession.role ?? '').toLowerCase().contains('coordinateur');
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -448,6 +486,40 @@ class _FiltrageProductsPageState extends State<FiltrageProductsPage>
                         // Bande d'informations de contrôle par site
                         if (_statsControle != null)
                           _buildBandeControleInfo(theme, isMobile),
+
+                        // Bande info accès site pour les contrôleurs
+                        if (!isAdmin && (userSession.site ?? '').isNotEmpty)
+                          Padding(
+                            padding: EdgeInsets.symmetric(
+                                horizontal: isMobile ? 8 : 16, vertical: 8),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.purple.shade50,
+                                border:
+                                    Border.all(color: Colors.purple.shade200),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.lock,
+                                      size: 16, color: Colors.purple.shade700),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Vue limitée à votre site: ${userSession.site}',
+                                      style:
+                                          theme.textTheme.bodySmall?.copyWith(
+                                        color: Colors.purple.shade700,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
 
                         // Barre de recherche et filtres
                         _buildSearchAndFilters(theme, isMobile),
@@ -744,8 +816,10 @@ class _FiltrageProductsPageState extends State<FiltrageProductsPage>
                     fontWeight: FontWeight.bold,
                     color: Colors.purple.shade700,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: isMobile ? 2 : 1,
+                  softWrap: true,
+                  overflow:
+                      isMobile ? TextOverflow.visible : TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 8),
@@ -1355,9 +1429,14 @@ class _FiltrageProductsPageState extends State<FiltrageProductsPage>
       builder: (context) => FiltrageFormModal(
         produitsSelectionnes: produitsSelectionnes,
         onFiltrageComplete: () {
+          // Retirer immédiatement les produits filtrés de la liste locale
           setState(() {
+            final idsFiltres = produitsSelectionnes.map((p) => p.id).toSet();
+            _allProducts.removeWhere((p) => idsFiltres.contains(p.id));
+            _filteredProducts.removeWhere((p) => idsFiltres.contains(p.id));
             _selectedProductIds.clear();
           });
+          // Rafraîchir en arrière-plan pour mettre à jour stats/cache
           _refresh();
         },
       ),

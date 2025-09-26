@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:dropdown_search/dropdown_search.dart';
 import '../../../../data/models/scoop_models.dart';
-import '../../../../data/services/stats_scoop_contenants_service.dart';
 import '../../../../data/geographe/geographie.dart';
+import 'package:dropdown_search/dropdown_search.dart';
+import '../../../../data/services/stats_scoop_contenants_service.dart';
 
 class ModalNouveauScoop extends StatefulWidget {
   final String site;
@@ -31,6 +31,7 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
   final _nbHommesController = TextEditingController(text: '0');
   final _nbFemmesController = TextEditingController(text: '0');
   final _nbJeunesController = TextEditingController(text: '0');
+  final _nbPlus35Controller = TextEditingController(text: '0');
   final _villagePersonnaliseController = TextEditingController();
 
   // Sélections géographiques
@@ -59,6 +60,7 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
     _nbHommesController.dispose();
     _nbFemmesController.dispose();
     _nbJeunesController.dispose();
+    _nbPlus35Controller.dispose();
     _villagePersonnaliseController.dispose();
     super.dispose();
   }
@@ -166,34 +168,43 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                controller: _nomController,
-                decoration: const InputDecoration(
-                  labelText: 'Nom du SCOOP',
-                  prefixIcon: Icon(Icons.apartment),
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) =>
-                    value?.isEmpty == true ? 'Nom requis' : null,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isCompact = constraints.maxWidth < 420;
+            final left = TextFormField(
+              controller: _nomController,
+              decoration: const InputDecoration(
+                labelText: 'Nom du SCOOP',
+                prefixIcon: Icon(Icons.apartment),
+                border: OutlineInputBorder(),
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                hintText: 'Saisir le nom du SCOOP',
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: TextFormField(
-                controller: _presidentController,
-                decoration: const InputDecoration(
-                  labelText: 'Nom du président',
-                  prefixIcon: Icon(Icons.person),
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) =>
-                    value?.isEmpty == true ? 'Président requis' : null,
+              validator: (value) =>
+                  value?.isEmpty == true ? 'Nom requis' : null,
+            );
+            final right = TextFormField(
+              controller: _presidentController,
+              decoration: const InputDecoration(
+                labelText: 'Nom du président',
+                prefixIcon: Icon(Icons.person),
+                border: OutlineInputBorder(),
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                hintText: 'Saisir le nom du président',
               ),
-            ),
-          ],
+              validator: (value) =>
+                  value?.isEmpty == true ? 'Président requis' : null,
+            );
+            if (isCompact) {
+              return Column(
+                  children: [left, const SizedBox(height: 12), right]);
+            }
+            return Row(children: [
+              Expanded(child: left),
+              const SizedBox(width: 16),
+              Expanded(child: right)
+            ]);
+          },
         ),
         const SizedBox(height: 16),
         TextFormField(
@@ -202,6 +213,8 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
             labelText: 'Téléphone du président',
             prefixIcon: Icon(Icons.phone),
             border: OutlineInputBorder(),
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+            hintText: '8 chiffres',
           ),
           keyboardType: TextInputType.phone,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -224,10 +237,12 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: DropdownSearch<String>(
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final bool isCompact = constraints.maxWidth < 420;
+            final children = <Widget>[
+              // Région
+              DropdownSearch<String>(
                 items: GeographieData.regionsBurkina
                     .map<String>((region) => region['nom']! as String)
                     .toList(),
@@ -249,13 +264,26 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
                     border: OutlineInputBorder(),
                   ),
                 ),
+                // Empêche le retour à la ligne du texte sélectionné
+                dropdownBuilder: (context, item) => Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Text(
+                    item ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ),
                 popupProps: const PopupProps.menu(showSearchBox: true),
                 validator: (value) => value == null ? 'Région requise' : null,
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: DropdownSearch<String>(
+              if (!isCompact)
+                const SizedBox(width: 16)
+              else
+                const SizedBox(height: 16),
+              // Province
+              DropdownSearch<String>(
                 items: _selectedRegion != null
                     ? _getProvincesForRegion(_selectedRegion!)
                     : [],
@@ -276,11 +304,33 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
                     border: OutlineInputBorder(),
                   ),
                 ),
+                dropdownBuilder: (context, item) => Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Text(
+                    item ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ),
                 popupProps: const PopupProps.menu(showSearchBox: true),
                 validator: (value) => value == null ? 'Province requise' : null,
               ),
-            ),
-          ],
+            ];
+
+            if (isCompact) {
+              return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: children);
+            } else {
+              return Row(children: [
+                Expanded(child: children[0]),
+                children[1],
+                Expanded(child: children[2]),
+              ]);
+            }
+          },
         ),
         const SizedBox(height: 16),
         DropdownSearch<String>(
@@ -301,6 +351,15 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
             dropdownSearchDecoration: InputDecoration(
               labelText: 'Commune',
               border: OutlineInputBorder(),
+            ),
+          ),
+          dropdownBuilder: (context, item) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Text(
+              item ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14),
             ),
           ),
           popupProps: const PopupProps.menu(showSearchBox: true),
@@ -477,45 +536,16 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
             ),
             child: Column(
               children: [
-                RadioListTile<bool>(
-                  title: const Text(
-                    'Village de la liste',
-                    style: TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  subtitle: const Text('Sélectionner un village existant'),
+                _buildVillageChoiceOption(
                   value: false,
-                  groupValue: _villagePersonnaliseActive,
-                  onChanged: (value) {
-                    setState(() {
-                      _villagePersonnaliseActive = value!;
-                      if (!_villagePersonnaliseActive) {
-                        _villagePersonnaliseController.clear();
-                      } else {
-                        _selectedVillage = null;
-                      }
-                    });
-                  },
-                  activeColor: Colors.blue.shade600,
+                  title: 'Village de la liste',
+                  subtitle: 'Sélectionner un village existant',
                 ),
-                RadioListTile<bool>(
-                  title: const Text(
-                    'Village non répertorié',
-                    style: TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  subtitle: const Text('Saisir un nouveau village'),
+                const SizedBox(height: 8),
+                _buildVillageChoiceOption(
                   value: true,
-                  groupValue: _villagePersonnaliseActive,
-                  onChanged: (value) {
-                    setState(() {
-                      _villagePersonnaliseActive = value!;
-                      if (!_villagePersonnaliseActive) {
-                        _villagePersonnaliseController.clear();
-                      } else {
-                        _selectedVillage = null;
-                      }
-                    });
-                  },
-                  activeColor: Colors.blue.shade600,
+                  title: 'Village non répertorié',
+                  subtitle: 'Saisir un nouveau village',
                 ),
               ],
             ),
@@ -595,38 +625,52 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                controller: _nbRuchesTradController,
-                decoration: const InputDecoration(
-                  labelText: 'Ruches traditionnelles',
-                  prefixIcon: Icon(Icons.grass),
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                validator: (value) =>
-                    value?.isEmpty == true ? 'Obligatoire' : null,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isCompact = constraints.maxWidth < 420;
+            final first = TextFormField(
+              controller: _nbRuchesTradController,
+              decoration: const InputDecoration(
+                labelText: 'Ruches traditionnelles',
+                prefixIcon: Icon(Icons.grass),
+                border: OutlineInputBorder(),
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                hintText: 'Nombre',
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: TextFormField(
-                controller: _nbRuchesModController,
-                decoration: const InputDecoration(
-                  labelText: 'Ruches modernes',
-                  prefixIcon: Icon(Icons.build),
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                validator: (value) =>
-                    value?.isEmpty == true ? 'Obligatoire' : null,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              validator: (value) =>
+                  value?.isEmpty == true ? 'Obligatoire' : null,
+            );
+            final second = TextFormField(
+              controller: _nbRuchesModController,
+              decoration: const InputDecoration(
+                labelText: 'Ruches modernes',
+                prefixIcon: Icon(Icons.build),
+                border: OutlineInputBorder(),
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                hintText: 'Nombre',
               ),
-            ),
-          ],
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              validator: (value) =>
+                  value?.isEmpty == true ? 'Obligatoire' : null,
+            );
+            if (isCompact) {
+              return Column(
+                children: [
+                  first,
+                  const SizedBox(height: 12),
+                  second,
+                ],
+              );
+            }
+            return Row(children: [
+              Expanded(child: first),
+              const SizedBox(width: 16),
+              Expanded(child: second)
+            ]);
+          },
         ),
       ],
     );
@@ -641,72 +685,102 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                controller: _nbMembresController,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre total de membres',
-                  prefixIcon: Icon(Icons.group),
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                validator: (value) {
-                  if (value?.isEmpty == true) return 'Obligatoire';
-                  final nb = int.tryParse(value!) ?? 0;
-                  if (nb <= 0) return 'Doit être > 0';
-                  return null;
-                },
-                onChanged: _updateMembresCalculation,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isCompact = constraints.maxWidth < 420;
+            final left = TextFormField(
+              controller: _nbMembresController,
+              decoration: const InputDecoration(
+                labelText: 'Nombre total de membres',
+                prefixIcon: Icon(Icons.group),
+                border: OutlineInputBorder(),
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                hintText: 'Nombre',
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: TextFormField(
-                controller: _nbHommesController,
-                decoration: const InputDecoration(
-                  labelText: 'Hommes',
-                  prefixIcon: Icon(Icons.man),
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                onChanged: _updateMembresCalculation,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              validator: (value) {
+                if (value?.isEmpty == true) return 'Obligatoire';
+                final nb = int.tryParse(value!) ?? 0;
+                if (nb <= 0) return 'Doit être > 0';
+                return null;
+              },
+              onChanged: _updateMembresCalculation,
+            );
+            final right = TextFormField(
+              controller: _nbHommesController,
+              decoration: const InputDecoration(
+                labelText: 'Hommes',
+                prefixIcon: Icon(Icons.man),
+                border: OutlineInputBorder(),
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                hintText: 'Nombre',
               ),
-            ),
-          ],
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: _updateMembresCalculation,
+            );
+            if (isCompact) {
+              return Column(
+                  children: [left, const SizedBox(height: 12), right]);
+            }
+            return Row(children: [
+              Expanded(child: left),
+              const SizedBox(width: 16),
+              Expanded(child: right)
+            ]);
+          },
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                controller: _nbJeunesController,
-                decoration: const InputDecoration(
-                  labelText: 'Jeunes (≤ 35 ans)',
-                  prefixIcon: Icon(Icons.child_care),
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                onChanged: _updateMembresCalculation,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isCompact = constraints.maxWidth < 420;
+            final left = TextFormField(
+              controller: _nbJeunesController,
+              decoration: const InputDecoration(
+                labelText: 'Âge ≤ 35 ans',
+                prefixIcon: Icon(Icons.child_care),
+                border: OutlineInputBorder(),
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                hintText: 'Nombre',
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: TextFormField(
-                controller: _nbFemmesController,
-                decoration: const InputDecoration(
-                  labelText: 'Femmes (calculé)',
-                  prefixIcon: Icon(Icons.woman),
-                  border: OutlineInputBorder(),
-                ),
-                enabled: false,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: _updateMembresCalculation,
+            );
+            final right = TextFormField(
+              controller: _nbFemmesController,
+              decoration: const InputDecoration(
+                labelText: 'Femmes (calculé)',
+                prefixIcon: Icon(Icons.woman),
+                border: OutlineInputBorder(),
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                hintText: 'Auto-calculé',
               ),
-            ),
-          ],
+              enabled: false,
+            );
+            if (isCompact) {
+              return Column(
+                  children: [left, const SizedBox(height: 12), right]);
+            }
+            return Row(children: [
+              Expanded(child: left),
+              const SizedBox(width: 16),
+              Expanded(child: right)
+            ]);
+          },
+        ),
+        const SizedBox(height: 16),
+        // Âge > 35 ans (auto)
+        TextFormField(
+          controller: _nbPlus35Controller,
+          decoration: const InputDecoration(
+            labelText: 'Âge > 35 ans (calculé)',
+            prefixIcon: Icon(Icons.elderly),
+            border: OutlineInputBorder(),
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+          ),
+          enabled: false,
         ),
       ],
     );
@@ -758,7 +832,10 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
     final nbTotal = int.tryParse(_nbMembresController.text) ?? 0;
     final nbHommes = int.tryParse(_nbHommesController.text) ?? 0;
     final nbFemmes = nbTotal - nbHommes;
+    final nbJeunes = int.tryParse(_nbJeunesController.text) ?? 0;
+    final nbPlus35 = nbTotal - nbJeunes;
     _nbFemmesController.text = nbFemmes > 0 ? nbFemmes.toString() : '0';
+    _nbPlus35Controller.text = nbPlus35 > 0 ? nbPlus35.toString() : '0';
   }
 
   Future<void> _saveScoop() async {
@@ -925,5 +1002,75 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
   List<String> _getQuartiersForSecteur(String commune, String secteur) {
     // Système arrondissement/quartier abandonné
     return [];
+  }
+
+  // --- UI helpers ---
+  Widget _buildVillageChoiceOption({
+    required bool value,
+    required String title,
+    required String subtitle,
+  }) {
+    final selected = _villagePersonnaliseActive == value;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () {
+        setState(() {
+          _villagePersonnaliseActive = value;
+          if (!_villagePersonnaliseActive) {
+            _villagePersonnaliseController.clear();
+          } else {
+            _selectedVillage = null;
+          }
+        });
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Radio<bool>(
+              value: value,
+              groupValue: _villagePersonnaliseActive,
+              onChanged: (v) {
+                setState(() {
+                  _villagePersonnaliseActive = v!;
+                  if (!_villagePersonnaliseActive) {
+                    _villagePersonnaliseController.clear();
+                  } else {
+                    _selectedVillage = null;
+                  }
+                });
+              },
+              activeColor: Colors.blue.shade600,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: selected ? Colors.blue.shade800 : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: Colors.grey.shade700, height: 1.2),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -1,30 +1,31 @@
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:apisavana_gestion/authentication/login.dart';
 import 'package:apisavana_gestion/authentication/sign_up.dart';
 import 'package:apisavana_gestion/services/user_role_service.dart';
 import 'package:apisavana_gestion/authentication/user_session.dart';
 import 'package:apisavana_gestion/screens/vente/vente_main_page.dart';
 import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
+import 'package:apisavana_gestion/screens/caisse/pages/espace_caissier_page.dart';
 import 'package:apisavana_gestion/screens/dashboard/pages/notifications_page.dart';
 import 'package:apisavana_gestion/screens/administration/pages/settings_page.dart';
 import 'package:apisavana_gestion/screens/conditionnement/condionnement_home.dart';
+import 'package:apisavana_gestion/screens/caisse/controllers/caisse_controller.dart';
 import 'package:apisavana_gestion/screens/extraction/pages/main_extraction_page.dart';
 import 'package:apisavana_gestion/screens/administration/pages/admin_reports_page.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collectes.dart';
 import 'package:apisavana_gestion/screens/administration/pages/user_management_page.dart';
 import 'package:apisavana_gestion/screens/conditionnement/conditionnement_main_page.dart';
+import 'package:apisavana_gestion/screens/dashboard/controllers/chart_data_controller.dart';
 import 'package:apisavana_gestion/screens/conditionnement/pages/stock_conditionne_page.dart';
-import 'package:apisavana_gestion/screens/dashboard/role_dashboards/controleur_dashboard.dart';
-import 'package:apisavana_gestion/screens/dashboard/role_dashboards/commercial_dashboard.dart';
-import 'package:apisavana_gestion/screens/dashboard/role_dashboards/collecteur_dashboard.dart';
 import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
 import 'package:apisavana_gestion/screens/controle_de_donnes/historique_attribution_page.dart';
+import 'package:apisavana_gestion/screens/vente/controllers/espace_commercial_controller.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nouvelle_collecte_individuelle.dart';
-import 'package:apisavana_gestion/screens/dashboard/role_dashboards/conditionneur_dashboard.dart';
-import 'package:apisavana_gestion/screens/dashboard/role_dashboards/extracteur_filtreur_dashboard.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_mielleurie/nouvelle_collecte_miellerie.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_achats_scoop_contenants/nouvel_achat_scoop_contenants.dart';
@@ -68,8 +69,7 @@ class DashboardController extends GetxController {
         return;
       }
 
-      if (moduleName == 'COLLECTE' &&
-          subModule == 'Achats SCOOPS - Contenants') {
+      if (moduleName == 'COLLECTE' && subModule == 'Achat Scoop') {
         currentPage.value = const NouvelAchatScoopContenantsPage();
         return;
       }
@@ -100,7 +100,7 @@ class DashboardController extends GetxController {
       // NOUVEAU : Module d'extraction
       if (moduleName == 'EXTRACTION' && subModule == 'Extraction de données') {
         print('✅ Navigation vers Extraction de données');
-        currentPage.value = const MainExtractionPage(initialTabIndex: 0);
+        currentPage.value = const MainExtractionPage();
         return;
       }
       if (moduleName == 'EXTRACTION' &&
@@ -109,6 +109,7 @@ class DashboardController extends GetxController {
               subModule == 'Historique extractions' ||
               subModule == 'Rapports qualité')) {
         print('✅ Navigation vers ${subModule} -> MainExtractionPage');
+        // Ouvrir directement l'onglet Historique si demandé
         final initialTab = subModule == 'Historique extractions' ? 1 : 0;
         currentPage.value = MainExtractionPage(initialTabIndex: initialTab);
         return;
@@ -149,6 +150,17 @@ class DashboardController extends GetxController {
       if (moduleName == 'GESTION DE VENTES') {
         print('✅ Navigation vers GESTION DE VENTES');
         currentPage.value = const VenteMainPage();
+        return;
+      }
+
+      // NOUVEAU : Module CAISSE (accès rapide au dashboard caissier)
+      if (moduleName == 'CAISSE') {
+        // Deux sous-modules proposés pointent pour l'instant vers la même page synthèse
+        // Possibilité future: différencier Analyse Paiements avec un paramètre / onglet
+        // subModule est non-null dans ce bloc général mais on garde une sécurité simple
+        final libelle = subModule.isEmpty ? 'Synthèse' : subModule;
+        print('✅ Navigation vers CAISSE -> $libelle');
+        currentPage.value = const EspaceCaissierPage();
         return;
       }
 
@@ -196,6 +208,10 @@ class DashboardController extends GetxController {
           print('✅ Navigation par défaut vers CONDITIONNEMENT');
           currentPage.value =
               const ConditionnementMainPage(); // 🆕 PAGE PRINCIPALE DU CONDITIONNEMENT
+          break;
+        case 'CAISSE':
+          print('✅ Navigation par défaut vers CAISSE');
+          currentPage.value = const EspaceCaissierPage();
           break;
         default:
           print('❌ Module non géré: $moduleName');
@@ -369,7 +385,7 @@ class _DashboardPageState extends State<DashboardPage> {
 }
 
 // Header
-class DashboardHeader extends StatelessWidget {
+class DashboardHeader extends StatefulWidget {
   final VoidCallback onMenuToggle;
   final bool isMobile, isTablet;
 
@@ -379,6 +395,49 @@ class DashboardHeader extends StatelessWidget {
       required this.isTablet,
       Key? key})
       : super(key: key);
+
+  @override
+  State<DashboardHeader> createState() => _DashboardHeaderState();
+}
+
+class _DashboardHeaderState extends State<DashboardHeader> {
+  bool _isRefreshing = false;
+
+  /// Simule un processus de rafraîchissement
+  Future<void> _handleRefresh() async {
+    if (_isRefreshing) return;
+
+    setState(() {
+      _isRefreshing = true;
+    });
+
+    // Simulation d'un processus de chargement
+    await Future.delayed(const Duration(seconds: 2));
+
+    setState(() {
+      _isRefreshing = false;
+    });
+
+    // Afficher un message de confirmation
+    Get.snackbar(
+      'Actualisation',
+      'Données mises à jour avec succès !',
+      snackPosition: SnackPosition.TOP,
+      backgroundColor: Colors.green.withOpacity(0.8),
+      colorText: Colors.white,
+      duration: const Duration(seconds: 2),
+      margin: const EdgeInsets.all(16),
+    );
+  }
+
+  /// Navigation vers la page des paramètres système
+  void _navigateToSettings() {
+    Get.to(
+      () => const SettingsPage(),
+      transition: Transition.rightToLeftWithFade,
+      duration: const Duration(milliseconds: 300),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -393,18 +452,19 @@ class DashboardHeader extends StatelessWidget {
       child: Container(
         color: Colors.white,
         padding: EdgeInsets.symmetric(
-            horizontal: isMobile ? 8 : 24, vertical: isMobile ? 8 : 14),
+            horizontal: widget.isMobile ? 8 : 24,
+            vertical: widget.isMobile ? 8 : 14),
         child: Row(
           children: [
-            if (isMobile || isTablet)
+            if (widget.isMobile || widget.isTablet)
               IconButton(
                 icon: Icon(Icons.menu, color: kHighlightColor, size: 28),
-                onPressed: onMenuToggle,
+                onPressed: widget.onMenuToggle,
               ),
             Image.asset(
               'assets/logo/logo.jpeg', // Correct path
-              height: isMobile ? 40 : 60,
-              width: isMobile ? 40 : 60,
+              height: widget.isMobile ? 40 : 60,
+              width: widget.isMobile ? 40 : 60,
               fit: BoxFit.contain,
             ),
             SizedBox(width: 8),
@@ -418,7 +478,7 @@ class DashboardHeader extends StatelessWidget {
                         final roleService = Get.find<UserRoleService>();
                         return Text(roleService.dashboardTitle,
                             style: TextStyle(
-                              fontSize: isMobile ? 15 : 21,
+                              fontSize: widget.isMobile ? 15 : 21,
                               fontWeight: FontWeight.bold,
                               color: kHighlightColor,
                             ),
@@ -426,7 +486,7 @@ class DashboardHeader extends StatelessWidget {
                       } catch (e) {
                         return Text("Dashboard Administrateur",
                             style: TextStyle(
-                              fontSize: isMobile ? 15 : 21,
+                              fontSize: widget.isMobile ? 15 : 21,
                               fontWeight: FontWeight.bold,
                               color: kHighlightColor,
                             ),
@@ -434,7 +494,7 @@ class DashboardHeader extends StatelessWidget {
                       }
                     },
                   ),
-                  if (!isMobile)
+                  if (!widget.isMobile)
                     Builder(
                       builder: (context) {
                         try {
@@ -452,7 +512,7 @@ class DashboardHeader extends StatelessWidget {
                 ],
               ),
             ),
-            if (!isMobile && !isTablet)
+            if (!widget.isMobile && !widget.isTablet)
               // Seulement sur desktop pour éviter l'overflow
               Flexible(
                 child: Row(
@@ -493,43 +553,155 @@ class DashboardHeader extends StatelessWidget {
                   ],
                 ),
               ),
-            SizedBox(width: isMobile ? 6 : 12),
-            IconButton(
-              icon: Stack(
-                children: [
-                  Icon(Icons.notifications,
-                      color: kHighlightColor, size: isMobile ? 18 : 22),
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: CircleAvatar(
-                      backgroundColor: Colors.redAccent,
-                      radius: 6,
-                      child: Text("5",
-                          style: TextStyle(fontSize: 9, color: Colors.white)),
+            SizedBox(width: widget.isMobile ? 6 : 12),
+            // Notifications bell with live unread count (caisse + admin notifications)
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: (() {
+                final session = Get.find<UserSession>();
+                final site = session.site ?? '';
+                Query<Map<String, dynamic>> q = FirebaseFirestore.instance
+                    .collection('notifications_caisse')
+                    .where('statut', isEqualTo: 'non_lue');
+                if (site.isNotEmpty) {
+                  q = q.where('site', isEqualTo: site);
+                }
+                return q.snapshots();
+              })(),
+              builder: (context, caisseSnap) {
+                final caisseUnread =
+                    caisseSnap.hasData ? caisseSnap.data!.size : 0;
+                // Pour les admins: additionner les admin_notifications non lues (readBy ne contient pas uid)
+                final session = Get.find<UserSession>();
+                final role = (session.role ?? '').toLowerCase();
+                final uid = session.uid ?? '';
+                final site = session.site ?? '';
+
+                if (role != 'admin') {
+                  final total = caisseUnread;
+                  return IconButton(
+                    icon: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Icon(
+                          Icons.notifications,
+                          color: kHighlightColor,
+                          size: widget.isMobile ? 18 : 22,
+                        ),
+                        if (total > 0)
+                          Positioned(
+                            right: -2,
+                            top: -2,
+                            child: CircleAvatar(
+                              backgroundColor: Colors.redAccent,
+                              radius: 7,
+                              child: Text(
+                                total > 99 ? '99+' : total.toString(),
+                                style: const TextStyle(
+                                    fontSize: 9, color: Colors.white),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              onPressed: () {
-                Get.to(
-                  () => const NotificationsPage(),
-                  transition: Transition.rightToLeftWithFade,
-                  duration: const Duration(milliseconds: 300),
+                    onPressed: () {
+                      Get.to(
+                        () => const NotificationsPage(),
+                        transition: Transition.rightToLeftWithFade,
+                        duration: const Duration(milliseconds: 300),
+                      );
+                    },
+                    tooltip: 'Notifications',
+                  );
+                }
+
+                // Admin: écouter aussi admin_notifications et sommer localement les non lues
+                return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: (() {
+                    Query<Map<String, dynamic>> q = FirebaseFirestore.instance
+                        .collection('admin_notifications')
+                        .orderBy('serverTime', descending: true)
+                        .limit(200);
+                    if (site.isNotEmpty) {
+                      q = q.where('site', isEqualTo: site);
+                    }
+                    return q.snapshots();
+                  })(),
+                  builder: (context, adminSnap) {
+                    int adminUnread = 0;
+                    if (adminSnap.hasData) {
+                      for (final doc in adminSnap.data!.docs) {
+                        final data = doc.data();
+                        final List<dynamic> readBy =
+                            (data['readBy'] ?? []) as List<dynamic>;
+                        if (!readBy.contains(uid)) {
+                          adminUnread++;
+                        }
+                      }
+                    }
+                    final total = caisseUnread + adminUnread;
+                    return IconButton(
+                      icon: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Icon(
+                            Icons.notifications,
+                            color: kHighlightColor,
+                            size: widget.isMobile ? 18 : 22,
+                          ),
+                          if (total > 0)
+                            Positioned(
+                              right: -2,
+                              top: -2,
+                              child: CircleAvatar(
+                                backgroundColor: Colors.redAccent,
+                                radius: 7,
+                                child: Text(
+                                  total > 99 ? '99+' : total.toString(),
+                                  style: const TextStyle(
+                                      fontSize: 9, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      onPressed: () {
+                        Get.to(
+                          () => const NotificationsPage(),
+                          transition: Transition.rightToLeftWithFade,
+                          duration: const Duration(milliseconds: 300),
+                        );
+                      },
+                      tooltip: 'Notifications',
+                    );
+                  },
                 );
               },
             ),
-            if (!isMobile) ...[
+            if (!widget.isMobile) ...[
               IconButton(
-                  icon: Icon(Icons.refresh, color: Colors.grey[700]),
-                  onPressed: () {}),
+                icon: _isRefreshing
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.grey[700]!),
+                        ),
+                      )
+                    : Icon(Icons.refresh, color: Colors.grey[700]),
+                onPressed: _isRefreshing ? null : _handleRefresh,
+                tooltip: 'Actualiser les données',
+              ),
               IconButton(
-                  icon: Icon(Icons.settings, color: Colors.grey[700]),
-                  onPressed: () {}),
+                icon: Icon(Icons.settings, color: Colors.grey[700]),
+                onPressed: _navigateToSettings,
+                tooltip: 'Paramètres système',
+              ),
             ],
             OutlinedButton.icon(
               icon: Icon(Icons.logout, color: Colors.red[400], size: 16),
-              label: isMobile
+              label: widget.isMobile
                   ? SizedBox.shrink()
                   : Text("Déconnexion",
                       style: TextStyle(color: Colors.red[400], fontSize: 12)),
@@ -537,7 +709,7 @@ class DashboardHeader extends StatelessWidget {
                 side: BorderSide(color: Colors.red[100]!),
                 backgroundColor: Colors.red[50],
                 padding: EdgeInsets.symmetric(
-                    horizontal: isMobile ? 5 : 12, vertical: 6),
+                    horizontal: widget.isMobile ? 5 : 12, vertical: 6),
               ),
               onPressed: () async {
                 await FirebaseAuth.instance.signOut();
@@ -572,58 +744,73 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
   List<bool> visibleSeries = [true, true]; // [ventes, collecte]
   int? touchedIndex; // Pour le hover/tap
 
+  // Controllers pour données commerciales / caisse
+  CaisseController? _caisseCtrl;
+  late UserSession _userSession;
+  final NumberFormat _money = NumberFormat('#,##0', 'fr_FR');
+  late final ChartDataController _chartData;
+
+  bool get _isWideScopeRole {
+    final r = (_userSession.role ?? '').toLowerCase();
+    return r == 'admin' ||
+        r == 'caissier' ||
+        r == 'caissière' ||
+        r == 'gestionnaire commercial' ||
+        r == 'magazinier';
+  }
+
+  String _fmtMoney(double v) => '${_money.format(v)} FCFA';
+
+  Widget _kpiWrap(Widget child) {
+    return Container(
+      width: widget.isMobile ? 160 : 200,
+      margin: EdgeInsets.only(right: 12),
+      child: child,
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Sécuriser l'accès à UserSession
+    try {
+      _userSession = Get.find<UserSession>();
+    } catch (_) {
+      _userSession = Get.put(UserSession());
+    }
+    // S'assurer que les contrôleurs sont disponibles
+    // Primes ventes contrôleur pour data sources annexes (non obligatoire ici)
+    try {
+      if (!Get.isRegistered<EspaceCommercialController>()) {
+        Get.put(EspaceCommercialController(), permanent: true);
+      }
+    } catch (_) {}
+    try {
+      _caisseCtrl = Get.isRegistered<CaisseController>()
+          ? Get.find<CaisseController>()
+          : Get.put(CaisseController(), permanent: true);
+    } catch (_) {}
+
+    // Chart data controller (agrégation ventes/collecte)
+    _chartData = Get.isRegistered<ChartDataController>()
+        ? Get.find<ChartDataController>()
+        : Get.put(ChartDataController(), permanent: true);
+
+    // Si l'utilisateur est un commercial (hors large scope), filtrer ses KPIs à son activité
+    final role = (_userSession.role ?? '').toLowerCase();
+    if (!_isWideScopeRole && role == 'commercial' && _caisseCtrl != null) {
+      final email = _userSession.email ?? '';
+      if (email.isNotEmpty) {
+        // Filtrer KPIs pour le commercial courant
+        _caisseCtrl!.setCommercial(email);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 🔒 VÉRIFIER LE RÔLE ET AFFICHER LE DASHBOARD APPROPRIÉ
-    try {
-      final userSession = Get.find<UserSession>();
-      final userRole = userSession.role?.toLowerCase() ?? '';
-
-      debugPrint('🔍 [Dashboard] Rôle utilisateur détecté: $userRole');
-
-      // Rediriger vers le dashboard spécifique selon le rôle
-      switch (userRole) {
-        case 'contrôleur':
-        case 'controlleur':
-          debugPrint('✅ [Dashboard] Redirection vers ControleurDashboard');
-          return const ControleurDashboard();
-
-        case 'extracteur':
-        case 'filtreur':
-          debugPrint(
-              '✅ [Dashboard] Redirection vers ExtracteurFiltreurDashboard');
-          return const ExtracteurFiltreurDashboard();
-
-        case 'conditionneur':
-          debugPrint('✅ [Dashboard] Redirection vers ConditionneurDashboard');
-          return const ConditionneurDashboard();
-
-        case 'commercial':
-        case 'caissier':
-        case 'caissière':
-        case 'magazinier':
-        case 'gestionnaire commercial':
-          debugPrint('✅ [Dashboard] Redirection vers CommercialDashboard');
-          return const CommercialDashboard();
-
-        case 'collecteur':
-          debugPrint('✅ [Dashboard] Redirection vers CollecteurDashboard');
-          return const CollecteurDashboard();
-
-        case 'admin':
-          debugPrint('✅ [Dashboard] Utilisation du dashboard Admin complet');
-          break; // Continuer avec le dashboard admin
-
-        default:
-          debugPrint(
-              '⚠️ [Dashboard] Rôle non reconnu: $userRole - Utilisation du dashboard admin');
-          break; // Utiliser le dashboard admin par défaut
-      }
-    } catch (e) {
-      debugPrint(
-          '❌ [Dashboard] Erreur détection rôle: $e - Utilisation du dashboard admin');
-      // Si erreur, utiliser le dashboard admin par défaut
-    }
+    // Unifier le dashboard: on garde la même page pour tous,
+    // mais on adapte les KPIs selon le rôle (admin voit tout, autres voient leurs infos principales)
     final EdgeInsets sectionPad = EdgeInsets.symmetric(
         horizontal: widget.isMobile ? 6 : 22,
         vertical: widget.isMobile ? 8 : 18);
@@ -637,48 +824,219 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("Vue d'ensemble",
-                  style: TextStyle(
-                      fontSize: widget.isMobile ? 15 : 19,
-                      fontWeight: FontWeight.bold)),
-              SizedBox(height: 8),
-              Wrap(
-                spacing: 10,
-                runSpacing: 18,
+              Row(
                 children: [
-                  KPICard(
-                      title: "Ventes du mois",
-                      value: "16,072,500 FCFA",
-                      icon: Icons.shopping_cart,
-                      color: kHighlightColor,
-                      trend: 12,
-                      isPositive: true,
-                      isMobile: widget.isMobile),
-                  KPICard(
-                      title: "Collecte totale",
-                      value: "1,240 kg",
-                      icon: Icons.local_florist,
-                      color: Colors.green,
-                      trend: 8,
-                      isPositive: true,
-                      isMobile: widget.isMobile),
-                  KPICard(
-                      title: "Stock disponible",
-                      value: "3,680 kg",
-                      icon: Icons.inventory,
-                      color: Colors.orange,
-                      trend: 5,
-                      isPositive: false,
-                      isMobile: widget.isMobile),
-                  KPICard(
-                      title: "Crédits en attente",
-                      value: "5,842,100 FCFA",
-                      icon: Icons.credit_card,
-                      color: Colors.red,
-                      trend: 15,
-                      isPositive: false,
-                      isMobile: widget.isMobile),
+                  Text("Vue d'ensemble",
+                      style: TextStyle(
+                          fontSize: widget.isMobile ? 15 : 19,
+                          fontWeight: FontWeight.bold)),
+                  Spacer(),
+                  Icon(Icons.swipe_left,
+                      size: widget.isMobile ? 16 : 18,
+                      color: Colors.grey.shade600),
+                  SizedBox(width: 4),
+                  Text("Glissez pour voir plus",
+                      style: TextStyle(
+                          fontSize: widget.isMobile ? 11 : 13,
+                          color: Colors.grey.shade600)),
                 ],
+              ),
+              SizedBox(height: 12),
+              Container(
+                height: widget.isMobile ? 110 : 135,
+                child: Obx(() {
+                  // S'assurer que les contrôleurs existent
+                  final caisse = _caisseCtrl;
+                  final role = (_userSession.role ?? '').toLowerCase();
+                  final isAdmin = role == 'admin';
+                  // Si pas de contrôleur dispo, afficher placeholders légers
+                  if (caisse == null) {
+                    return ListView(
+                      scrollDirection: Axis.horizontal,
+                      physics: BouncingScrollPhysics(),
+                      padding: EdgeInsets.symmetric(horizontal: 2),
+                      children: [
+                        _kpiWrap(
+                          KPICard(
+                            title: 'CA Net',
+                            value: '--',
+                            icon: Icons.payments,
+                            color: Colors.indigo,
+                            trend: 0,
+                            isPositive: true,
+                            isMobile: widget.isMobile,
+                          ),
+                        ),
+                        _kpiWrap(
+                          KPICard(
+                            title: 'Crédits en attente',
+                            value: '--',
+                            icon: Icons.credit_card,
+                            color: Colors.orange,
+                            trend: 0,
+                            isPositive: false,
+                            isMobile: widget.isMobile,
+                          ),
+                        ),
+                        _kpiWrap(
+                          KPICard(
+                            title: 'CA Espèce',
+                            value: '--',
+                            icon: Icons.attach_money,
+                            color: Colors.green,
+                            trend: 0,
+                            isPositive: true,
+                            isMobile: widget.isMobile,
+                          ),
+                        ),
+                        _kpiWrap(
+                          KPICard(
+                            title: 'CA Mobile',
+                            value: '--',
+                            icon: Icons.phone_iphone,
+                            color: Colors.blue,
+                            trend: 0,
+                            isPositive: true,
+                            isMobile: widget.isMobile,
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+
+                  // KPIs par rôle
+                  final items = <Widget>[];
+                  // Admin: vue générale agrégée
+                  if (isAdmin) {
+                    items.addAll([
+                      _kpiWrap(KPICard(
+                        title: 'CA Brut (site)',
+                        value: _fmtMoney(caisse.caBrut.value),
+                        icon: Icons.shopping_cart,
+                        color: kHighlightColor,
+                        trend: 0,
+                        isPositive: true,
+                        isMobile: widget.isMobile,
+                      )),
+                      _kpiWrap(KPICard(
+                        title: 'CA Net (site)',
+                        value: _fmtMoney(caisse.caNet.value),
+                        icon: Icons.payments,
+                        color: Colors.indigo,
+                        trend: 0,
+                        isPositive: true,
+                        isMobile: widget.isMobile,
+                      )),
+                      _kpiWrap(KPICard(
+                        title: 'Crédits en attente',
+                        value: _fmtMoney(caisse.creditAttente.value),
+                        icon: Icons.credit_card,
+                        color: Colors.orange,
+                        trend: 0,
+                        isPositive: false,
+                        isMobile: widget.isMobile,
+                      )),
+                      _kpiWrap(KPICard(
+                        title: 'Crédits remboursés',
+                        value: _fmtMoney(caisse.creditRembourse.value),
+                        icon: Icons.verified,
+                        color: Colors.teal,
+                        trend: 0,
+                        isPositive: true,
+                        isMobile: widget.isMobile,
+                      )),
+                    ]);
+                  } else {
+                    // Caissier / Gestionnaire: focus dettes/transactions
+                    if (_isWideScopeRole) {
+                      items.addAll([
+                        _kpiWrap(KPICard(
+                          title: 'CA Net (site)',
+                          value: _fmtMoney(caisse.caNet.value),
+                          icon: Icons.payments,
+                          color: Colors.indigo,
+                          trend: 0,
+                          isPositive: true,
+                          isMobile: widget.isMobile,
+                        )),
+                        _kpiWrap(KPICard(
+                          title: 'Crédits en attente',
+                          value: _fmtMoney(caisse.creditAttente.value),
+                          icon: Icons.report_gmailerrorred,
+                          color: Colors.deepOrange,
+                          trend: 0,
+                          isPositive: false,
+                          isMobile: widget.isMobile,
+                        )),
+                        _kpiWrap(KPICard(
+                          title: 'Crédits remboursés',
+                          value: _fmtMoney(caisse.creditRembourse.value),
+                          icon: Icons.done_all,
+                          color: Colors.teal,
+                          trend: 0,
+                          isPositive: true,
+                          isMobile: widget.isMobile,
+                        )),
+                        _kpiWrap(KPICard(
+                          title: 'Cash théorique',
+                          value: _fmtMoney(caisse.cashTheorique.value),
+                          icon: Icons.account_balance_wallet,
+                          color: Colors.green,
+                          trend: 0,
+                          isPositive: true,
+                          isMobile: widget.isMobile,
+                        )),
+                      ]);
+                    } else {
+                      // Commercial: ses propres chiffres
+                      items.addAll([
+                        _kpiWrap(KPICard(
+                          title: 'Mes ventes (brut)',
+                          value: _fmtMoney(caisse.caBrut.value),
+                          icon: Icons.shopping_bag,
+                          color: kHighlightColor,
+                          trend: 0,
+                          isPositive: true,
+                          isMobile: widget.isMobile,
+                        )),
+                        _kpiWrap(KPICard(
+                          title: 'Mes crédits en attente',
+                          value: _fmtMoney(caisse.creditAttente.value),
+                          icon: Icons.credit_card,
+                          color: Colors.orange,
+                          trend: 0,
+                          isPositive: false,
+                          isMobile: widget.isMobile,
+                        )),
+                        _kpiWrap(KPICard(
+                          title: 'Ventes en espèces',
+                          value: _fmtMoney(caisse.caEspece.value),
+                          icon: Icons.attach_money,
+                          color: Colors.green,
+                          trend: 0,
+                          isPositive: true,
+                          isMobile: widget.isMobile,
+                        )),
+                        _kpiWrap(KPICard(
+                          title: 'Ventes mobile money',
+                          value: _fmtMoney(caisse.caMobile.value),
+                          icon: Icons.phone_iphone,
+                          color: Colors.blue,
+                          trend: 0,
+                          isPositive: true,
+                          isMobile: widget.isMobile,
+                        )),
+                      ]);
+                    }
+                  }
+
+                  return ListView(
+                    scrollDirection: Axis.horizontal,
+                    physics: BouncingScrollPhysics(),
+                    padding: EdgeInsets.symmetric(horizontal: 2),
+                    children: items,
+                  );
+                }),
               ),
             ],
           ),
@@ -714,79 +1072,107 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
                       fontSize: widget.isMobile ? 15 : 19,
                       fontWeight: FontWeight.bold)),
               SizedBox(height: 7),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [
-                  ChartTypeButton(
-                      label: "Ligne",
-                      icon: Icons.show_chart,
-                      selected: selectedChart == 0,
-                      onTap: () => setState(() => selectedChart = 0)),
-                  ChartTypeButton(
-                      label: "Histogramme",
-                      icon: Icons.bar_chart,
-                      selected: selectedChart == 1,
-                      onTap: () => setState(() => selectedChart = 1)),
-                  ChartTypeButton(
-                      label: "Cercle",
-                      icon: Icons.pie_chart,
-                      selected: selectedChart == 2,
-                      onTap: () => setState(() => selectedChart = 2)),
-                  ChartTypeButton(
-                      label: "Aire",
-                      icon: Icons.area_chart,
-                      selected: selectedChart == 3,
-                      onTap: () => setState(() => selectedChart = 3)),
-                ],
+              Container(
+                height: widget.isMobile ? 45 : 50,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  physics: BouncingScrollPhysics(),
+                  children: [
+                    ChartTypeButton(
+                        label: "Ligne",
+                        icon: Icons.show_chart,
+                        selected: selectedChart == 0,
+                        onTap: () => setState(() => selectedChart = 0)),
+                    SizedBox(width: 8),
+                    ChartTypeButton(
+                        label: "Histogramme",
+                        icon: Icons.bar_chart,
+                        selected: selectedChart == 1,
+                        onTap: () => setState(() => selectedChart = 1)),
+                    SizedBox(width: 8),
+                    ChartTypeButton(
+                        label: "Cercle",
+                        icon: Icons.pie_chart,
+                        selected: selectedChart == 2,
+                        onTap: () => setState(() => selectedChart = 2)),
+                    SizedBox(width: 8),
+                    ChartTypeButton(
+                        label: "Aire",
+                        icon: Icons.area_chart,
+                        selected: selectedChart == 3,
+                        onTap: () => setState(() => selectedChart = 3)),
+                  ],
+                ),
               ),
               SizedBox(height: 8),
               Container(
                 height: widget.isMobile ? 170 : 260,
                 child: AnimatedSwitcher(
                   duration: Duration(milliseconds: 2000), // transition 2s
-                  child: selectedChart == 0
-                      ? LineChartSample(
-                          isMobile: widget.isMobile,
-                          visibleSeries: visibleSeries,
-                          touchedIndex: touchedIndex,
-                          onLegendTap: (i) => setState(() {
-                            visibleSeries[i] = !visibleSeries[i];
-                          }),
-                          onTouch: (i) => setState(() => touchedIndex = i),
-                          onTouchEnd: () => setState(() => touchedIndex = null),
-                        )
-                      : selectedChart == 1
-                          ? BarChartSample(
-                              isMobile: widget.isMobile,
-                              visibleSeries: visibleSeries,
-                              touchedIndex: touchedIndex,
-                              onLegendTap: (i) => setState(() {
-                                visibleSeries[i] = !visibleSeries[i];
-                              }),
-                              onTouch: (i) => setState(() => touchedIndex = i),
-                              onTouchEnd: () =>
-                                  setState(() => touchedIndex = null),
-                            )
-                          : selectedChart == 2
-                              ? PieChartSample(
-                                  touchedIndex: touchedIndex,
-                                  onTouch: (i) =>
-                                      setState(() => touchedIndex = i),
-                                  onTouchEnd: () =>
-                                      setState(() => touchedIndex = null),
-                                )
-                              : AreaChartSample(
-                                  isMobile: widget.isMobile,
-                                  visibleSeries: visibleSeries,
-                                  touchedIndex: touchedIndex,
-                                  onLegendTap: (i) => setState(() {
-                                    visibleSeries[i] = !visibleSeries[i];
-                                  }),
-                                  onTouch: (i) =>
-                                      setState(() => touchedIndex = i),
-                                  onTouchEnd: () =>
-                                      setState(() => touchedIndex = null),
-                                ),
+                  child: Obx(() {
+                    // Source des données
+                    final months = _chartData.months;
+                    final ventes = _chartData.ventesMonthly;
+                    final collectes = _chartData.collecteMonthly;
+                    final hasData = months.isNotEmpty;
+
+                    if (selectedChart == 0) {
+                      return LineChartSample(
+                        isMobile: widget.isMobile,
+                        visibleSeries: visibleSeries,
+                        touchedIndex: touchedIndex,
+                        onLegendTap: (i) => setState(() {
+                          visibleSeries[i] = !visibleSeries[i];
+                        }),
+                        onTouch: (i) => setState(() => touchedIndex = i),
+                        onTouchEnd: () => setState(() => touchedIndex = null),
+                        dynamicMonths: hasData ? months.toList() : null,
+                        dynamicVentes: hasData ? ventes.toList() : null,
+                        dynamicCollecte: hasData ? collectes.toList() : null,
+                      );
+                    } else if (selectedChart == 1) {
+                      return BarChartSample(
+                        isMobile: widget.isMobile,
+                        visibleSeries: visibleSeries,
+                        touchedIndex: touchedIndex,
+                        onLegendTap: (i) => setState(() {
+                          visibleSeries[i] = !visibleSeries[i];
+                        }),
+                        onTouch: (i) => setState(() => touchedIndex = i),
+                        onTouchEnd: () => setState(() => touchedIndex = null),
+                        dynamicMonths: hasData ? months.toList() : null,
+                        dynamicVentes: hasData ? ventes.toList() : null,
+                        dynamicCollecte: hasData ? collectes.toList() : null,
+                      );
+                    } else if (selectedChart == 2) {
+                      return PieChartSample(
+                        touchedIndex: touchedIndex,
+                        onTouch: (i) => setState(() => touchedIndex = i),
+                        onTouchEnd: () => setState(() => touchedIndex = null),
+                        dynamicSlices: _chartData.pieSlices
+                            .map((s) => {
+                                  'name': s.name,
+                                  'value': s.value,
+                                  'color': s.color,
+                                })
+                            .toList(),
+                      );
+                    } else {
+                      return AreaChartSample(
+                        isMobile: widget.isMobile,
+                        visibleSeries: visibleSeries,
+                        touchedIndex: touchedIndex,
+                        onLegendTap: (i) => setState(() {
+                          visibleSeries[i] = !visibleSeries[i];
+                        }),
+                        onTouch: (i) => setState(() => touchedIndex = i),
+                        onTouchEnd: () => setState(() => touchedIndex = null),
+                        dynamicMonths: hasData ? months.toList() : null,
+                        dynamicVentes: hasData ? ventes.toList() : null,
+                        dynamicCollecte: hasData ? collectes.toList() : null,
+                      );
+                    }
+                  }),
                 ),
               ),
               // Légende interactive (sauf Pie)
@@ -1155,34 +1541,56 @@ class KPICard extends StatelessWidget {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: isMobile ? 19 : 25),
-            SizedBox(height: isMobile ? 4 : 8),
-            Text(title,
-                style: TextStyle(
-                    fontSize: isMobile ? 11 : 13,
-                    color: Colors.black87,
-                    fontWeight: FontWeight.w500)),
-            SizedBox(height: isMobile ? 3 : 7),
-            Text(value,
-                style: TextStyle(
-                    fontSize: isMobile ? 14 : 19, fontWeight: FontWeight.bold)),
+            Icon(icon, color: color, size: isMobile ? 18 : 24),
+            SizedBox(height: isMobile ? 3 : 6),
+            Flexible(
+              child: Text(title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: isMobile ? 10 : 12,
+                      color: Colors.black87,
+                      fontWeight: FontWeight.w500)),
+            ),
+            SizedBox(height: isMobile ? 2 : 5),
+            Flexible(
+              child: Text(value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: isMobile ? 13 : 18,
+                      fontWeight: FontWeight.bold)),
+            ),
             SizedBox(height: 1),
-            Row(
-              children: [
-                Icon(isPositive ? Icons.arrow_upward : Icons.arrow_downward,
-                    color: isPositive ? Colors.green : Colors.red,
-                    size: isMobile ? 14 : 16),
-                SizedBox(width: 2),
-                Text('${trend.abs()}% ',
-                    style: TextStyle(
-                        color: isPositive ? Colors.green : Colors.red,
-                        fontSize: isMobile ? 10 : 12,
-                        fontWeight: FontWeight.bold)),
-                Text('vs. mois dernier',
-                    style: TextStyle(
-                        color: Colors.grey[600], fontSize: isMobile ? 9 : 11)),
-              ],
+            Flexible(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(isPositive ? Icons.arrow_upward : Icons.arrow_downward,
+                      color: isPositive ? Colors.green : Colors.red,
+                      size: isMobile ? 13 : 15),
+                  SizedBox(width: 2),
+                  Flexible(
+                    child: Text('${trend.abs()}% ',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: isPositive ? Colors.green : Colors.red,
+                            fontSize: isMobile ? 9 : 11,
+                            fontWeight: FontWeight.bold)),
+                  ),
+                  Expanded(
+                    child: Text('vs. mois dernier',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: isMobile ? 9 : 11)),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -1200,6 +1608,10 @@ class LineChartSample extends StatefulWidget {
   final void Function(int)? onLegendTap;
   final void Function(int)? onTouch;
   final VoidCallback? onTouchEnd;
+  // Dynamic data (optional). When provided, replaces placeholder arrays
+  final List<String>? dynamicMonths;
+  final List<double>? dynamicVentes;
+  final List<double>? dynamicCollecte;
   const LineChartSample({
     this.isMobile = false,
     required this.visibleSeries,
@@ -1207,6 +1619,9 @@ class LineChartSample extends StatefulWidget {
     this.onLegendTap,
     this.onTouch,
     this.onTouchEnd,
+    this.dynamicMonths,
+    this.dynamicVentes,
+    this.dynamicCollecte,
     super.key,
   });
 
@@ -1280,7 +1695,10 @@ class _LineChartSampleState extends State<LineChartSample> {
                         interval: 1,
                         getTitlesWidget: (val, _) => Padding(
                               padding: const EdgeInsets.only(top: 3.0),
-                              child: Text(months[val.toInt() % 7],
+                              child: Text(
+                                  (widget.dynamicMonths ?? months)[val.toInt() %
+                                      (widget.dynamicMonths?.length ??
+                                          months.length)],
                                   style:
                                       TextStyle(fontSize: isMobile ? 9 : 13)),
                             ))),
@@ -1290,7 +1708,12 @@ class _LineChartSampleState extends State<LineChartSample> {
               lineBarsData: [
                 if (visibleSeries['ventes']!)
                   LineChartBarData(
-                    spots: ventes,
+                    spots: (widget.dynamicVentes != null)
+                        ? List.generate(
+                            widget.dynamicVentes!.length,
+                            (i) => FlSpot(i.toDouble(),
+                                widget.dynamicVentes![i].toDouble()))
+                        : ventes,
                     isCurved: true,
                     color: kHighlightColor,
                     barWidth: 3,
@@ -1298,7 +1721,12 @@ class _LineChartSampleState extends State<LineChartSample> {
                   ),
                 if (visibleSeries['collecte']!)
                   LineChartBarData(
-                    spots: collecte,
+                    spots: (widget.dynamicCollecte != null)
+                        ? List.generate(
+                            widget.dynamicCollecte!.length,
+                            (i) => FlSpot(i.toDouble(),
+                                widget.dynamicCollecte![i].toDouble()))
+                        : collecte,
                     isCurved: true,
                     color: Colors.green,
                     barWidth: 2,
@@ -1308,12 +1736,14 @@ class _LineChartSampleState extends State<LineChartSample> {
               lineTouchData: LineTouchData(
                 enabled: true,
                 touchTooltipData: LineTouchTooltipData(
+                  tooltipRoundedRadius: 10,
                   getTooltipItems: (touchedSpots) {
                     return touchedSpots.map((touched) {
                       final series =
                           touched.barIndex == 0 ? 'Ventes' : 'Collecte';
+                      final labels = widget.dynamicMonths ?? months;
                       return LineTooltipItem(
-                        '${series}\nMois: ${months[touched.x.toInt()]}\nValeur: ${touched.y.toInt()} kg',
+                        '${series}\nMois: ${labels[touched.x.toInt() % labels.length]}\nValeur: ${touched.y.toInt()}',
                         TextStyle(
                           color: touched.barIndex == 0
                               ? kHighlightColor
@@ -1420,6 +1850,9 @@ class BarChartSample extends StatelessWidget {
   final void Function(int)? onLegendTap;
   final void Function(int)? onTouch;
   final VoidCallback? onTouchEnd;
+  final List<String>? dynamicMonths;
+  final List<double>? dynamicVentes;
+  final List<double>? dynamicCollecte;
   const BarChartSample({
     this.isMobile = false,
     required this.visibleSeries,
@@ -1427,12 +1860,15 @@ class BarChartSample extends StatelessWidget {
     this.onLegendTap,
     this.onTouch,
     this.onTouchEnd,
+    this.dynamicMonths,
+    this.dynamicVentes,
+    this.dynamicCollecte,
     super.key,
   });
 
   @override
   Widget build(BuildContext context) {
-    final data = [
+    final defaultData = [
       {'name': 'Jan', 'ventes': 4000.0, 'collecte': 2400.0},
       {'name': 'Fév', 'ventes': 3000.0, 'collecte': 1398.0},
       {'name': 'Mar', 'ventes': 2000.0, 'collecte': 9800.0},
@@ -1441,6 +1877,21 @@ class BarChartSample extends StatelessWidget {
       {'name': 'Juin', 'ventes': 2390.0, 'collecte': 3800.0},
       {'name': 'Juil', 'ventes': 3490.0, 'collecte': 4300.0},
     ];
+    final data = (dynamicMonths != null &&
+            dynamicVentes != null &&
+            dynamicCollecte != null)
+        ? List.generate(
+            dynamicMonths!.length,
+            (i) => {
+                  'name': dynamicMonths![i],
+                  'ventes': (i < dynamicVentes!.length)
+                      ? dynamicVentes![i].toDouble()
+                      : 0.0,
+                  'collecte': (i < dynamicCollecte!.length)
+                      ? dynamicCollecte![i].toDouble()
+                      : 0.0,
+                })
+        : defaultData;
     return Column(
       children: [
         Expanded(
@@ -1467,15 +1918,8 @@ class BarChartSample extends StatelessWidget {
                         getTitlesWidget: (val, _) => Padding(
                               padding: const EdgeInsets.only(top: 2.0),
                               child: Text(
-                                  [
-                                    'Jan',
-                                    'Fév',
-                                    'Mar',
-                                    'Avr',
-                                    'Mai',
-                                    'Juin',
-                                    'Juil'
-                                  ][val.toInt() % 7],
+                                  data[val.toInt() % data.length]['name']
+                                      as String,
                                   style:
                                       TextStyle(fontSize: isMobile ? 9 : 13)),
                             ))),
@@ -1511,6 +1955,7 @@ class BarChartSample extends StatelessWidget {
               barTouchData: BarTouchData(
                 enabled: true,
                 touchTooltipData: BarTouchTooltipData(
+                  tooltipRoundedRadius: 10,
                   getTooltipItem: (group, groupIndex, rod, rodIndex) {
                     final idx = group.x.toInt();
                     final label = data[idx]['name'];
@@ -1605,22 +2050,30 @@ class PieChartSample extends StatelessWidget {
   final int? touchedIndex;
   final void Function(int)? onTouch;
   final VoidCallback? onTouchEnd;
+  final List<Map<String, Object>>? dynamicSlices; // {name, value, color}
   const PieChartSample({
     this.touchedIndex,
     this.onTouch,
     this.onTouchEnd,
+    this.dynamicSlices,
     super.key,
   });
 
   @override
   Widget build(BuildContext context) {
-    final pieData = [
-      {'name': 'Acacia', 'value': 30.0, 'color': kHighlightColor},
-      {'name': 'Lavande', 'value': 25.0, 'color': Colors.deepPurple},
-      {'name': 'Tilleul', 'value': 20.0, 'color': Colors.green},
-      {'name': 'Châtaignier', 'value': 15.0, 'color': Colors.yellowAccent},
-      {'name': 'Autres', 'value': 10.0, 'color': Colors.orange},
-    ];
+    final pieData = (dynamicSlices != null && dynamicSlices!.isNotEmpty)
+        ? dynamicSlices!
+        : [
+            {'name': 'Acacia', 'value': 30.0, 'color': kHighlightColor},
+            {'name': 'Lavande', 'value': 25.0, 'color': Colors.deepPurple},
+            {'name': 'Tilleul', 'value': 20.0, 'color': Colors.green},
+            {
+              'name': 'Châtaignier',
+              'value': 15.0,
+              'color': Colors.yellowAccent
+            },
+            {'name': 'Autres', 'value': 10.0, 'color': Colors.orange},
+          ];
     return Column(
       children: [
         Expanded(
@@ -1700,6 +2153,9 @@ class AreaChartSample extends StatelessWidget {
   final void Function(int)? onLegendTap;
   final void Function(int)? onTouch;
   final VoidCallback? onTouchEnd;
+  final List<String>? dynamicMonths;
+  final List<double>? dynamicVentes;
+  final List<double>? dynamicCollecte;
   const AreaChartSample({
     this.isMobile = false,
     required this.visibleSeries,
@@ -1707,12 +2163,15 @@ class AreaChartSample extends StatelessWidget {
     this.onLegendTap,
     this.onTouch,
     this.onTouchEnd,
+    this.dynamicMonths,
+    this.dynamicVentes,
+    this.dynamicCollecte,
     super.key,
   });
 
   @override
   Widget build(BuildContext context) {
-    final data = [
+    final defaultData = [
       {'name': 'Jan', 'ventes': 4000.0, 'collecte': 2400.0},
       {'name': 'Fév', 'ventes': 3000.0, 'collecte': 1398.0},
       {'name': 'Mar', 'ventes': 2000.0, 'collecte': 9800.0},
@@ -1721,6 +2180,21 @@ class AreaChartSample extends StatelessWidget {
       {'name': 'Juin', 'ventes': 2390.0, 'collecte': 3800.0},
       {'name': 'Juil', 'ventes': 3490.0, 'collecte': 4300.0},
     ];
+    final data = (dynamicMonths != null &&
+            dynamicVentes != null &&
+            dynamicCollecte != null)
+        ? List.generate(
+            dynamicMonths!.length,
+            (i) => {
+                  'name': dynamicMonths![i],
+                  'ventes': (i < dynamicVentes!.length)
+                      ? dynamicVentes![i].toDouble()
+                      : 0.0,
+                  'collecte': (i < dynamicCollecte!.length)
+                      ? dynamicCollecte![i].toDouble()
+                      : 0.0,
+                })
+        : defaultData;
     return LineChart(
       LineChartData(
         gridData: FlGridData(
@@ -1742,16 +2216,7 @@ class AreaChartSample extends StatelessWidget {
             interval: 1,
             getTitlesWidget: (val, _) => Padding(
               padding: const EdgeInsets.only(top: 3.0),
-              child: Text(
-                  [
-                    'Jan',
-                    'Fév',
-                    'Mar',
-                    'Avr',
-                    'Mai',
-                    'Juin',
-                    'Juil'
-                  ][val.toInt() % 7],
+              child: Text(data[val.toInt() % data.length]['name'] as String,
                   style: TextStyle(fontSize: isMobile ? 9 : 13)),
             ),
           )),
@@ -1763,7 +2228,7 @@ class AreaChartSample extends StatelessWidget {
             LineChartBarData(
               spots: [
                 for (int i = 0; i < data.length; i++)
-                  FlSpot(i.toDouble(), data[i]['ventes'] as double),
+                  FlSpot(i.toDouble(), (data[i]['ventes'] as double)),
               ],
               isCurved: true,
               color: kHighlightColor,
@@ -1786,7 +2251,7 @@ class AreaChartSample extends StatelessWidget {
             LineChartBarData(
               spots: [
                 for (int i = 0; i < data.length; i++)
-                  FlSpot(i.toDouble(), data[i]['collecte'] as double),
+                  FlSpot(i.toDouble(), (data[i]['collecte'] as double)),
               ],
               isCurved: true,
               color: Colors.green,
@@ -1809,6 +2274,7 @@ class AreaChartSample extends StatelessWidget {
         lineTouchData: LineTouchData(
           enabled: true,
           touchTooltipData: LineTouchTooltipData(
+            tooltipRoundedRadius: 10,
             getTooltipItems: (touchedSpots) {
               return touchedSpots.map((spot) {
                 final idx = spot.x.toInt();
@@ -1847,54 +2313,111 @@ class AreaChartSample extends StatelessWidget {
 }
 
 // Alerts section
-class AlertsSection extends StatelessWidget {
+class AlertsSection extends StatefulWidget {
   final bool isMobile;
-  final alerts = const [
-    {
-      "type": "warning",
-      "title": "Stock bas",
-      "message": "Miel Acacia: seulement 15 kg restants",
-      "timestamp": "Il y a 2 heures",
-      "action": "Réapprovisionner"
-    },
-    {
-      "type": "error",
-      "title": "Crédit en retard",
-      "message": "Client Martin DUPONT: 1,575,600 FCFA depuis 45 jours",
-      "timestamp": "Il y a 3 heures",
-      "action": "Relancer"
-    },
-    {
-      "type": "success",
-      "title": "Nouvelle commande",
-      "message": "Commande #2024-156: 50 kg miel toutes fleurs",
-      "timestamp": "Il y a 1 heure",
-      "action": "Traiter"
-    },
-    {
-      "type": "info",
-      "title": "Extraction terminée",
-      "message": "Lot #EXT-2024-089: 120 kg extraits",
-      "timestamp": "Il y a 30 minutes",
-      "action": "Vérifier"
-    },
-  ];
   const AlertsSection({required this.isMobile, Key? key}) : super(key: key);
 
   @override
+  State<AlertsSection> createState() => _AlertsSectionState();
+}
+
+class _AlertsSectionState extends State<AlertsSection> {
+  Query<Map<String, dynamic>> _buildBaseQuery() {
+    // Utiliser la vraie collection des notifications caisse et éviter les erreurs d'index
+    // Structure: notifications_caisse (cf. TransactionCommercialeService)
+    // Champs: id, type, site, commercialId, commercialNom, transactionId,
+    //         prelevementId, dateCreation(Timestamp), titre, message, statut, priorite, donnees
+    Query<Map<String, dynamic>> q =
+        FirebaseFirestore.instance.collection('notifications_caisse');
+    try {
+      final user = Get.find<UserSession>();
+      if ((user.site ?? '').isNotEmpty) {
+        // Equality filter seul pour éviter de nécessiter un index composite
+        q = q.where('site', isEqualTo: user.site);
+      }
+    } catch (_) {}
+    // On n'applique pas orderBy ici pour éviter les erreurs d'index composites runtime.
+    // Le tri sera fait côté client sur le champ 'dateCreation' si présent.
+    return q;
+  }
+
+  Color _typeColor(String type) {
+    switch (type) {
+      case 'warning':
+        return Colors.orange;
+      case 'error':
+        return Colors.red;
+      case 'success':
+        return Colors.green;
+      case 'info':
+      default:
+        return Colors.blue;
+    }
+  }
+
+  IconData _typeIcon(String type) {
+    switch (type) {
+      case 'warning':
+        return Icons.warning_amber_rounded;
+      case 'error':
+        return Icons.cancel;
+      case 'success':
+        return Icons.check_circle;
+      case 'info':
+      default:
+        return Icons.info;
+    }
+  }
+
+  String _formatRelativeTime(dynamic ts) {
+    try {
+      DateTime when;
+      if (ts is Timestamp) {
+        when = ts.toDate();
+      } else if (ts is int) {
+        when = DateTime.fromMillisecondsSinceEpoch(ts);
+      } else if (ts is String) {
+        // already a human string like "Il y a 2h"
+        return ts;
+      } else {
+        return '';
+      }
+      final now = DateTime.now();
+      final diff = now.difference(when);
+      if (diff.inSeconds < 60) return 'Il y a ${diff.inSeconds}s';
+      if (diff.inMinutes < 60) return 'Il y a ${diff.inMinutes} min';
+      if (diff.inHours < 24) return 'Il y a ${diff.inHours} h';
+      if (diff.inDays < 7) return 'Il y a ${diff.inDays} j';
+      return '${when.day.toString().padLeft(2, '0')}/${when.month.toString().padLeft(2, '0')}/${when.year}';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  void _openAlertsModal() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        final baseQuery = _buildBaseQuery();
+        return Dialog(
+          insetPadding: EdgeInsets.symmetric(
+              horizontal: widget.isMobile ? 12 : 80, vertical: 24),
+          child: _AlertsPaginatedList(
+            baseQuery: baseQuery,
+            typeColor: _typeColor,
+            typeIcon: _typeIcon,
+            formatTime: _formatRelativeTime,
+            isMobile: widget.isMobile,
+          ),
+        );
+      },
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final iconMap = {
-      "warning": Icons.warning_amber_rounded,
-      "error": Icons.cancel,
-      "success": Icons.check_circle,
-      "info": Icons.info,
-    };
-    final colorMap = {
-      "warning": Colors.orange,
-      "error": Colors.red,
-      "success": Colors.green,
-      "info": Colors.blue,
-    };
+    final isMobile = widget.isMobile;
     return Material(
       elevation: 1,
       borderRadius: BorderRadius.circular(12),
@@ -1907,59 +2430,179 @@ class AlertsSection extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Alertes & Notifications",
-                style: TextStyle(
-                    fontSize: isMobile ? 13 : 16, fontWeight: FontWeight.bold)),
+            Text(
+              "Alertes & Notifications",
+              style: TextStyle(
+                  fontSize: isMobile ? 13 : 16, fontWeight: FontWeight.bold),
+            ),
             SizedBox(height: 10),
-            ...alerts.map((alert) {
-              final c = colorMap[alert["type"]];
-              return Container(
-                margin: EdgeInsets.only(bottom: 9),
-                decoration: BoxDecoration(
-                  color: c!.withValues(alpha: 0.09),
-                  border: Border.all(color: c.withValues(alpha: 0.18)),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(iconMap[alert["type"]],
-                      color: c, size: isMobile ? 18 : 23),
-                  title: Text(alert["title"]!,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: isMobile ? 12 : 14)),
-                  subtitle: Text(alert["message"]!,
-                      style: TextStyle(fontSize: isMobile ? 10 : 12)),
-                  trailing: alert["action"] != null
-                      ? ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            elevation: 0,
-                            backgroundColor: c.withValues(alpha: 0.13),
-                            foregroundColor: c,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(7)),
-                            padding: EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 5),
-                            textStyle: TextStyle(
-                                fontSize: isMobile ? 9 : 11,
-                                fontWeight: FontWeight.w600),
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _buildBaseQuery().limit(8).snapshots(),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  );
+                }
+                if (snap.hasError) {
+                  return Container(
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(8),
+                      border:
+                          Border.all(color: Colors.red.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error_outline, color: Colors.red),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Impossible de charger les alertes',
+                            style: TextStyle(
+                                fontSize: isMobile ? 11 : 12,
+                                color: Colors.red.shade700),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          onPressed: () {},
-                          child: Text(alert["action"]!),
-                        )
-                      : null,
-                ),
-              );
-            }),
-            SizedBox(height: 10),
-            if (isMobile)
-              Center(
-                child: OutlinedButton(
-                  onPressed: () {},
-                  child: Text("Voir toutes les alertes",
-                      style: TextStyle(fontSize: isMobile ? 11 : 13)),
-                ),
-              ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                // Trier côté client par dateCreation desc si dispo
+                final docs =
+                    List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
+                        snap.data?.docs ?? []);
+                docs.sort((a, b) {
+                  final ta = a.data()['dateCreation'] ?? a.data()['timestamp'];
+                  final tb = b.data()['dateCreation'] ?? b.data()['timestamp'];
+                  DateTime da;
+                  DateTime db;
+                  if (ta is Timestamp) {
+                    da = ta.toDate();
+                  } else if (ta is int) {
+                    da = DateTime.fromMillisecondsSinceEpoch(ta);
+                  } else {
+                    da = DateTime.fromMillisecondsSinceEpoch(0);
+                  }
+                  if (tb is Timestamp) {
+                    db = tb.toDate();
+                  } else if (tb is int) {
+                    db = DateTime.fromMillisecondsSinceEpoch(tb);
+                  } else {
+                    db = DateTime.fromMillisecondsSinceEpoch(0);
+                  }
+                  return db.compareTo(da);
+                });
+                if (docs.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.notifications_none, color: Colors.grey[600]),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Aucune alerte pour le moment',
+                            style: TextStyle(
+                                fontSize: isMobile ? 11 : 12,
+                                color: Colors.grey[700]),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return Column(
+                  children: [
+                    ...docs.take(4).map((d) {
+                      final data = d.data();
+                      final type = (data['type'] ?? 'info').toString();
+                      final title =
+                          (data['titre'] ?? data['title'] ?? 'Notification')
+                              .toString();
+                      final msg = (data['message'] ?? '').toString();
+                      final action = (data['action'] ?? '').toString();
+                      final ts = data['dateCreation'] ?? data['timestamp'];
+                      final c = _typeColor(type);
+                      return Container(
+                        margin: EdgeInsets.only(bottom: 9),
+                        decoration: BoxDecoration(
+                          color: c.withValues(alpha: 0.09),
+                          border: Border.all(color: c.withValues(alpha: 0.18)),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: ListTile(
+                          dense: true,
+                          leading: Icon(_typeIcon(type),
+                              color: c, size: isMobile ? 18 : 23),
+                          title: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: isMobile ? 12 : 14),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                msg,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: isMobile ? 10 : 12),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                _formatRelativeTime(ts),
+                                style: TextStyle(
+                                    fontSize: isMobile ? 9 : 10,
+                                    color: Colors.grey[700]),
+                              ),
+                            ],
+                          ),
+                          trailing: (action.isNotEmpty)
+                              ? ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    elevation: 0,
+                                    backgroundColor: c.withValues(alpha: 0.13),
+                                    foregroundColor: c,
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(7)),
+                                    padding: EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 5),
+                                    textStyle: TextStyle(
+                                        fontSize: isMobile ? 9 : 11,
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                  onPressed: () {},
+                                  child: Text(action,
+                                      overflow: TextOverflow.ellipsis),
+                                )
+                              : null,
+                        ),
+                      );
+                    }),
+                    SizedBox(height: 10),
+                    if (isMobile)
+                      Center(
+                        child: OutlinedButton(
+                          onPressed: _openAlertsModal,
+                          child: Text("Voir toutes les alertes",
+                              style: TextStyle(fontSize: isMobile ? 11 : 13)),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -1967,62 +2610,254 @@ class AlertsSection extends StatelessWidget {
   }
 }
 
-// --- TIMELINE/ACTIVITY ---
-class ActivityTimeline extends StatelessWidget {
+class _AlertsPaginatedList extends StatefulWidget {
+  final Query<Map<String, dynamic>> baseQuery;
+  final Color Function(String) typeColor;
+  final IconData Function(String) typeIcon;
+  final String Function(dynamic) formatTime;
   final bool isMobile;
-  final activities = const [
-    {
-      "type": "vente",
-      "title": "Nouvelle vente créée",
-      "description":
-          "Vente #2024-156 pour 50kg miel toutes fleurs - Client: Boulangerie Martin",
-      "user": "Sophie Durand",
-      "timestamp": "Il y a 15 minutes",
-      "status": "success"
-    },
-    {
-      "type": "collecte",
-      "title": "Collecte terminée",
-      "description": "Apiculteur Jean MOREAU: 45kg miel acacia collectés",
-      "user": "Système",
-      "timestamp": "Il y a 1 heure",
-      "status": "success"
-    },
-    {
-      "type": "controle",
-      "title": "Contrôle qualité en attente",
-      "description":
-          "Lot #LOT-2024-088 nécessite un contrôle avant mise en stock",
-      "user": "Pierre Lefèvre",
-      "timestamp": "Il y a 2 heures",
-      "status": "pending"
-    },
-    {
-      "type": "extraction",
-      "title": "Extraction démarrée",
-      "description": "Traitement du lot #EXT-2024-089 - Durée estimée: 3h",
-      "user": "Marie Dubois",
-      "timestamp": "Il y a 3 heures",
-      "status": "pending"
-    },
-    {
-      "type": "system",
-      "title": "Sauvegarde automatique",
-      "description": "Sauvegarde quotidienne des données effectuée avec succès",
-      "user": "Système",
-      "timestamp": "Il y a 6 heures",
-      "status": "success"
-    },
-  ];
-  const ActivityTimeline({required this.isMobile, Key? key}) : super(key: key);
+  const _AlertsPaginatedList({
+    required this.baseQuery,
+    required this.typeColor,
+    required this.typeIcon,
+    required this.formatTime,
+    required this.isMobile,
+  });
+
+  @override
+  State<_AlertsPaginatedList> createState() => _AlertsPaginatedListState();
+}
+
+class _AlertsPaginatedListState extends State<_AlertsPaginatedList> {
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> _items = [];
+  DocumentSnapshot<Map<String, dynamic>>? _lastDoc;
+  bool _loading = false;
+  bool _hasMore = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchMore();
+  }
+
+  Future<void> _fetchMore() async {
+    if (_loading || !_hasMore) return;
+    setState(() => _loading = true);
+    try {
+      Query<Map<String, dynamic>> q = widget.baseQuery.limit(20);
+      if (_lastDoc != null) q = q.startAfterDocument(_lastDoc!);
+      final snap = await q.get();
+      if (mounted) {
+        if (snap.docs.isNotEmpty) {
+          _lastDoc = snap.docs.last;
+          _items.addAll(snap.docs);
+        }
+        if (snap.docs.length < 20) _hasMore = false;
+        setState(() {});
+      }
+    } catch (e) {
+      // ignore errors in modal, keep graceful
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final colorMap = {
-      "success": Colors.green,
-      "pending": Colors.orange,
-      "error": Colors.red,
-    };
+    final isMobile = widget.isMobile;
+    return SizedBox(
+      width: isMobile ? double.infinity : 720,
+      height: isMobile ? MediaQuery.of(context).size.height * 0.8 : 520,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: Row(
+              children: [
+                Icon(Icons.notifications, color: kHighlightColor),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text('Toutes les alertes',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: isMobile ? 14 : 16)),
+                ),
+                IconButton(
+                  icon: Icon(Icons.close),
+                  onPressed: () => Navigator.of(context).pop(),
+                )
+              ],
+            ),
+          ),
+          Divider(height: 1),
+          Expanded(
+            child: _items.isEmpty && _loading
+                ? Center(child: CircularProgressIndicator(strokeWidth: 2))
+                : _items.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text('Aucune alerte trouvée',
+                              style: TextStyle(color: Colors.grey[700])),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: EdgeInsets.all(12),
+                        itemCount: _items.length,
+                        separatorBuilder: (_, __) => SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final data = _items[index].data();
+                          final type = (data['type'] ?? 'info').toString();
+                          final title =
+                              (data['titre'] ?? data['title'] ?? 'Notification')
+                                  .toString();
+                          final msg = (data['message'] ?? '').toString();
+                          final action = (data['action'] ?? '').toString();
+                          final ts = data['dateCreation'] ?? data['timestamp'];
+                          final c = widget.typeColor(type);
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: c.withValues(alpha: 0.06),
+                              borderRadius: BorderRadius.circular(10),
+                              border:
+                                  Border.all(color: c.withValues(alpha: 0.18)),
+                            ),
+                            child: ListTile(
+                              leading: Icon(widget.typeIcon(type), color: c),
+                              title: Text(title,
+                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(msg,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis),
+                                  SizedBox(height: 2),
+                                  Text(widget.formatTime(ts),
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey[700])),
+                                ],
+                              ),
+                              trailing: action.isNotEmpty
+                                  ? OutlinedButton(
+                                      onPressed: () {},
+                                      child: Text(action,
+                                          overflow: TextOverflow.ellipsis),
+                                    )
+                                  : null,
+                            ),
+                          );
+                        },
+                      ),
+          ),
+          if (_hasMore)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Align(
+                alignment: Alignment.center,
+                child: OutlinedButton.icon(
+                  onPressed: _loading ? null : _fetchMore,
+                  icon: _loading
+                      ? SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : Icon(Icons.expand_more),
+                  label: Text('Charger plus'),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- TIMELINE/ACTIVITY ---
+class ActivityTimeline extends StatefulWidget {
+  final bool isMobile;
+  const ActivityTimeline({required this.isMobile, Key? key}) : super(key: key);
+
+  @override
+  State<ActivityTimeline> createState() => _ActivityTimelineState();
+}
+
+class _ActivityTimelineState extends State<ActivityTimeline> {
+  Query<Map<String, dynamic>> _buildBaseQuery() {
+    // Utiliser la source réelle d'activités: transactions commerciales (module Caisse)
+    // On évite orderBy ici pour ne pas nécessiter d'index composite; tri côté client.
+    Query<Map<String, dynamic>> q =
+        FirebaseFirestore.instance.collection('transactions_commerciales');
+    try {
+      final user = Get.find<UserSession>();
+      if ((user.site ?? '').isNotEmpty) {
+        q = q.where('site', isEqualTo: user.site);
+      }
+    } catch (_) {}
+    return q;
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'success':
+        return Colors.green;
+      case 'pending':
+        return Colors.orange;
+      case 'error':
+        return Colors.red;
+      default:
+        return Colors.blueGrey;
+    }
+  }
+
+  String _formatRelativeTime(dynamic ts) {
+    try {
+      DateTime when;
+      if (ts is Timestamp) {
+        when = ts.toDate();
+      } else if (ts is int) {
+        when = DateTime.fromMillisecondsSinceEpoch(ts);
+      } else if (ts is String) {
+        return ts;
+      } else {
+        return '';
+      }
+      final now = DateTime.now();
+      final diff = now.difference(when);
+      if (diff.inSeconds < 60) return 'Il y a ${diff.inSeconds}s';
+      if (diff.inMinutes < 60) return 'Il y a ${diff.inMinutes} min';
+      if (diff.inHours < 24) return 'Il y a ${diff.inHours} h';
+      if (diff.inDays < 7) return 'Il y a ${diff.inDays} j';
+      return '${when.day.toString().padLeft(2, '0')}/${when.month.toString().padLeft(2, '0')}/${when.year}';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  void _openActivitiesModal() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        final baseQuery = _buildBaseQuery();
+        return Dialog(
+          insetPadding: EdgeInsets.symmetric(
+              horizontal: widget.isMobile ? 12 : 80, vertical: 24),
+          child: _ActivitiesPaginatedList(
+            baseQuery: baseQuery,
+            isMobile: widget.isMobile,
+            formatTime: _formatRelativeTime,
+            statusColor: _statusColor,
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = widget.isMobile;
     return Material(
       elevation: 1,
       borderRadius: BorderRadius.circular(12),
@@ -2035,78 +2870,446 @@ class ActivityTimeline extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Historique des activités",
-                style: TextStyle(
-                    fontSize: isMobile ? 13 : 16, fontWeight: FontWeight.bold)),
+            Text(
+              "Historique des activités",
+              style: TextStyle(
+                  fontSize: isMobile ? 13 : 16, fontWeight: FontWeight.bold),
+            ),
             SizedBox(height: 10),
-            ...activities.map((activity) {
-              final c = colorMap[activity["status"]];
-              return Container(
-                margin: EdgeInsets.only(bottom: 10),
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.access_time,
-                      size: 10, color: Colors.grey[600]),
-                  title: Text(activity["title"]!,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: isMobile ? 12 : 14)),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(activity["description"]!,
-                          style: TextStyle(fontSize: isMobile ? 9 : 11)),
-                      SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Icon(Icons.person, size: 10, color: Colors.grey[600]),
-                          SizedBox(width: 2),
-                          Text(
-                            activity["user"]!,
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _buildBaseQuery().limit(5).snapshots(),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  );
+                }
+                if (snap.hasError) {
+                  return Container(
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(8),
+                      border:
+                          Border.all(color: Colors.red.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error_outline, color: Colors.red),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Impossible de charger l\'historique',
                             style: TextStyle(
-                              fontSize: isMobile ? 8 : 10,
-                              color: Colors.grey[700],
+                                fontSize: isMobile ? 11 : 12,
+                                color: Colors.red.shade700),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                // Trier côté client par date desc (dateCreation, sinon dateTerminee, sinon timestamp)
+                final docs =
+                    List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
+                        snap.data?.docs ?? []);
+                docs.sort((a, b) {
+                  DateTime parse(dynamic v, Map<String, dynamic> all) {
+                    final primary = v ?? all['timestamp'];
+                    if (primary is Timestamp) return primary.toDate();
+                    if (primary is int) {
+                      return DateTime.fromMillisecondsSinceEpoch(primary);
+                    }
+                    if (all['dateTerminee'] is Timestamp) {
+                      return (all['dateTerminee'] as Timestamp).toDate();
+                    }
+                    return DateTime.fromMillisecondsSinceEpoch(0);
+                  }
+
+                  final da = a.data();
+                  final db = b.data();
+                  final ta = parse(da['dateCreation'], da);
+                  final tb = parse(db['dateCreation'], db);
+                  return tb.compareTo(ta);
+                });
+                if (docs.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.history, color: Colors.grey[600]),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Aucune activité récente',
+                            style: TextStyle(
+                                fontSize: isMobile ? 11 : 12,
+                                color: Colors.grey[700]),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return Column(
+                  children: [
+                    ...docs.map((d) {
+                      final data = d.data();
+                      final commercial =
+                          (data['commercialNom'] ?? '').toString();
+                      final titre = commercial.isNotEmpty
+                          ? 'Transaction de $commercial'
+                          : 'Transaction commerciale';
+                      final resume =
+                          data['resumeFinancier'] as Map<String, dynamic>?;
+                      String caStr = '';
+                      if (resume != null) {
+                        final ca = resume['chiffreAffairesNet'];
+                        if (ca != null) caStr = ca.toString();
+                      }
+                      final desc = caStr.isNotEmpty
+                          ? 'Chiffre d\'affaires net: $caStr FCFA'
+                          : '';
+                      final utilisateur =
+                          (data['validePar'] ?? data['site'] ?? '').toString();
+                      final raw = (data['statut'] ?? '').toString();
+                      String status;
+                      switch (raw) {
+                        case 'termine_en_attente':
+                        case 'termineEnAttente':
+                        case 'recupereeCaisse':
+                        case 'recuperee_caisse':
+                          status = 'pending';
+                          break;
+                        case 'valideeAdmin':
+                        case 'validee_admin':
+                          status = 'success';
+                          break;
+                        case 'rejetee':
+                          status = 'error';
+                          break;
+                        default:
+                          status = 'success';
+                      }
+                      final ts = data['dateCreation'] ??
+                          data['dateTerminee'] ??
+                          data['timestamp'];
+                      final c = _statusColor(status);
+                      return Container(
+                        margin: EdgeInsets.only(bottom: 10),
+                        child: ListTile(
+                          dense: true,
+                          leading: Icon(Icons.access_time,
+                              size: 10, color: Colors.grey[600]),
+                          title: Text(
+                            titre,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: isMobile ? 12 : 14),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                desc,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: isMobile ? 9 : 11),
+                              ),
+                              SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Icon(Icons.person,
+                                      size: 10, color: Colors.grey[600]),
+                                  SizedBox(width: 2),
+                                  Flexible(
+                                    child: Text(
+                                      utilisateur,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          fontSize: isMobile ? 8 : 10,
+                                          color: Colors.grey[700]),
+                                    ),
+                                  ),
+                                  SizedBox(width: 7),
+                                  Icon(Icons.access_time,
+                                      size: 10, color: Colors.grey[600]),
+                                  SizedBox(width: 2),
+                                  Flexible(
+                                    child: Text(
+                                      _formatRelativeTime(ts),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          fontSize: isMobile ? 8 : 10,
+                                          color: Colors.grey[700]),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          trailing: Chip(
+                            backgroundColor: c.withValues(alpha: 0.15),
+                            label: Text(
+                              status == 'success'
+                                  ? 'Validée'
+                                  : status == 'pending'
+                                      ? 'En cours'
+                                      : 'Rejetée',
+                              style: TextStyle(
+                                  color: c,
+                                  fontSize: isMobile ? 9 : 11,
+                                  fontWeight: FontWeight.bold),
                             ),
                           ),
-                          SizedBox(width: 7),
-                          Icon(Icons.access_time,
-                              size: 10, color: Colors.grey[600]),
-                          SizedBox(width: 2),
-                          Text(activity["timestamp"]!,
-                              style: TextStyle(
-                                  fontSize: isMobile ? 8 : 10,
-                                  color: Colors.grey[700])),
-                        ],
+                        ),
+                      );
+                    }),
+                    if (isMobile)
+                      Center(
+                        child: OutlinedButton(
+                          onPressed: _openActivitiesModal,
+                          child: Text("Voir l'historique complet",
+                              style: TextStyle(fontSize: isMobile ? 11 : 13)),
+                        ),
                       ),
-                    ],
-                  ),
-                  trailing: Chip(
-                    backgroundColor: c!.withValues(alpha: 0.15),
-                    label: Text(
-                      activity["status"] == "success"
-                          ? "Terminé"
-                          : activity["status"] == "pending"
-                              ? "En cours"
-                              : "Erreur",
-                      style: TextStyle(
-                          color: c,
-                          fontSize: isMobile ? 9 : 11,
-                          fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-              );
-            }),
-            if (isMobile)
-              Center(
-                child: OutlinedButton(
-                  onPressed: () {},
-                  child: Text("Voir l'historique complet",
-                      style: TextStyle(fontSize: isMobile ? 11 : 13)),
-                ),
-              ),
+                  ],
+                );
+              },
+            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ActivitiesPaginatedList extends StatefulWidget {
+  final Query<Map<String, dynamic>> baseQuery;
+  final bool isMobile;
+  final String Function(dynamic) formatTime;
+  final Color Function(String) statusColor;
+  const _ActivitiesPaginatedList({
+    required this.baseQuery,
+    required this.isMobile,
+    required this.formatTime,
+    required this.statusColor,
+  });
+
+  @override
+  State<_ActivitiesPaginatedList> createState() =>
+      _ActivitiesPaginatedListState();
+}
+
+class _ActivitiesPaginatedListState extends State<_ActivitiesPaginatedList> {
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> _items = [];
+  DocumentSnapshot<Map<String, dynamic>>? _lastDoc;
+  bool _loading = false;
+  bool _hasMore = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchMore();
+  }
+
+  Future<void> _fetchMore() async {
+    if (_loading || !_hasMore) return;
+    setState(() => _loading = true);
+    try {
+      Query<Map<String, dynamic>> q = widget.baseQuery.limit(25);
+      if (_lastDoc != null) q = q.startAfterDocument(_lastDoc!);
+      final snap = await q.get();
+      if (mounted) {
+        if (snap.docs.isNotEmpty) {
+          _lastDoc = snap.docs.last;
+          _items.addAll(snap.docs);
+        }
+        if (snap.docs.length < 25) _hasMore = false;
+        setState(() {});
+      }
+    } catch (e) {
+      // ignore errors in modal
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = widget.isMobile;
+    return SizedBox(
+      width: isMobile ? double.infinity : 760,
+      height: isMobile ? MediaQuery.of(context).size.height * 0.8 : 540,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: Row(
+              children: [
+                Icon(Icons.history, color: kHighlightColor),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text("Historique complet",
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: isMobile ? 14 : 16)),
+                ),
+                IconButton(
+                  icon: Icon(Icons.close),
+                  onPressed: () => Navigator.of(context).pop(),
+                )
+              ],
+            ),
+          ),
+          Divider(height: 1),
+          Expanded(
+            child: _items.isEmpty && _loading
+                ? Center(child: CircularProgressIndicator(strokeWidth: 2))
+                : _items.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text("Aucune activité trouvée",
+                              style: TextStyle(color: Colors.grey[700])),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: EdgeInsets.all(12),
+                        itemCount: _items.length,
+                        separatorBuilder: (_, __) => SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final data = _items[index].data();
+                          final commercial =
+                              (data['commercialNom'] ?? '').toString();
+                          final title = commercial.isNotEmpty
+                              ? 'Transaction de $commercial'
+                              : 'Transaction commerciale';
+                          final resume =
+                              data['resumeFinancier'] as Map<String, dynamic>?;
+                          String caStr = '';
+                          if (resume != null) {
+                            final ca = resume['chiffreAffairesNet'];
+                            if (ca != null) caStr = ca.toString();
+                          }
+                          final desc = caStr.isNotEmpty
+                              ? 'Chiffre d\'affaires net: $caStr FCFA'
+                              : '';
+                          final user = (data['validePar'] ?? data['site'] ?? '')
+                              .toString();
+                          final raw = (data['statut'] ?? '').toString();
+                          String status;
+                          switch (raw) {
+                            case 'termine_en_attente':
+                            case 'termineEnAttente':
+                            case 'recupereeCaisse':
+                            case 'recuperee_caisse':
+                              status = 'pending';
+                              break;
+                            case 'valideeAdmin':
+                            case 'validee_admin':
+                              status = 'success';
+                              break;
+                            case 'rejetee':
+                              status = 'error';
+                              break;
+                            default:
+                              status = 'success';
+                          }
+                          final ts = data['dateCreation'] ??
+                              data['dateTerminee'] ??
+                              data['timestamp'];
+                          final c = widget.statusColor(status);
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: c.withValues(alpha: 0.06),
+                              borderRadius: BorderRadius.circular(10),
+                              border:
+                                  Border.all(color: c.withValues(alpha: 0.18)),
+                            ),
+                            child: ListTile(
+                              leading: Icon(Icons.timeline, color: c),
+                              title: Text(title,
+                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(desc,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis),
+                                  SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      Icon(Icons.person,
+                                          size: 12, color: Colors.grey[700]),
+                                      SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(user,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey[800])),
+                                      ),
+                                      SizedBox(width: 10),
+                                      Icon(Icons.access_time,
+                                          size: 12, color: Colors.grey[700]),
+                                      SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(widget.formatTime(ts),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey[800])),
+                                      ),
+                                    ],
+                                  )
+                                ],
+                              ),
+                              trailing: Chip(
+                                label: Text(status == 'success'
+                                    ? 'Validée'
+                                    : status == 'pending'
+                                        ? 'En cours'
+                                        : 'Rejetée'),
+                                backgroundColor: c.withValues(alpha: 0.15),
+                                labelStyle: TextStyle(
+                                    color: c, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+          if (_hasMore)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Align(
+                alignment: Alignment.center,
+                child: OutlinedButton.icon(
+                  onPressed: _loading ? null : _fetchMore,
+                  icon: _loading
+                      ? SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : Icon(Icons.expand_more),
+                  label: Text('Charger plus'),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -2189,6 +3392,17 @@ class NavigationSlider extends StatelessWidget {
       'Caissière'
     ],
 
+    // 🔒 CAISSE : Accès dédié aux rôles financiers / commerciaux élargis
+    'CAISSE': [
+      'Admin',
+      'Gestionnaire Commercial',
+      'Caissier',
+      'Caissière',
+      'Commercial'
+    ],
+
+    // (VENTES module supprimé du sidebar)
+
     // 🔒 ADMINISTRATION : Admin uniquement
     'ADMINISTRATION': ['Admin'],
   };
@@ -2244,27 +3458,17 @@ class NavigationSlider extends StatelessWidget {
       {
         "icon": Icons.nature,
         "name": "COLLECTE",
-        "badge": 5,
         "subModules": [
-          {"name": "Nouvelle collecte", "icon": Icons.add_circle_outline},
-          {"name": "Historique collectes", "icon": Icons.history},
-          {"name": "Récoltes", "badge": 3, "icon": Icons.agriculture},
-          {"name": "Achats SCOOPS - Contenants", "icon": Icons.inventory_2},
-          {"name": "Achats Individuels", "badge": 2, "icon": Icons.person},
+          {"name": "Récoltes", "icon": Icons.agriculture},
+          {"name": "Achat Scoop", "icon": Icons.inventory_2},
+          {"name": "Achats Individuels", "icon": Icons.person},
           {"name": "Collecte Mielleries", "icon": Icons.factory}
         ]
       },
       {
         "icon": Icons.security,
         "name": "CONTRÔLE",
-        "badge": 5,
         "subModules": [
-          {
-            "name": "Contrôle avancé",
-            "icon": Icons.analytics_outlined,
-            "badge": 1
-          },
-          {"name": "Contrôle a gerer", "badge": 7},
           {"name": "Nouveau contrôle"},
           {"name": "Historique contrôles"}
         ]
@@ -2272,27 +3476,17 @@ class NavigationSlider extends StatelessWidget {
       {
         "icon": Icons.science,
         "name": "EXTRACTION",
-        "badge": 12,
         "subModules": [
-          {
-            "name": "Extraction de données",
-            "icon": Icons.analytics_outlined,
-            "badge": 5
-          },
           {"name": "Nouvelle extraction"},
-          {"name": "Extractions en cours", "badge": 3},
-          {"name": "Historique extractions"},
-          {"name": "Rapports qualité", "badge": 2}
+          {"name": "Historique extractions"}
         ]
       },
-      // Module RAPPORTS retiré du sidebar
       {
         "name": "FILTRAGE",
         "icon": Icons.filter_alt,
         "subModules": [
           {"name": "Nouveau filtrage"},
-          {"name": "En cours de filtrage", "badge": 2},
-          {"name": "Filtrage terminé"}
+          {"name": "Historique filtrage"}
         ]
       },
       {
@@ -2300,7 +3494,6 @@ class NavigationSlider extends StatelessWidget {
         "icon": Icons.all_inbox,
         "subModules": [
           {"name": "Nouveau conditionnement"},
-          {"name": "Lots disponibles", "badge": 12},
           {"name": "Stock conditionné"}
         ]
       },
@@ -2308,9 +3501,16 @@ class NavigationSlider extends StatelessWidget {
         "name": "GESTION DE VENTES",
         "icon": Icons.trending_up,
         "subModules": [
-          {"name": "Prélèvements"},
-          {"name": "Attribution commerciaux"},
-          {"name": "Suivi distributions", "badge": 3}
+          {"name": "Nouvelle vente"},
+          {"name": "Historique ventes"}
+        ]
+      },
+      {
+        "name": "CAISSE",
+        "icon": Icons.account_balance,
+        "subModules": [
+          {"name": "Synthèse Caisse"},
+          {"name": "Analyse Paiements"}
         ]
       },
       {

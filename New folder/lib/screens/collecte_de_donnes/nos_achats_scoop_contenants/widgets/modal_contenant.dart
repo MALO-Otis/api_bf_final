@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../data/models/scoop_models.dart';
+import '../../../../widgets/money_icon_widget.dart';
 
 class ModalContenant extends StatefulWidget {
   final ContenantScoopModel? contenant;
@@ -39,7 +40,6 @@ class _ModalContenantState extends State<ModalContenant> {
     super.initState();
     if (_isEdit) {
       final contenant = widget.contenant!;
-      // 🔧 SCOOP: Seuls Fût (seau) et Bidon sont autorisés
       _typeContenant = contenant.typeContenant;
       _typeMiel = contenant.typeMiel;
       _typeCire = contenant.typeCire;
@@ -47,6 +47,10 @@ class _ModalContenantState extends State<ModalContenant> {
       _poidsController.text = contenant.poids.toString();
       _prixController.text = contenant.prix.toString();
       _notesController.text = contenant.notes ?? '';
+    } else {
+      // Initialisation par défaut : Liquide avec Bidon
+      _typeMiel = MielType.liquide;
+      _typeContenant = ContenantType.bidon;
     }
 
     // 🔧 Listeners pour mise à jour en temps réel des totaux
@@ -58,6 +62,12 @@ class _ModalContenantState extends State<ModalContenant> {
     setState(() {
       // Force rebuild pour mettre à jour l'aperçu des totaux
     });
+  }
+
+  /// Retourne les types de contenants disponibles selon le type de miel sélectionné
+  List<ContenantType> _getAvailableContenantTypes() {
+    // 🆕 Utiliser la méthode statique de l'enum pour obtenir les types disponibles
+    return ContenantType.getTypesForMiel(_typeMiel);
   }
 
   @override
@@ -149,6 +159,14 @@ class _ModalContenantState extends State<ModalContenant> {
                             if (_typeMiel != MielType.cire) {
                               _typeCire = null;
                               _couleurCire = null;
+                            }
+                            // Si on passe à Cire, forcer le type de contenant à Sac
+                            if (_typeMiel == MielType.cire) {
+                              _typeContenant = ContenantType.sac;
+                            }
+                            // Si on passe à un autre type que Cire, remettre à Bidon par défaut
+                            else {
+                              _typeContenant = ContenantType.bidon;
                             }
                           });
                         },
@@ -275,9 +293,11 @@ class _ModalContenantState extends State<ModalContenant> {
                           border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8)),
                           prefixIcon: const Icon(Icons.inventory),
+                          helperText: _typeMiel == MielType.cire
+                              ? 'Les cires sont uniquement contenues dans des sacs'
+                              : 'Seau, Bidon, Fût disponibles pour les autres types de miel',
                         ),
-                        items: [ContenantType.seau, ContenantType.bidon]
-                            .map((type) {
+                        items: _getAvailableContenantTypes().map((type) {
                           return DropdownMenuItem(
                             value: type,
                             child: Text(type.label),
@@ -349,7 +369,7 @@ class _ModalContenantState extends State<ModalContenant> {
                               decoration: InputDecoration(
                                 border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8)),
-                                prefixIcon: const Icon(Icons.monetization_on),
+                                prefixIcon: const SimpleMoneyIcon(),
                                 hintText: '0',
                                 suffixText: 'CFA',
                               ),

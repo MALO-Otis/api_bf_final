@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../authentication/user_session.dart';
+import '../../collecte_de_donnes/historiques_collectes.dart';
 
 class CollecteurDashboard extends StatefulWidget {
   const CollecteurDashboard({super.key});
@@ -262,8 +263,8 @@ class _CollecteurDashboardState extends State<CollecteurDashboard> {
               Icons.history,
               Colors.blue,
               () {
-                // Navigation vers historique
-                Get.snackbar('Action', 'Historique des collectes');
+                // Navigation vers historique des collectes
+                Get.to(() => const HistoriquesCollectesPage());
               },
               isMobile,
             ),
@@ -283,7 +284,7 @@ class _CollecteurDashboardState extends State<CollecteurDashboard> {
               Colors.purple,
               () {
                 // Navigation vers achats SCOOPS
-                Get.snackbar('Action', 'Achats SCOOPS - Contenants');
+                Get.snackbar('Action', 'Achat Scoop');
               },
               isMobile,
             ),

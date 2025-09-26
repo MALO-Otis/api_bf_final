@@ -29,12 +29,7 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
   late final AttributionPageService _attributionService;
   late final AttributionServiceComplete _attributionServiceComplete;
 
-  // Controllers
-  late final TabController _tabController;
-  final TextEditingController _searchController = TextEditingController();
-
-  // State
-  final RxBool _isLoading = true.obs;
+  // Etat principal
   final RxList<models.ProductControle> _produitsDisponibles =
       <models.ProductControle>[].obs;
   final RxList<models.ProductControle> _produitsFiltres =
@@ -42,39 +37,33 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
   final Rx<AttributionFilters> _filtres = AttributionFilters().obs;
   final RxString _searchQuery = ''.obs;
   final RxInt _selectedTabIndex = 0.obs;
+  final RxMap<String, int> _stats = <String, int>{}.obs;
+  final RxBool _isLoading = false.obs;
 
-  // 🆕 SÉLECTION MULTIPLE
+  // Contrôleurs UI
+  late TabController _tabController;
+  final TextEditingController _searchController = TextEditingController();
+
+  // Sélection multiple
   final RxList<models.ProductControle> _produitsSelectionnes =
       <models.ProductControle>[].obs;
   final RxBool _modeSelectionMultiple = false.obs;
 
-  // Statistiques
-  final RxMap<String, int> _stats = <String, int>{}.obs;
-
   @override
   void initState() {
     super.initState();
-    _initializeServices();
-    _initializeControllers();
-    _loadData();
-  }
-
-  void _initializeServices() {
     _attributionService = AttributionPageService();
     _attributionServiceComplete = AttributionServiceComplete();
-  }
-
-  void _initializeControllers() {
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       _selectedTabIndex.value = _tabController.index;
       _applyFilters();
     });
-
     _searchController.addListener(() {
       _searchQuery.value = _searchController.text;
       _applyFilters();
     });
+    _loadData();
   }
 
   Future<void> _loadData() async {
@@ -89,7 +78,6 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
         print('   📊 Produits actuels: ${_produitsDisponibles.length}');
       }
 
-      // Charger tous les produits contrôlés disponibles pour attribution
       final produits =
           await _attributionService.getProduitsDisponiblesAttribution();
 
@@ -97,7 +85,6 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
         print('✅ [Attribution Complete] Produits chargés depuis le service:');
         print('   📦 Nombre total: ${produits.length}');
 
-        // Analyse détaillée des poids
         double poidsTotal = 0.0;
         Map<models.ProductNature, int> repartition = {};
         Map<String, double> poidsByCollecte = {};
@@ -116,7 +103,6 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
               '      - ${nature.toString().split('.').last}: $count produits');
         });
 
-        // Détail des premiers produits pour diagnostic
         print('   📋 DÉTAIL DES PREMIERS PRODUITS:');
         for (int i = 0; i < produits.length && i < 5; i++) {
           final p = produits[i];
@@ -131,13 +117,8 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
         }
       }
 
-      // Assigner les produits AVANT de calculer les stats
       _produitsDisponibles.assignAll(produits);
-
-      // Calculer les statistiques APRÈS avoir assigné les produits
       _calculateStats();
-
-      // Appliquer les filtres initiaux
       _applyFilters();
 
       if (kDebugMode) {
@@ -212,7 +193,7 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
   }
 
   void _applyFilters() {
-    var produitsFiltres = _produitsDisponibles.where((produit) {
+    final filtered = _produitsDisponibles.where((produit) {
       // Filtre par onglet (nature de produit)
       switch (_selectedTabIndex.value) {
         case 0: // Tous
@@ -243,13 +224,13 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
     }).toList();
 
     // Tri par urgence puis par date
-    produitsFiltres.sort((a, b) {
+    filtered.sort((a, b) {
       if (a.isUrgent && !b.isUrgent) return -1;
       if (!a.isUrgent && b.isUrgent) return 1;
       return b.dateReception.compareTo(a.dateReception);
     });
 
-    _produitsFiltres.assignAll(produitsFiltres);
+    _produitsFiltres.assignAll(filtered);
   }
 
   @override
@@ -353,8 +334,11 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
   ///
   /// App bar qui se rétracte avec le scroll
   Widget _buildSliverAppBar() {
+    final width = MediaQuery.of(context).size.width;
+    final isSmall = width < 400;
+    final isVerySmall = width < 350;
     return SliverAppBar(
-      expandedHeight: 120,
+      expandedHeight: isSmall ? 80 : 120,
       floating: false,
       pinned: true,
       centerTitle: false,
@@ -374,6 +358,7 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
           ),
           child: LayoutBuilder(
             builder: (context, constraints) {
+              // Hide big background title when collapsed to avoid duplicate titles
               final collapsed = constraints.maxHeight <= (kToolbarHeight + 20);
               return Stack(
                 children: [
@@ -382,21 +367,28 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
                     opacity: collapsed ? 0.0 : 1.0,
                     duration: const Duration(milliseconds: 150),
                     child: Padding(
-                      padding:
-                          const EdgeInsets.only(left: 16, right: 16, top: 50),
+                      padding: EdgeInsets.only(
+                        left: 16,
+                        right: 16,
+                        top: isSmall ? 36 : 50,
+                      ),
                       child: Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(8),
+                          if (!isVerySmall)
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                Icons.assignment_turned_in,
+                                size: isSmall ? 18 : 24,
+                                color: Colors.white,
+                              ),
                             ),
-                            child: const Icon(Icons.assignment_turned_in,
-                                size: 24, color: Colors.white),
-                          ),
-                          const SizedBox(width: 12),
-                          const Expanded(
+                          if (!isVerySmall) const SizedBox(width: 12),
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -404,18 +396,23 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
                                 Text(
                                   'Attribution de Produits',
                                   style: TextStyle(
-                                    fontSize: 18,
+                                    fontSize: isSmall ? 16 : 18,
                                     fontWeight: FontWeight.bold,
                                     color: Colors.white,
                                   ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                Text(
-                                  'Extraction • Filtrage • Traitement Cire',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.white70,
+                                if (!isVerySmall)
+                                  Text(
+                                    'Extraction • Filtrage • Traitement Cire',
+                                    style: TextStyle(
+                                      fontSize: isSmall ? 10 : 12,
+                                      color: Colors.white70,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                ),
                               ],
                             ),
                           ),
@@ -427,14 +424,14 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
                   // Collapsed header (small title only)
                   Positioned(
                     left: 16,
-                    bottom: 12,
+                    bottom: isSmall ? 8 : 12,
                     child: AnimatedOpacity(
                       opacity: collapsed ? 1.0 : 0.0,
                       duration: const Duration(milliseconds: 150),
-                      child: const Text(
-                        'Attribution de Produits',
+                      child: Text(
+                        'Attribution',
                         style: TextStyle(
-                          fontSize: 16,
+                          fontSize: isSmall ? 14 : 16,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
@@ -475,60 +472,75 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
   Widget _buildSearchAndFilters() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          // Barre de recherche
-          Expanded(
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Rechercher par producteur, code, village...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: Obx(() {
-                  if (_searchQuery.value.isNotEmpty) {
-                    return IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchController.clear();
-                      },
-                    );
-                  }
-                  return const SizedBox.shrink();
-                }),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 420;
+        final searchField = Expanded(
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Rechercher par producteur, code, village...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: Obx(() {
+                if (_searchQuery.value.isNotEmpty) {
+                  return IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      _searchController.clear();
+                    },
+                  );
+                }
+                return const SizedBox.shrink();
+              }),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
               ),
             ),
           ),
-          const SizedBox(width: 12),
-
-          // Bouton filtres
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey[300]!),
-            ),
-            child: IconButton(
-              icon: const Icon(Icons.tune),
-              onPressed: () => _showFiltersModal(),
-              tooltip: 'Filtres avancés',
-            ),
+        );
+        final filterButton = Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey[300]!),
           ),
-        ],
-      ),
+          child: IconButton(
+            icon: const Icon(Icons.tune),
+            onPressed: () => _showFiltersModal(),
+            tooltip: 'Filtres avancés',
+          ),
+        );
+
+        if (narrow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(children: [searchField]),
+              const SizedBox(height: 8),
+              Align(alignment: Alignment.centerRight, child: filterButton),
+            ],
+          );
+        }
+        return Row(
+          children: [
+            searchField,
+            const SizedBox(width: 12),
+            filterButton,
+          ],
+        );
+      }),
     );
   }
 
   Widget _buildTabBar() {
+    final width = MediaQuery.of(context).size.width;
+    final compact = width < 420;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
@@ -544,6 +556,9 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
       ),
       child: Obx(() => TabBar(
             controller: _tabController,
+            isScrollable: true,
+            labelPadding:
+                EdgeInsets.symmetric(horizontal: compact ? 6 : 10, vertical: 0),
             tabs: [
               _buildTab('Tous', Icons.all_inclusive, _stats['total'] ?? 0),
               _buildTab('Extraction', Icons.science, _stats['bruts'] ?? 0),
@@ -563,20 +578,22 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
   }
 
   Widget _buildTab(String label, IconData icon, int count) {
+    final width = MediaQuery.of(context).size.width;
+    final compact = width < 420;
     return Tab(
-      height: 60,
+      height: compact ? 50 : 60,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 18),
+              Icon(icon, size: compact ? 16 : 18),
               const SizedBox(width: 6),
               Text(
                 label,
-                style:
-                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                    fontSize: compact ? 11 : 12, fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -590,7 +607,7 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
             child: Text(
               count.toString(),
               style: TextStyle(
-                fontSize: 10,
+                fontSize: compact ? 9 : 10,
                 fontWeight: FontWeight.bold,
                 color: Colors.indigo[700],
               ),
@@ -776,18 +793,6 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
     );
   }
 
-  /// Format long product codes based on available width
-  /// - When isVeryNarrow is true: show an ellipsized prefix with the last N digits
-  ///   example: REC_REO_..._0002 (for keepLastDigits=4)
-  /// - Otherwise: return the full code (ellipsis applied by Text where used)
-  String _formatProductCode(String code,
-      {required bool isVeryNarrow, int keepLastDigits = 4}) {
-    if (!isVeryNarrow) return code;
-    if (code.length <= keepLastDigits + 3) return code;
-    final tail = code.substring(code.length - keepLastDigits);
-    return '...$tail';
-  }
-
   /// 📱 MINI CARTE PRODUIT
   ///
   /// Carte compacte pour afficher un produit dans la collecte
@@ -843,31 +848,18 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Expanded(
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final isVeryNarrow = constraints.maxWidth < 560;
-                              final display = _formatProductCode(
-                                produit.codeContenant,
-                                isVeryNarrow: isVeryNarrow,
-                                keepLastDigits: 4,
-                              );
-                              return Text(
-                                display,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                softWrap: false,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
-                              );
-                            },
+                        Text(
+                          produit.codeContenant,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
                           ),
                         ),
-                        const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 4, vertical: 1),
@@ -885,11 +877,9 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
                             ),
                           ),
                         ),
-                        if (produit.isUrgent) ...[
-                          const SizedBox(width: 4),
+                        if (produit.isUrgent)
                           const Icon(Icons.access_time,
                               color: Colors.red, size: 12),
-                        ],
                       ],
                     ),
                     const SizedBox(height: 2),
@@ -1133,21 +1123,11 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
                       Icon(Icons.close, color: Colors.red, size: 16),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final isVeryNarrow = constraints.maxWidth < 350;
-                            final displayCode = _formatProductCode(
-                              produit.codeContenant,
-                              isVeryNarrow: isVeryNarrow,
-                              keepLastDigits: 4,
-                            );
-                            return Text(
-                              '$displayCode - ${_getAttributionErrorMessage(produit, type)}',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 12),
-                            );
-                          },
+                        child: Text(
+                          '${produit.codeContenant} - ${_getAttributionErrorMessage(produit, type)}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12),
                         ),
                       ),
                     ],
@@ -1374,10 +1354,6 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
         return const Color(0xFF78909C); // Gris bleuté moderne
     }
   }
-
-  /// Couleur selon le type d'attribution
-  // Note: Removed unused overload taking a local AttributionType; we use the
-  // widget-scoped _getTypeColor() defined later based on models.AttributionType.
 
   /// Couleur de fond dégradée selon le type d'attribution
   LinearGradient _getTypeGradient(AttributionType type) {
@@ -1691,24 +1667,14 @@ class _AttributionPageCompleteState extends State<AttributionPageComplete>
                         ),
                       ),
                     ),
-                    title: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final isVeryNarrow = constraints.maxWidth < 300;
-                        final display = _formatProductCode(
-                          produit.codeContenant,
-                          isVeryNarrow: isVeryNarrow,
-                          keepLastDigits: 4,
-                        );
-                        return Text(
-                          display,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        );
-                      },
+                    title: Text(
+                      produit.codeContenant,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                     subtitle: Text(
                       '${produit.poidsMiel.toStringAsFixed(1)} kg • ${produit.producteur}',
@@ -2668,6 +2634,8 @@ class _ModernAttributionModalState extends State<ModernAttributionModal>
                     Expanded(
                       child: Text(
                         widget.type.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 20,
@@ -2733,12 +2701,16 @@ class _ModernAttributionModalState extends State<ModernAttributionModal>
             children: [
               Icon(Icons.info, color: _getTypeColor(), size: 20),
               const SizedBox(width: 8),
-              Text(
-                'Informations de sélection',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: _getTypeColor(),
+              Expanded(
+                child: Text(
+                  'Informations de sélection',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: _getTypeColor(),
+                  ),
                 ),
               ),
             ],
@@ -2863,10 +2835,29 @@ class _ModernAttributionModalState extends State<ModernAttributionModal>
         filled: true,
         fillColor: Colors.grey.shade50,
       ),
+      isDense: true,
+      isExpanded: true,
       items: sites
           .map((site) => DropdownMenuItem(
                 value: site,
-                child: Text(site),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    site,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ))
+          .toList(),
+      selectedItemBuilder: (context) => sites
+          .map((site) => Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  site,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ))
           .toList(),
       validator: (value) {
@@ -2905,36 +2896,46 @@ class _ModernAttributionModalState extends State<ModernAttributionModal>
           ),
           child: Column(
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '${_selectedContenants.length}/${_availableContenants.length} sélectionnés',
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  Row(
-                    children: [
-                      TextButton(
-                        onPressed: () {
-                          setState(() {
-                            _selectedContenants =
-                                List.from(_availableContenants);
-                          });
-                        },
-                        child: const Text('Tout'),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          setState(() {
-                            _selectedContenants.clear();
-                          });
-                        },
-                        child: const Text('Aucun'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+              LayoutBuilder(builder: (context, c) {
+                final narrow = c.maxWidth < 380;
+                final title = Text(
+                  '${_selectedContenants.length}/${_availableContenants.length} sélectionnés',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                  overflow: TextOverflow.ellipsis,
+                );
+                final actions = Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _selectedContenants = List.from(_availableContenants);
+                        });
+                      },
+                      child: const Text('Tout'),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _selectedContenants.clear();
+                        });
+                      },
+                      child: const Text('Aucun'),
+                    ),
+                  ],
+                );
+                if (narrow) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [title, const SizedBox(height: 8), actions],
+                  );
+                }
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [Expanded(child: title), actions],
+                );
+              }),
               const Divider(),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 200),
@@ -2943,23 +2944,30 @@ class _ModernAttributionModalState extends State<ModernAttributionModal>
                     children: _availableContenants.map((contenant) {
                       final isSelected =
                           _selectedContenants.contains(contenant);
-                      return CheckboxListTile(
-                        dense: true,
-                        value: isSelected,
-                        onChanged: (value) {
-                          setState(() {
-                            if (value == true) {
-                              _selectedContenants.add(contenant);
-                            } else {
-                              _selectedContenants.remove(contenant);
-                            }
-                          });
-                        },
-                        title: Text(
-                          contenant,
-                          style: const TextStyle(fontSize: 13),
+                      return SizedBox(
+                        width: double.infinity,
+                        child: CheckboxListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          value: isSelected,
+                          onChanged: (value) {
+                            setState(() {
+                              if (value == true) {
+                                _selectedContenants.add(contenant);
+                              } else {
+                                _selectedContenants.remove(contenant);
+                              }
+                            });
+                          },
+                          title: Text(
+                            contenant,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          activeColor: _getTypeColor(),
                         ),
-                        activeColor: _getTypeColor(),
                       );
                     }).toList(),
                   ),
@@ -3021,37 +3029,57 @@ class _ModernAttributionModalState extends State<ModernAttributionModal>
               Expanded(
                 child: Text(
                   'Résumé de l\'attribution',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: _getTypeColor(),
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _buildSummaryCard(
-                  'Type d\'attribution',
-                  widget.type.label,
-                  _getTypeIcon(),
+          LayoutBuilder(builder: (context, c) {
+            final narrow = c.maxWidth < 420;
+            if (narrow) {
+              return Column(
+                children: [
+                  _buildSummaryCard(
+                    'Type d\'attribution',
+                    widget.type.label,
+                    _getTypeIcon(),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildSummaryCard(
+                    'Contenants',
+                    '${_selectedContenants.length}',
+                    Icons.inventory,
+                  ),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(
+                  child: _buildSummaryCard(
+                    'Type d\'attribution',
+                    widget.type.label,
+                    _getTypeIcon(),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildSummaryCard(
-                  'Contenants',
-                  '${_selectedContenants.length}',
-                  Icons.inventory,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildSummaryCard(
+                    'Contenants',
+                    '${_selectedContenants.length}',
+                    Icons.inventory,
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            );
+          }),
           const SizedBox(height: 12),
           if (_siteReceveur.isNotEmpty || _utilisateur.isNotEmpty) ...[
             if (_siteReceveur.isNotEmpty)
@@ -3145,6 +3173,8 @@ class _ModernAttributionModalState extends State<ModernAttributionModal>
           Expanded(
             child: Text(
               value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w500),
             ),
           ),
@@ -3154,84 +3184,149 @@ class _ModernAttributionModalState extends State<ModernAttributionModal>
   }
 
   Widget _buildActions() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.grey.shade50,
-            Colors.grey.shade100,
-          ],
-        ),
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.cancel),
-              label: const Text('Annuler'),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                side: BorderSide(color: Colors.grey.shade400),
-                foregroundColor: Colors.grey.shade700,
-              ),
+    final viewInsets = MediaQuery.of(context).viewInsets;
+    return SafeArea(
+        top: false,
+        child: Container(
+          padding:
+              EdgeInsets.fromLTRB(20, 12, 20, (viewInsets.bottom > 0) ? 8 : 20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.grey.shade50,
+                Colors.grey.shade100,
+              ],
+            ),
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(20),
+              bottomRight: Radius.circular(20),
             ),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            flex: 3,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: _getTypeGradientColors(),
-                ),
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: _getTypeColor().withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+          child: LayoutBuilder(builder: (context, c) {
+            final narrow = c.maxWidth < 420;
+            if (narrow) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.cancel),
+                    label: const Text('Annuler'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: BorderSide(color: Colors.grey.shade400),
+                      foregroundColor: Colors.grey.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: _getTypeGradientColors(),
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _getTypeColor().withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: ElevatedButton.icon(
+                      onPressed: _isLoading ? null : _confirmer,
+                      icon: _isLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Icon(_getTypeIcon()),
+                      label: Text(_isLoading ? 'Attribution...' : 'Confirmer'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        textStyle: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
                   ),
                 ],
-              ),
-              child: ElevatedButton.icon(
-                onPressed: _isLoading ? null : _confirmer,
-                icon: _isLoading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      )
-                    : Icon(_getTypeIcon()),
-                label: Text(_isLoading ? 'Attribution...' : 'Confirmer'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  textStyle: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+              );
+            }
+            return Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.cancel),
+                    label: const Text('Annuler'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: BorderSide(color: Colors.grey.shade400),
+                      foregroundColor: Colors.grey.shade700,
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 3,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: _getTypeGradientColors(),
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _getTypeColor().withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: ElevatedButton.icon(
+                      onPressed: _isLoading ? null : _confirmer,
+                      icon: _isLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Icon(_getTypeIcon()),
+                      label: Text(_isLoading ? 'Attribution...' : 'Confirmer'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        textStyle: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }),
+        ));
   }
 
   Future<void> _confirmer() async {

@@ -105,11 +105,11 @@ class SectionPeriode extends StatelessWidget {
 
           const SizedBox(height: 24),
 
-          // Boutons de navigation
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              TextButton.icon(
+          // Boutons de navigation (responsives)
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 420;
+              final back = TextButton.icon(
                 onPressed: onPrevious,
                 icon: const Icon(Icons.arrow_back),
                 label: const Text('Retour'),
@@ -117,16 +117,19 @@ class SectionPeriode extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 ),
-              ),
-              ElevatedButton(
+              );
+              final next = ElevatedButton(
                 onPressed: onNext,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.amber.shade700,
                   foregroundColor: Colors.white,
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                      const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8)),
+                  minimumSize:
+                      const Size(0, 0), // évite largeur minimale trop grande
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
@@ -137,8 +140,22 @@ class SectionPeriode extends StatelessWidget {
                     Icon(Icons.arrow_forward),
                   ],
                 ),
-              ),
-            ],
+              );
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(alignment: Alignment.centerLeft, child: back),
+                    const SizedBox(height: 12),
+                    Align(alignment: Alignment.centerRight, child: next),
+                  ],
+                );
+              }
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [back, next],
+              );
+            },
           ),
 
           const SizedBox(height: 40),

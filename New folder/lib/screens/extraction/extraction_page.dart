@@ -1267,12 +1267,12 @@ class _ExtractionPageState extends State<ExtractionPage>
           ? items.firstWhere((item) => item.value.toString() == value).value
           : null,
       decoration: InputDecoration(
-        hintText: hint,
         isDense: true,
+        hintText: hint,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
       isExpanded: true,
       items: [

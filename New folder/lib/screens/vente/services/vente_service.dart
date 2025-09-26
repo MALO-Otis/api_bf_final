@@ -1,12 +1,19 @@
+import 'dart:async';
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import '../models/vente_models.dart';
+import 'package:flutter/foundation.dart';
+import '../../caisse/models/caisse_cloture.dart';
+import '../../../authentication/user_session.dart';
+import '../models/commercial_models.dart' hide Client;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../conditionnement/conditionnement_models.dart';
+import '../../conditionnement/services/conditionnement_db_service.dart';
+
 /// 🛒 SERVICE PRINCIPAL DE GESTION DES VENTES
 ///
 /// Gestion complète des produits conditionnés, prélèvements, ventes, restitutions et pertes
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
-import 'package:get/get.dart';
-import '../../../authentication/user_session.dart';
-import '../models/vente_models.dart';
+/// 🔥 NOUVELLE VERSION INTÉGRÉE AVEC LE MODULE CONDITIONNEMENT
 
 class VenteService {
   static final VenteService _instance = VenteService._internal();
@@ -15,6 +22,181 @@ class VenteService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final UserSession _userSession = Get.find<UserSession>();
+
+  // ====== LOGGING & DIAGNOSTICS ======
+  /// Active les logs détaillés (bruit élevé). Mettre à false en production.
+  bool verboseLogs = false;
+
+  /// Counters diagnostics
+  int _produitsBuildCount =
+      0; // Nombre de reconstructions complètes de la liste de produits
+  int _conditionnementsAnalysesCount =
+      0; // Nombre total de conditionnements parcourus
+  int _emballagesAnalysesCount = 0; // Nombre d'emballages analysés
+
+  /// Cache produits + métadonnées
+  List<ProduitConditionne>? _cachedProduits;
+  DateTime? _lastProduitsBuild;
+  Duration _produitsTtl = const Duration(
+      seconds: 45); // TTL raisonnable (UI réactive mais évite spam)
+
+  /// Future en cours pour dédupliquer les appels concurrents
+  Future<List<ProduitConditionne>>? _ongoingProduitsFuture;
+
+  /// Helper log interne
+  void _log(String msg) {
+    if (verboseLogs) debugPrint(msg);
+  }
+
+  // Getters diagnostics publics
+  int get produitsBuildCount => _produitsBuildCount;
+  int get conditionnementsAnalysesCumule => _conditionnementsAnalysesCount;
+  int get emballagesAnalysesCumule => _emballagesAnalysesCount;
+  Duration? get ageCacheProduits => _lastProduitsBuild == null
+      ? null
+      : DateTime.now().difference(_lastProduitsBuild!);
+  int get tailleCacheProduits => _cachedProduits?.length ?? 0;
+
+  /// 🔥 SERVICE DE CONDITIONNEMENT INTÉGRÉ
+  ConditionnementDbService? _conditionnementService;
+
+  ConditionnementDbService get conditionnementService {
+    try {
+      _conditionnementService ??= Get.find<ConditionnementDbService>();
+      return _conditionnementService!;
+    } catch (e) {
+      debugPrint(
+          '⚠️ [VenteService] ConditionnementDbService non trouvé, création d\'une nouvelle instance: $e');
+      _conditionnementService = Get.put(ConditionnementDbService());
+      return _conditionnementService!;
+    }
+  }
+
+  // ====================== CLOTURE (COMMERCIAL -> CAISSIER) ======================
+  /// Crée une clôture pour un identifiant de prélèvement/attribution virtuel (prelevementId)
+  /// Agrège les ventes, restitutions et pertes correspondantes (via prelevementId)
+  /// et enregistre un snapshot dans Vente/{site}/clotures/{id}
+  Future<CaisseCloture> cloturerAttribution({
+    required String site,
+    required String prelevementId,
+    required String commercialId,
+    required String commercialNom,
+  }) async {
+    final firestore = FirebaseFirestore.instance;
+
+    // Récupérer toutes les opérations liées à ce prelevementId
+    final ventesSnap = await firestore
+        .collection('Vente')
+        .doc(site)
+        .collection('ventes')
+        .where('prelevementId', isEqualTo: prelevementId)
+        .get();
+    final restitsSnap = await firestore
+        .collection('Vente')
+        .doc(site)
+        .collection('restitutions')
+        .where('prelevementId', isEqualTo: prelevementId)
+        .get();
+    final pertesSnap = await firestore
+        .collection('Vente')
+        .doc(site)
+        .collection('pertes')
+        .where('prelevementId', isEqualTo: prelevementId)
+        .get();
+
+    final ventes = ventesSnap.docs.map((d) => Vente.fromMap(d.data())).toList();
+    final restits =
+        restitsSnap.docs.map((d) => Restitution.fromMap(d.data())).toList();
+    final pertes = pertesSnap.docs.map((d) => Perte.fromMap(d.data())).toList();
+
+    // Construire les résumés
+    final ventesResumes = ventes
+        .map((v) => CaisseVenteResume(
+              id: v.id,
+              date: v.dateVente,
+              montantTotal: v.montantTotal,
+              montantPaye: v.montantPaye,
+              montantRestant: v.montantRestant,
+              modePaiement: v.modePaiement,
+              statut: v.statut,
+            ))
+        .toList();
+    final restitsResumes = restits
+        .map((r) => CaisseRestitutionResume(
+              id: r.id,
+              date: r.dateRestitution,
+              valeurTotale: r.valeurTotale,
+            ))
+        .toList();
+    final pertesResumes = pertes
+        .map((p) => CaissePerteResume(
+              id: p.id,
+              date: p.datePerte,
+              valeurTotale: p.valeurTotale,
+            ))
+        .toList();
+
+    // Totaux
+    double totalVentes = 0, totalPayes = 0, totalCredits = 0;
+    for (final v in ventes) {
+      if (v.statut != StatutVente.annulee) {
+        totalVentes += v.montantTotal;
+        totalPayes += v.montantPaye;
+        totalCredits += v.montantRestant;
+      }
+    }
+    final totalRestits = restits.fold<double>(0, (s, r) => s + r.valeurTotale);
+    final totalPertes = pertes.fold<double>(0, (s, p) => s + p.valeurTotale);
+
+    // Document de clôture
+    final id =
+        '${prelevementId}_cloture_${DateTime.now().millisecondsSinceEpoch}';
+    final cloture = CaisseCloture(
+      id: id,
+      site: site,
+      commercialId: commercialId,
+      commercialNom: commercialNom,
+      prelevementId: prelevementId,
+      dateCreation: DateTime.now(),
+      totalVentes: totalVentes,
+      totalPayes: totalPayes,
+      totalCredits: totalCredits,
+      totalRestitutions: totalRestits,
+      totalPertes: totalPertes,
+      ventes: ventesResumes,
+      restitutions: restitsResumes,
+      pertes: pertesResumes,
+      statut: ClotureStatut.en_attente,
+    );
+
+    await firestore
+        .collection('Vente')
+        .doc(site)
+        .collection('clotures')
+        .doc(id)
+        .set(cloture.toMap());
+
+    return cloture;
+  }
+
+  /// Valider une clôture (caissier)
+  Future<void> validerCloture({
+    required String site,
+    required String clotureId,
+    required String validatorId,
+  }) async {
+    final firestore = FirebaseFirestore.instance;
+    await firestore
+        .collection('Vente')
+        .doc(site)
+        .collection('clotures')
+        .doc(clotureId)
+        .update({
+      'statut': ClotureStatut.validee.name,
+      'validePar': validatorId,
+      'dateValidation': FieldValue.serverTimestamp(),
+    });
+  }
 
   /// Sites disponibles
   final List<String> sites = [
@@ -28,11 +210,214 @@ class VenteService {
 
   // ====== GESTION DES PRODUITS CONDITIONNÉS ======
 
-  /// Récupère tous les produits conditionnés disponibles pour la vente
+  /// Génère un reçu texte détaillé pour une vente (paiement total ou partiel / crédit)
+  /// Inclut : en-tête, liste produits, totaux, montants payés, restant, mode de paiement, horodatage
+  String generateReceipt(Vente vente, {bool includeHeader = true}) {
+    final buffer = StringBuffer();
+    final dateStr = DateFormat('dd/MM/yyyy HH:mm').format(vente.dateVente);
+    if (includeHeader) {
+      buffer.writeln('=========== REÇU DE VENTE ===========');
+      buffer.writeln('ID Vente    : ${vente.id}');
+      buffer.writeln('Date: $dateStr');
+      buffer.writeln('Commercial: ${vente.commercialNom}');
+      buffer.writeln('Client: ${vente.clientNom}');
+      if (vente.clientTelephone != null && vente.clientTelephone!.isNotEmpty) {
+        buffer.writeln('Téléphone: ${vente.clientTelephone}');
+      }
+      buffer.writeln('-------------------------------------');
+    }
+    buffer.writeln('Produits:');
+    for (final p in vente.produits) {
+      buffer.writeln(
+          '- ${p.typeEmballage} lot ${p.numeroLot} x${p.quantiteVendue} @${p.prixUnitaire.toStringAsFixed(0)} = ${(p.montantTotal).toStringAsFixed(0)}');
+    }
+    buffer.writeln('-------------------------------------');
+    buffer.writeln(
+        'Montant Total : ${vente.montantTotal.toStringAsFixed(0)} FCFA');
+    buffer
+        .writeln('Payé         : ${vente.montantPaye.toStringAsFixed(0)} FCFA');
+    final credit = vente.montantRestant;
+    if (credit > 0) {
+      buffer.writeln(
+          'CRÉDIT       : ${credit.toStringAsFixed(0)} FCFA (à payer)');
+    } else {
+      buffer.writeln('Solde        : 0 (aucun reste)');
+    }
+    buffer.writeln('Mode Paiement: ${vente.modePaiement.name}');
+    buffer.writeln('Statut       : ${vente.statut.name}');
+    if (vente.observations != null && vente.observations!.isNotEmpty) {
+      buffer.writeln('Note: ${vente.observations}');
+    }
+    buffer.writeln('=====================================');
+    return buffer.toString();
+  }
+
+  /// 🔥 NOUVELLE MÉTHODE - Récupère les produits conditionnés depuis le service conditionnement intégré
+  Future<List<ProduitConditionne>> getProduitsConditionnesTotalement({
+    String? siteFilter,
+    bool forceRefresh = false,
+  }) async {
+    // 1. Cache short‑circuit
+    final now = DateTime.now();
+    if (!forceRefresh &&
+        _cachedProduits != null &&
+        _lastProduitsBuild != null) {
+      final age = now.difference(_lastProduitsBuild!);
+      if (age < _produitsTtl) {
+        _log(
+            '⚡ [VenteService] Produits depuis cache (age=${age.inSeconds}s, taille=${_cachedProduits!.length})');
+        return _cachedProduits!;
+      } else {
+        _log(
+            '⌛ [VenteService] Cache expiré (age=${age.inSeconds}s) – reconstruction');
+      }
+    }
+
+    // 2. Concurrency guard
+    if (_ongoingProduitsFuture != null) {
+      _log('⏳ [VenteService] Future produits déjà en cours – réutilisation');
+      return _ongoingProduitsFuture!;
+    }
+
+    final completer = Completer<List<ProduitConditionne>>();
+    _ongoingProduitsFuture = completer.future;
+
+    try {
+      final buildStart = DateTime.now();
+      _log(
+          '� [VenteService] Construction liste produits (force=$forceRefresh, filtre=${siteFilter ?? 'Tous'})');
+
+      // Rafraîchir la source (conditionnements) uniquement en force refresh ou si aucune donnée
+      if (forceRefresh || conditionnementService.conditionnements.isEmpty) {
+        _log('🔄 [VenteService] refreshData() du module conditionnement');
+        await conditionnementService.refreshData();
+      }
+
+      final conditionnements = conditionnementService.conditionnements;
+      if (conditionnements.isEmpty) {
+        _log(
+            '⚠️ [VenteService] Aucun conditionnement – fallback ancienne méthode Firestore');
+        final produitsFallback =
+            await getProduitsConditionnes(siteFilter: siteFilter);
+        // Mettre en cache quand même
+        _cachedProduits = produitsFallback;
+        _lastProduitsBuild = DateTime.now();
+        _produitsBuildCount++;
+        completer.complete(produitsFallback);
+        return produitsFallback;
+      }
+
+      final List<ProduitConditionne> produits = [];
+      int emballagesLocaux = 0;
+      int conditionnementsParcourus = 0;
+
+      for (final conditionnement in conditionnements) {
+        // Filtre site
+        if (siteFilter != null &&
+            conditionnement.lotOrigine.site != siteFilter) {
+          continue;
+        }
+        conditionnementsParcourus++;
+
+        for (int i = 0; i < conditionnement.emballages.length; i++) {
+          final emballage = conditionnement.emballages[i];
+          emballagesLocaux++;
+          if (emballage.nombreSaisi > 0) {
+            final produit = _convertirConditionnementEnProduit(
+                conditionnement, emballage, i);
+            if (produit != null) {
+              produits.add(produit);
+              if (verboseLogs) {
+                debugPrint(
+                    '   ✅ Produit ${produit.typeEmballage} lot=${produit.numeroLot} qte=${produit.quantiteDisponible}');
+              }
+            }
+          }
+        }
+      }
+
+      // Diagnostics cumulés
+      _produitsBuildCount++;
+      _conditionnementsAnalysesCount += conditionnementsParcourus;
+      _emballagesAnalysesCount += emballagesLocaux;
+
+      // Cache
+      _cachedProduits = produits;
+      _lastProduitsBuild = DateTime.now();
+
+      final duration = DateTime.now().difference(buildStart);
+      _log(
+          '✅ [VenteService] Build produits=${produits.length} en ${duration.inMilliseconds}ms (cond=$conditionnementsParcourus, emb=$emballagesLocaux)');
+
+      completer.complete(produits);
+      return produits;
+    } catch (e, st) {
+      debugPrint('❌ [VenteService] Erreur build produits: $e');
+      _ongoingProduitsFuture = null; // Reset avant fallback
+      completer.completeError(e, st);
+      // Fallback
+      return getProduitsConditionnes(siteFilter: siteFilter);
+    } finally {
+      // Libérer le future partagé
+      _ongoingProduitsFuture = null;
+    }
+  }
+
+  /// 🏭 Convertit un conditionnement en produit pour la vente
+  ProduitConditionne? _convertirConditionnementEnProduit(
+    ConditionnementData conditionnement,
+    EmballageSelectionne emballage,
+    int index,
+  ) {
+    try {
+      final produitId = '${conditionnement.id}_emb_$index';
+      _log(
+          '🏭 [VenteService] Conversion emballage type=${emballage.type.nom} qte=${emballage.nombreSaisi}');
+
+      // Utiliser directement le prix de l'emballage du conditionnement
+      final prixUnitaire =
+          emballage.type.getPrix(conditionnement.lotOrigine.typeFlorale);
+
+      final produit = ProduitConditionne(
+        id: produitId,
+        numeroLot: conditionnement.lotOrigine.lotOrigine,
+        codeContenant: conditionnement.lotOrigine.collecteId.isNotEmpty
+            ? conditionnement.lotOrigine.collecteId
+            : 'N/A',
+        producteur: conditionnement.lotOrigine.technicien,
+        village: conditionnement.lotOrigine.site,
+        siteOrigine: conditionnement.lotOrigine.site,
+        predominanceFlorale: conditionnement.lotOrigine.predominanceFlorale,
+        typeEmballage: emballage.type.nom,
+        contenanceKg: emballage.type.contenanceKg,
+        quantiteDisponible: emballage.nombreSaisi,
+        quantiteInitiale: emballage.nombreSaisi,
+        prixUnitaire: prixUnitaire,
+        dateConditionnement: conditionnement.dateConditionnement,
+        dateExpiration:
+            _calculerDateExpiration(conditionnement.dateConditionnement),
+        statut: StatutProduit.disponible,
+        observations: conditionnement.observations,
+      );
+
+      _log(
+          '   ✅ Produit créé lot=${produit.numeroLot} type=${produit.typeEmballage} valeur=${produit.valeurTotale.toStringAsFixed(0)}');
+
+      return produit;
+    } catch (e, stackTrace) {
+      debugPrint(
+          '❌ [VenteService] Erreur conversion conditionnement -> produit: $e');
+      if (verboseLogs) debugPrint('📍 Stack trace: $stackTrace');
+      return null;
+    }
+  }
+
+  /// Récupère tous les produits conditionnés disponibles pour la vente depuis la vraie collection
   Future<List<ProduitConditionne>> getProduitsConditionnes(
       {String? siteFilter}) async {
     try {
-      debugPrint('🛒 ===== RÉCUPÉRATION PRODUITS CONDITIONNÉS =====');
+      debugPrint(
+          '🛒 ===== RÉCUPÉRATION PRODUITS CONDITIONNÉS (VRAIS DONNÉES) =====');
       debugPrint('   🎯 Site filter: ${siteFilter ?? "Tous"}');
 
       final List<ProduitConditionne> produits = [];
@@ -41,11 +426,11 @@ class VenteService {
       for (final site in sitesToCheck) {
         debugPrint('   📍 Analyse du site: $site');
 
-        // Récupérer tous les conditionnements du site
+        // 🔥 RÉCUPÉRER LES VRAIS CONDITIONNEMENTS DE LA NOUVELLE STRUCTURE
         final conditionnementSnapshot = await _firestore
-            .collection('Conditionnement')
+            .collection('conditionnement')
             .doc(site)
-            .collection('processus')
+            .collection('conditionnements')
             .get();
 
         debugPrint(
@@ -54,24 +439,26 @@ class VenteService {
         for (final doc in conditionnementSnapshot.docs) {
           final data = doc.data();
 
-          // Récupérer les détails des emballages
-          final emballagesSnapshot =
-              await doc.reference.collection('emballages_produits').get();
+          // Récupérer la liste des emballages directement du document
+          final emballagesList = data['emballages'] as List<dynamic>? ?? [];
 
-          for (final emballageDoc in emballagesSnapshot.docs) {
-            final emballageData = emballageDoc.data();
+          for (int i = 0; i < emballagesList.length; i++) {
+            final emballageData = emballagesList[i] as Map<String, dynamic>;
 
-            // Créer un produit conditionné pour chaque type d'emballage
-            final produit = _creerProduitConditionne(
-              doc.id,
-              data,
-              emballageDoc.id,
-              emballageData,
-              site,
-            );
+            // Créer un produit conditionné pour chaque type d'emballage avec quantité > 0
+            final quantite = emballageData['quantite'] ?? 0;
+            if (quantite > 0) {
+              final produit = _creerProduitConditionneFromVraiData(
+                doc.id,
+                data,
+                i,
+                emballageData,
+                site,
+              );
 
-            if (produit != null && produit.quantiteDisponible > 0) {
-              produits.add(produit);
+              if (produit != null) {
+                produits.add(produit);
+              }
             }
           }
         }
@@ -90,49 +477,75 @@ class VenteService {
     }
   }
 
-  /// Crée un ProduitConditionne à partir des données Firestore
-  ProduitConditionne? _creerProduitConditionne(
+  /// Crée un ProduitConditionne à partir des vraies données de conditionnement
+  ProduitConditionne? _creerProduitConditionneFromVraiData(
     String conditionnementId,
     Map<String, dynamic> conditionnementData,
-    String emballageId,
+    int emballageIndex,
     Map<String, dynamic> emballageData,
     String site,
   ) {
     try {
       // Générer un ID unique pour le produit
-      final produitId = '${conditionnementId}_${emballageId}';
+      final produitId = '${conditionnementId}_emb_$emballageIndex';
+
+      // Extraire les informations de l'emballage
+      final typeEmballage = emballageData['type'] ?? 'Pot';
+      final contenanceKg = (emballageData['contenanceKg'] ?? 0.0).toDouble();
+      final quantiteDisponible = emballageData['quantite'] ?? 0;
+
+      // Calculer prix unitaire basé sur le type d'emballage (prix standards)
+      final prixUnitaire = _calculerPrixUnitaire(typeEmballage, contenanceKg);
 
       return ProduitConditionne(
         id: produitId,
-        numeroLot: conditionnementData['numeroLot'] ?? conditionnementId,
-        codeContenant: conditionnementData['codeContenant'] ?? '',
-        producteur: conditionnementData['producteur'] ?? 'Inconnu',
-        village: conditionnementData['village'] ?? 'Inconnu',
+        numeroLot: conditionnementData['lotOrigine'] ?? conditionnementId,
+        codeContenant: conditionnementData['lotFiltrageId'] ?? '',
+        producteur: conditionnementData['technicien'] ?? 'Technicien',
+        village: site, // Utiliser le site comme village
         siteOrigine: site,
         predominanceFlorale:
             conditionnementData['predominanceFlorale'] ?? 'Mille fleurs',
-        typeEmballage: emballageData['type'] ?? 'Pot',
-        contenanceKg: (emballageData['contenanceKg'] ?? 0.0).toDouble(),
-        quantiteDisponible:
-            emballageData['quantiteDisponible'] ?? emballageData['nombre'] ?? 0,
-        quantiteInitiale: emballageData['nombre'] ?? 0,
-        prixUnitaire: (emballageData['prixUnitaire'] ?? 0.0).toDouble(),
+        typeEmballage: typeEmballage,
+        contenanceKg: contenanceKg,
+        quantiteDisponible: quantiteDisponible,
+        quantiteInitiale: quantiteDisponible, // Initiallement même valeur
+        prixUnitaire: prixUnitaire,
         dateConditionnement:
-            (conditionnementData['dateConditionnement'] as Timestamp?)
-                    ?.toDate() ??
+            (conditionnementData['date'] as Timestamp?)?.toDate() ??
+                (conditionnementData['createdAt'] as Timestamp?)?.toDate() ??
                 DateTime.now(),
         dateExpiration: _calculerDateExpiration(
-          (conditionnementData['dateConditionnement'] as Timestamp?)
-                  ?.toDate() ??
+          (conditionnementData['date'] as Timestamp?)?.toDate() ??
+              (conditionnementData['createdAt'] as Timestamp?)?.toDate() ??
               DateTime.now(),
         ),
         statut: StatutProduit.disponible,
         observations: conditionnementData['observations'],
       );
     } catch (e) {
-      debugPrint('❌ Erreur création produit conditionné: $e');
+      debugPrint(
+          '❌ Erreur création produit conditionné depuis vraies données: $e');
       return null;
     }
+  }
+
+  /// Calcule le prix unitaire basé sur le type d'emballage et la contenance
+  double _calculerPrixUnitaire(String typeEmballage, double contenanceKg) {
+    // Prix de base par kg selon le type d'emballage
+    const Map<String, double> prixBaseParKg = {
+      'Pot 1kg': 1500.0,
+      'Pot 1.5kg': 1500.0,
+      'Pot 720g': 1600.0,
+      'Pot 500g': 1700.0,
+      'Pot 250g': 1800.0,
+      'Pot alvéoles 30g': 2000.0,
+      'Stick 20g': 2200.0,
+      '7kg': 1300.0,
+    };
+
+    final prixBase = prixBaseParKg[typeEmballage] ?? 1500.0;
+    return (prixBase * contenanceKg).roundToDouble();
   }
 
   /// Calcule la date d'expiration (2 ans après conditionnement)
@@ -259,12 +672,11 @@ class VenteService {
       String commercialId) async {
     try {
       final site = _userSession.site ?? 'Site_Inconnu';
-
+      // Nouvelle règle : un commercial voit tous les prélèvements de son site
       final prelevementsSnapshot = await _firestore
           .collection('Vente')
           .doc(site)
           .collection('prelevements')
-          .where('commercialId', isEqualTo: commercialId)
           .orderBy('datePrelevement', descending: true)
           .get();
 
@@ -272,8 +684,7 @@ class VenteService {
           .map((doc) => Prelevement.fromMap(doc.data()))
           .toList();
 
-      debugPrint(
-          '✅ ${prelevements.length} prélèvements trouvés pour $commercialId');
+      debugPrint('✅ ${prelevements.length} prélèvements trouvés (site=$site)');
       return prelevements;
     } catch (e) {
       debugPrint('❌ Erreur récupération prélèvements: $e');
@@ -287,6 +698,12 @@ class VenteService {
   Future<bool> enregistrerVente(Vente vente) async {
     try {
       final site = _userSession.site ?? 'Site_Inconnu';
+      final path = 'Vente/$site/ventes/${vente.id}';
+
+      debugPrint('🟡 [VenteService] Tentative enregistrement vente:');
+      debugPrint('   📍 Chemin Firestore: $path');
+      debugPrint('   👤 Commercial: ${vente.commercialId}');
+      debugPrint('   🏢 Site: $site');
 
       await _firestore
           .collection('Vente')
@@ -313,20 +730,23 @@ class VenteService {
   Future<List<Client>> getClients() async {
     try {
       final site = _userSession.site ?? 'Site_Inconnu';
-
-      final clientsSnapshot = await _firestore
+      // On récupère tout puis on filtre car certains documents anciens utilisent 'actif' au lieu de 'estActif'
+      final snap = await _firestore
           .collection('Vente')
           .doc(site)
           .collection('clients')
-          .where('estActif', isEqualTo: true)
           .orderBy('nom')
           .get();
 
-      final clients = clientsSnapshot.docs
-          .map((doc) => Client.fromMap(doc.data()))
-          .toList();
-
-      debugPrint('✅ ${clients.length} clients trouvés');
+      final clients = <Client>[];
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final estActif = (data['estActif'] ?? data['actif'] ?? true) == true;
+        if (!estActif) continue;
+        clients.add(Client.fromMap(data));
+      }
+      debugPrint(
+          '✅ [VenteService] ${clients.length} clients actifs trouvés (site=$site)');
       return clients;
     } catch (e) {
       debugPrint('❌ Erreur récupération clients: $e');
@@ -339,17 +759,68 @@ class VenteService {
     try {
       final site = _userSession.site ?? 'Site_Inconnu';
 
+      // Assurer que le site est injecté si pas déjà présent
+      final clientData = client.toMap();
+      if (clientData['site'] == null) {
+        clientData['site'] = site;
+      }
+
       await _firestore
           .collection('Vente')
           .doc(site)
           .collection('clients')
           .doc(client.id)
-          .set(client.toMap());
+          .set(clientData);
 
-      debugPrint('✅ [VenteService] Client créé: ${client.nom}');
+      debugPrint('✅ [VenteService] Client créé: ${client.nom} (site=$site)');
       return true;
     } catch (e) {
       debugPrint('❌ [VenteService] Erreur création client: $e');
+      return false;
+    }
+  }
+
+  /// Création rapide d'un client minimal avec localisation (utilisée par le quick form)
+  Future<bool> creerClientRapide({
+    required String nom,
+    required String telephone,
+    required String nomBoutique,
+    double? latitude,
+    double? longitude,
+    double? altitude,
+    double? precision,
+  }) async {
+    try {
+      final site = _userSession.site ?? 'Site_Inconnu';
+      final id = _firestore.collection('tmp').doc().id;
+      final now = DateTime.now();
+      final data = {
+        'id': id,
+        'nom': nom,
+        'telephone': telephone,
+        'nomBoutique': nomBoutique,
+        'adresse': '',
+        'ville': '',
+        'type': 'particulier', // aligné avec Client.fromMap (champ 'type')
+        'dateCreation': Timestamp.fromDate(now),
+        'site': site,
+        'estActif': true, // cohérence avec modèle
+        'notes': null,
+        if (latitude != null) 'latitude': latitude,
+        if (longitude != null) 'longitude': longitude,
+        if (altitude != null) 'altitude': altitude,
+        if (precision != null) 'precision': precision,
+      };
+      await _firestore
+          .collection('Vente')
+          .doc(site)
+          .collection('clients')
+          .doc(id)
+          .set(data);
+      debugPrint('✅ [VenteService] Client rapide créé: $nom');
+      return true;
+    } catch (e) {
+      debugPrint('❌ [VenteService] Erreur création client rapide: $e');
       return false;
     }
   }
@@ -443,6 +914,390 @@ class VenteService {
   }
 
   // ====== STATISTIQUES ======
+
+  // ====== LISTES (VENTES / RESTITUTIONS / PERTES / PRELEVEMENTS) AVEC CACHE TTL ======
+  List<Vente>? _cacheVentes;
+  DateTime? _lastVentesFetch;
+  List<Restitution>? _cacheRestitutions;
+  DateTime? _lastRestitutionsFetch;
+  List<Perte>? _cachePertes;
+  DateTime? _lastPertesFetch;
+  List<Prelevement>? _cachePrelevementsAdmin;
+  DateTime? _lastPrelevementsAdminFetch;
+  final Duration _listsTtl = const Duration(seconds: 40);
+  // Diagnostics counters for list fetches (Firestore hits only, not cache)
+  int _ventesFetchCount = 0;
+  int _restitutionsFetchCount = 0;
+  int _pertesFetchCount = 0;
+  int _prelevementsFetchCount = 0;
+
+  int get ventesFetchCount => _ventesFetchCount;
+  int get restitutionsFetchCount => _restitutionsFetchCount;
+  int get pertesFetchCount => _pertesFetchCount;
+  int get prelevementsFetchCount => _prelevementsFetchCount;
+
+  bool _isCacheValid(DateTime? last) =>
+      last != null && DateTime.now().difference(last) < _listsTtl;
+
+  Future<List<Vente>> getVentes(
+      {String? siteFilter,
+      bool forceRefresh = false,
+      String? commercialId}) async {
+    try {
+      final siteActuel = _userSession.site;
+      final isAdmin = _userSession.role == 'Admin' ||
+          _userSession.role == 'Magazinier' ||
+          _userSession.role == 'Gestionnaire Commercial';
+      if (!forceRefresh &&
+          _cacheVentes != null &&
+          _isCacheValid(_lastVentesFetch)) {
+        _log('⚡ [VenteService] Ventes depuis cache (${_cacheVentes!.length})');
+        return _filtrerVentes(
+            _cacheVentes!, siteFilter, commercialId, isAdmin, siteActuel);
+      }
+      // Si admin: multi-site (collection par site). Sinon: site session uniquement
+      final sites = (isAdmin && siteFilter == null)
+          ? this.sites // liste globale des sites définie plus haut
+          : [siteFilter ?? siteActuel ?? 'Site_Inconnu'];
+      final List<Vente> toutes = [];
+      for (final site in sites) {
+        _ventesFetchCount++; // count Firestore site fetch
+        final snap = await _firestore
+            .collection('Vente')
+            .doc(site)
+            .collection('ventes')
+            .orderBy('dateVente', descending: true)
+            .get();
+        toutes.addAll(snap.docs.map((d) => Vente.fromMap(d.data())));
+      }
+      _cacheVentes = toutes;
+      _lastVentesFetch = DateTime.now();
+      return _filtrerVentes(
+          toutes, siteFilter, commercialId, isAdmin, siteActuel);
+    } catch (e) {
+      debugPrint('❌ [VenteService] Erreur getVentes: $e');
+      return [];
+    }
+  }
+
+  List<Vente> _filtrerVentes(List<Vente> source, String? siteFilter,
+      String? commercialId, bool isAdmin, String? siteActuel) {
+    return source.where((v) {
+      if (!isAdmin) {
+        // restreint au site et commercial courant si défini
+        if (siteActuel != null &&
+            v.commercialId != (commercialId ?? _userSession.email)) {
+          // on peut afficher quand même si même site? (Supposons prélevements isolés par commercial) => on limite
+          return false;
+        }
+      }
+      if (siteFilter != null) {
+        // Pas de champ site direct dans Vente; on dérive via commercial / TODO: ajouter site lors enregistrement si nécessaire
+        // Ici on passe sans filtrer faute de champ fiable.
+      }
+      if (commercialId != null && v.commercialId != commercialId) return false;
+      return true;
+    }).toList();
+  }
+
+  Future<List<Restitution>> getRestitutions(
+      {String? siteFilter,
+      bool forceRefresh = false,
+      String? commercialId}) async {
+    try {
+      final siteActuel = _userSession.site;
+      final isAdmin = _userSession.role == 'Admin' ||
+          _userSession.role == 'Magazinier' ||
+          _userSession.role == 'Gestionnaire Commercial';
+      if (!forceRefresh &&
+          _cacheRestitutions != null &&
+          _isCacheValid(_lastRestitutionsFetch)) {
+        _log(
+            '⚡ [VenteService] Restitutions depuis cache (${_cacheRestitutions!.length})');
+        return _filtrerRestitutions(
+            _cacheRestitutions!, siteFilter, commercialId, isAdmin, siteActuel);
+      }
+      final sites = (isAdmin && siteFilter == null)
+          ? this.sites
+          : [siteFilter ?? siteActuel ?? 'Site_Inconnu'];
+      final List<Restitution> toutes = [];
+      for (final site in sites) {
+        _restitutionsFetchCount++;
+        final snap = await _firestore
+            .collection('Vente')
+            .doc(site)
+            .collection('restitutions')
+            .orderBy('dateRestitution', descending: true)
+            .get();
+        toutes.addAll(snap.docs.map((d) => Restitution.fromMap(d.data())));
+      }
+      _cacheRestitutions = toutes;
+      _lastRestitutionsFetch = DateTime.now();
+      return _filtrerRestitutions(
+          toutes, siteFilter, commercialId, isAdmin, siteActuel);
+    } catch (e) {
+      debugPrint('❌ [VenteService] Erreur getRestitutions: $e');
+      return [];
+    }
+  }
+
+  List<Restitution> _filtrerRestitutions(
+      List<Restitution> source,
+      String? siteFilter,
+      String? commercialId,
+      bool isAdmin,
+      String? siteActuel) {
+    return source.where((r) {
+      if (!isAdmin) {
+        if (commercialId != null && r.commercialId != commercialId)
+          return false;
+        // site non stocké non plus => possibilité d'ajouter plus tard
+      }
+      if (commercialId != null && r.commercialId != commercialId) return false;
+      return true;
+    }).toList();
+  }
+
+  Future<List<Perte>> getPertes(
+      {String? siteFilter,
+      bool forceRefresh = false,
+      String? commercialId,
+      bool? validee}) async {
+    try {
+      final siteActuel = _userSession.site;
+      final isAdmin = _userSession.role == 'Admin' ||
+          _userSession.role == 'Magazinier' ||
+          _userSession.role == 'Gestionnaire Commercial';
+      if (!forceRefresh &&
+          _cachePertes != null &&
+          _isCacheValid(_lastPertesFetch)) {
+        _log('⚡ [VenteService] Pertes depuis cache (${_cachePertes!.length})');
+        return _filtrerPertes(_cachePertes!, siteFilter, commercialId, validee,
+            isAdmin, siteActuel);
+      }
+      final sites = (isAdmin && siteFilter == null)
+          ? this.sites
+          : [siteFilter ?? siteActuel ?? 'Site_Inconnu'];
+      final List<Perte> toutes = [];
+      for (final site in sites) {
+        _pertesFetchCount++;
+        final snap = await _firestore
+            .collection('Vente')
+            .doc(site)
+            .collection('pertes')
+            .orderBy('datePerte', descending: true)
+            .get();
+        toutes.addAll(snap.docs.map((d) => Perte.fromMap(d.data())));
+      }
+      _cachePertes = toutes;
+      _lastPertesFetch = DateTime.now();
+      return _filtrerPertes(
+          toutes, siteFilter, commercialId, validee, isAdmin, siteActuel);
+    } catch (e) {
+      debugPrint('❌ [VenteService] Erreur getPertes: $e');
+      return [];
+    }
+  }
+
+  List<Perte> _filtrerPertes(List<Perte> source, String? siteFilter,
+      String? commercialId, bool? validee, bool isAdmin, String? siteActuel) {
+    return source.where((p) {
+      if (!isAdmin) {
+        if (commercialId != null && p.commercialId != commercialId)
+          return false;
+      }
+      if (commercialId != null && p.commercialId != commercialId) return false;
+      if (validee != null && p.estValidee != validee) return false;
+      return true;
+    }).toList();
+  }
+
+  Future<List<Prelevement>> getPrelevementsAdmin(
+      {String? siteFilter,
+      bool forceRefresh = false,
+      String? commercialId}) async {
+    try {
+      final siteActuel = _userSession.site;
+      final isAdmin = _userSession.role == 'Admin' ||
+          _userSession.role == 'Magazinier' ||
+          _userSession.role == 'Gestionnaire Commercial';
+      if (!isAdmin) {
+        return getPrelevementsCommercial(
+            commercialId ?? _userSession.email ?? '');
+      }
+      if (!forceRefresh &&
+          _cachePrelevementsAdmin != null &&
+          _isCacheValid(_lastPrelevementsAdminFetch)) {
+        _log(
+            '⚡ [VenteService] Prelevements (admin) depuis cache (${_cachePrelevementsAdmin!.length})');
+        return _filtrerPrelevements(_cachePrelevementsAdmin!, siteFilter,
+            commercialId, true, siteActuel);
+      }
+      final sites = (siteFilter == null) ? this.sites : [siteFilter];
+      final List<Prelevement> tous = [];
+      for (final site in sites) {
+        _prelevementsFetchCount++;
+        final snap = await _firestore
+            .collection('Vente')
+            .doc(site)
+            .collection('prelevements')
+            .orderBy('datePrelevement', descending: true)
+            .get();
+        tous.addAll(snap.docs.map((d) => Prelevement.fromMap(d.data())));
+      }
+      _cachePrelevementsAdmin = tous;
+      _lastPrelevementsAdminFetch = DateTime.now();
+      return _filtrerPrelevements(
+          tous, siteFilter, commercialId, true, siteActuel);
+    } catch (e) {
+      debugPrint('❌ [VenteService] Erreur getPrelevementsAdmin: $e');
+      return [];
+    }
+  }
+
+  List<Prelevement> _filtrerPrelevements(
+      List<Prelevement> source,
+      String? siteFilter,
+      String? commercialId,
+      bool isAdmin,
+      String? siteActuel) {
+    return source.where((pr) {
+      if (!isAdmin) {
+        if (commercialId != null && pr.commercialId != commercialId)
+          return false;
+      }
+      if (commercialId != null && pr.commercialId != commercialId) return false;
+      return true;
+    }).toList();
+  }
+
+  /// 🔥 NOUVELLES STATISTIQUES - Intégration complète avec le module conditionnement
+  Future<Map<String, dynamic>> getStatistiquesVenteComplete(
+      {String? siteFilter}) async {
+    try {
+      _log(
+          '📊 [VenteService] Calcul statistiques complètes (filtre=${siteFilter ?? 'Tous'})');
+
+      // Reuse cache (pas de forceRefresh ici pour rapidité UI)
+      final produits = await getProduitsConditionnesTotalement(
+        siteFilter: siteFilter,
+        forceRefresh: false,
+      );
+      final conditionnements = conditionnementService.conditionnements;
+
+      // Calculer les statistiques en temps réel
+      final totalProduits = produits.length;
+      final valeurStock = produits.fold(0.0, (sum, p) => sum + p.valeurTotale);
+      final quantiteStock =
+          produits.fold(0, (sum, p) => sum + p.quantiteDisponible);
+
+      // Analyser la répartition par type d'emballage
+      final Map<String, Map<String, dynamic>> repartitionEmballages = {};
+      for (final produit in produits) {
+        final type = produit.typeEmballage;
+        if (!repartitionEmballages.containsKey(type)) {
+          repartitionEmballages[type] = {
+            'quantite': 0,
+            'valeur': 0.0,
+            'nombreLots': 0,
+          };
+        }
+        repartitionEmballages[type]!['quantite'] += produit.quantiteDisponible;
+        repartitionEmballages[type]!['valeur'] += produit.valeurTotale;
+        repartitionEmballages[type]!['nombreLots'] += 1;
+      }
+
+      // Analyser la répartition par site
+      final Map<String, Map<String, dynamic>> repartitionSites = {};
+      for (final produit in produits) {
+        final site = produit.siteOrigine;
+        if (!repartitionSites.containsKey(site)) {
+          repartitionSites[site] = {
+            'quantite': 0,
+            'valeur': 0.0,
+            'nombreLots': 0,
+          };
+        }
+        repartitionSites[site]!['quantite'] += produit.quantiteDisponible;
+        repartitionSites[site]!['valeur'] += produit.valeurTotale;
+        repartitionSites[site]!['nombreLots'] += 1;
+      }
+
+      // Analyser la répartition par prédominance florale
+      final Map<String, Map<String, dynamic>> repartitionFlorale = {};
+      for (final produit in produits) {
+        final florale = produit.predominanceFlorale;
+        if (!repartitionFlorale.containsKey(florale)) {
+          repartitionFlorale[florale] = {
+            'quantite': 0,
+            'valeur': 0.0,
+            'nombreLots': 0,
+          };
+        }
+        repartitionFlorale[florale]!['quantite'] += produit.quantiteDisponible;
+        repartitionFlorale[florale]!['valeur'] += produit.valeurTotale;
+        repartitionFlorale[florale]!['nombreLots'] += 1;
+      }
+
+      // Calculer les moyennes
+      final prixMoyenUnitaire = totalProduits > 0
+          ? produits.fold(0.0, (sum, p) => sum + p.prixUnitaire) / totalProduits
+          : 0.0;
+      final valeurMoyenneParLot =
+          totalProduits > 0 ? valeurStock / totalProduits : 0.0;
+
+      // Analyser les dates de conditionnement
+      final now = DateTime.now();
+      int produitsRecents = 0; // Moins de 30 jours
+      int produitsAnciens = 0; // Plus de 6 mois
+
+      for (final produit in produits) {
+        final ageJours = now.difference(produit.dateConditionnement).inDays;
+        if (ageJours <= 30) {
+          produitsRecents++;
+        } else if (ageJours >= 180) {
+          produitsAnciens++;
+        }
+      }
+
+      final statistiques = {
+        // Métriques principales
+        'totalProduits': totalProduits,
+        'valeurStock': valeurStock,
+        'quantiteStock': quantiteStock,
+        'nombreConditionnements': conditionnements.length,
+
+        // Moyennes et analyses
+        'prixMoyenUnitaire': prixMoyenUnitaire,
+        'valeurMoyenneParLot': valeurMoyenneParLot,
+        'produitsRecents': produitsRecents,
+        'produitsAnciens': produitsAnciens,
+
+        // Répartitions détaillées
+        'repartitionEmballages': repartitionEmballages,
+        'repartitionSites': repartitionSites,
+        'repartitionFlorale': repartitionFlorale,
+
+        // Métadonnées
+        'lastUpdate': DateTime.now().toIso8601String(),
+        'siteFilter': siteFilter,
+      };
+
+      debugPrint('✅ [VenteService] Statistiques calculées:');
+      debugPrint('   📦 Total produits: $totalProduits');
+      debugPrint('   💰 Valeur stock: ${valeurStock.toStringAsFixed(0)} FCFA');
+      debugPrint('   🏪 Sites actifs: ${repartitionSites.length}');
+      debugPrint('   📊 Types emballages: ${repartitionEmballages.length}');
+
+      return statistiques;
+    } catch (e, stackTrace) {
+      debugPrint('❌ [VenteService] Erreur calcul statistiques complètes: $e');
+      debugPrint('📍 Stack trace: $stackTrace');
+
+      // Fallback vers les anciennes statistiques
+      return getStatistiquesVente(siteFilter: siteFilter);
+    }
+  }
 
   /// Récupère les statistiques globales de vente
   Future<Map<String, dynamic>> getStatistiquesVente(
@@ -568,6 +1423,125 @@ class VenteService {
     } catch (e) {
       debugPrint('❌ Erreur statistiques site $site: $e');
       return {};
+    }
+  }
+
+  // ====== GESTION DES ATTRIBUTIONS ======
+
+  /// Récupère les attributions pour le commercial actuel
+  Future<List<AttributionPartielle>> getAttributionsCommercial() async {
+    try {
+      final site = _userSession.site ?? '';
+      final email = _userSession.email;
+
+      if (site.isEmpty || email == null) {
+        debugPrint('⚠️ Site ou email manquant pour charger les attributions');
+        return [];
+      }
+
+      debugPrint(
+          '🔍 Chargement des attributions pour $email sur le site $site');
+
+      final attributions = <AttributionPartielle>[];
+
+      // Liste des commerciaux connus (même liste que dans le controller)
+      final commerciauxConnus = [
+        'yameogo_rose',
+        'kansiemo_marceline',
+        'yameogo_angeline',
+        'bague_safiata',
+        'kientega_sidonie',
+        'bara_doukiatou',
+        'semde_oumarou',
+        'tapsoba_zonabou',
+        'semde_karim',
+        'yameogo_innocent',
+        'zoungrana_hypolite',
+      ];
+
+      // Parcourir toutes les sous-collections d'attributions
+      for (final commercial in commerciauxConnus) {
+        final snapshot = await _firestore
+            .collection('Gestion Commercial')
+            .doc(site)
+            .collection('attributions')
+            .doc(commercial)
+            .collection('historique')
+            .get();
+
+        for (final doc in snapshot.docs) {
+          final data = doc.data();
+          final attribution = AttributionPartielle.fromMap(data);
+
+          // Ne garder que les attributions pour ce commercial
+          if (attribution.commercialId == email) {
+            attributions.add(attribution);
+          }
+        }
+      }
+
+      debugPrint('✅ ${attributions.length} attributions trouvées pour $email');
+      return attributions;
+    } catch (e) {
+      debugPrint(
+          '❌ Erreur lors du chargement des attributions commerciales: $e');
+      return [];
+    }
+  }
+
+  /// Récupère toutes les attributions pour les admins
+  Future<List<AttributionPartielle>> getAllAttributionsAdmin() async {
+    try {
+      final site = _userSession.site ?? '';
+
+      if (site.isEmpty) {
+        debugPrint('⚠️ Site manquant pour charger toutes les attributions');
+        return [];
+      }
+
+      debugPrint(
+          '🔍 Chargement de toutes les attributions admin sur le site $site');
+
+      final attributions = <AttributionPartielle>[];
+
+      // Liste des commerciaux connus
+      final commerciauxConnus = [
+        'yameogo_rose',
+        'kansiemo_marceline',
+        'yameogo_angeline',
+        'bague_safiata',
+        'kientega_sidonie',
+        'bara_doukiatou',
+        'semde_oumarou',
+        'tapsoba_zonabou',
+        'semde_karim',
+        'yameogo_innocent',
+        'zoungrana_hypolite',
+      ];
+
+      // Parcourir toutes les sous-collections d'attributions
+      for (final commercial in commerciauxConnus) {
+        final snapshot = await _firestore
+            .collection('Gestion Commercial')
+            .doc(site)
+            .collection('attributions')
+            .doc(commercial)
+            .collection('historique')
+            .get();
+
+        for (final doc in snapshot.docs) {
+          final data = doc.data();
+          final attribution = AttributionPartielle.fromMap(data);
+          attributions.add(attribution);
+        }
+      }
+
+      debugPrint(
+          '✅ ${attributions.length} attributions totales trouvées pour admin');
+      return attributions;
+    } catch (e) {
+      debugPrint('❌ Erreur lors du chargement de toutes les attributions: $e');
+      return [];
     }
   }
 }

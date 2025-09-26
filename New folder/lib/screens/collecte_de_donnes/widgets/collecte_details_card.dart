@@ -419,7 +419,7 @@ class CollecteDetailsCard extends StatelessWidget {
       {
         'label': 'Montant total',
         'value': _formatAmount(collecteData['montant_total']),
-        'icon': Icons.attach_money,
+        'icon': Icons.text_fields,
         'color': Colors.green,
       },
       {

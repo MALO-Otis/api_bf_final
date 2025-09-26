@@ -1,17 +1,16 @@
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import 'conditionnement_edit.dart';
+import 'conditionnement_models.dart';
+import 'package:flutter/material.dart';
+import '../../utils/smart_appbar.dart';
+import 'services/conditionnement_db_service.dart';
+import '../../../authentication/user_session.dart';
+
 /// 🎯 PAGE D'ACCUEIL MODERNE DU MODULE CONDITIONNEMENT
 ///
 /// Interface design moderne avec cartes attrayantes et animations fluides
 /// pour la gestion des lots filtrés disponibles au conditionnement
-
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:intl/intl.dart';
-
-import '../../utils/smart_appbar.dart';
-import '../../../authentication/user_session.dart';
-import 'conditionnement_models.dart';
-import 'services/conditionnement_db_service.dart';
-import 'conditionnement_edit.dart';
 
 class ConditionnementHomePage extends StatefulWidget {
   const ConditionnementHomePage({super.key});
@@ -147,7 +146,18 @@ class _ConditionnementHomePageState extends State<ConditionnementHomePage>
   /// Applique les filtres de recherche
   void _applyFilters() {
     final allLots = _service.lotsDisponibles;
-    _filteredLots = allLots.where((lot) {
+    final userRole = _userSession.role?.toLowerCase() ?? '';
+    final userSite = _userSession.site;
+
+    // Filtrage rôle: si pas admin -> restreindre au site utilisateur
+    final roleFiltered = allLots.where((lot) {
+      if (userRole != 'admin') {
+        return lot.site == userSite;
+      }
+      return true; // admin voit tout
+    });
+
+    _filteredLots = roleFiltered.where((lot) {
       // Filtre de recherche textuelle
       if (_searchQuery.isNotEmpty) {
         final query = _searchQuery.toLowerCase();
@@ -393,7 +403,7 @@ class _ConditionnementHomePageState extends State<ConditionnementHomePage>
         Expanded(
           child: _buildStatCard(
             'Lots disponibles',
-            _statistics['lotsDisponibles']?.toString() ?? '0',
+            _service.totalLotsDisponiblesGlobal.toString(),
             Icons.inventory_2,
             Colors.white,
             isMobile,
@@ -921,6 +931,11 @@ class _ConditionnementHomePageState extends State<ConditionnementHomePage>
 
   /// Construit les actions de la carte
   Widget _buildCardActions(LotFiltre lot, bool isMobile) {
+    final userRole = _userSession.role?.toLowerCase() ?? '';
+    final userSite = _userSession.site;
+    final isForeignSite =
+        userRole == 'admin' && userSite != null && lot.site != userSite;
+    final canCondition = lot.peutEtreConditionne && !isForeignSite;
     return Row(
       children: [
         // Bouton d'information
@@ -948,27 +963,35 @@ class _ConditionnementHomePageState extends State<ConditionnementHomePage>
         // Bouton de conditionnement
         Expanded(
           flex: 2,
-          child: ElevatedButton.icon(
-            onPressed:
-                lot.peutEtreConditionne ? () => _startConditioning(lot) : null,
-            icon: lot.estConditionne
-                ? const Icon(Icons.check_circle)
-                : const Icon(Icons.precision_manufacturing),
-            label: Text(lot.estConditionne ? 'Conditionné' : 'Conditionner'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: lot.estConditionne
-                  ? Colors.green.shade600
-                  : const Color(0xFF2E7D32),
-              foregroundColor: Colors.white,
-              disabledBackgroundColor: Colors.grey.shade300,
-              disabledForegroundColor: Colors.grey.shade600,
-              elevation: lot.peutEtreConditionne ? 4 : 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-              padding: EdgeInsets.symmetric(
-                vertical: isMobile ? 12 : 16,
-                horizontal: isMobile ? 16 : 20,
+          child: Tooltip(
+            message: isForeignSite
+                ? 'Vous ne pouvez conditionner que les lots de votre site ($userSite)'
+                : (lot.estConditionne ? 'Ce lot est déjà conditionné' : ''),
+            child: ElevatedButton.icon(
+              onPressed: canCondition ? () => _startConditioning(lot) : null,
+              icon: lot.estConditionne
+                  ? const Icon(Icons.check_circle)
+                  : const Icon(Icons.precision_manufacturing),
+              label: Text(lot.estConditionne
+                  ? 'Conditionné'
+                  : (isForeignSite ? 'Autre site' : 'Conditionner')),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: lot.estConditionne
+                    ? Colors.green.shade600
+                    : (isForeignSite
+                        ? Colors.grey.shade400
+                        : const Color(0xFF2E7D32)),
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: Colors.grey.shade300,
+                disabledForegroundColor: Colors.grey.shade600,
+                elevation: canCondition ? 4 : 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                padding: EdgeInsets.symmetric(
+                  vertical: isMobile ? 12 : 16,
+                  horizontal: isMobile ? 16 : 20,
+                ),
               ),
             ),
           ),
@@ -1018,13 +1041,32 @@ class _ConditionnementHomePageState extends State<ConditionnementHomePage>
 
   /// Démarre le conditionnement d'un lot
   void _startConditioning(LotFiltre lot) {
+    print('\n🚀🚀🚀 NAVIGATION VERS CONDITIONNEMENT EDIT PAGE ! 🚀🚀🚀');
+    print('📍 Depuis: ConditionnementHomePage');
+    print(
+        '📍 Vers: ConditionnementEditPage (avec améliorations ultra-réactives)');
+    print('🎯 Lot sélectionné: ${lot.lotOrigine}');
+    print('✅ Navigation en cours...');
+
     Get.to(
       () => ConditionnementEditPage(lotFiltrageData: lot.toMap()),
       transition: Transition.rightToLeftWithFade,
       duration: const Duration(milliseconds: 300),
-    )?.then((_) {
-      // Recharger les données après retour
-      _loadData();
+    )?.then((result) async {
+      if (result is Map && result['action'] == 'refresh') {
+        await _loadData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['type'] == 'complet'
+                  ? 'Lot conditionné avec succès'
+                  : 'Conditionnement partiel enregistré'),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
     });
   }
 

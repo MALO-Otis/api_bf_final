@@ -1,6 +1,6 @@
+import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
 import '../models/collecte_models.dart';
 import '../models/attribution_models_v2.dart';
 import '../services/firestore_attribution_service.dart';
@@ -167,9 +167,13 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
+    final media = MediaQuery.of(context);
+    final screenWidth = media.size.width;
+    final screenHeight = media.size.height;
     final isDesktop = screenWidth > 800;
     final isMobile = screenWidth < 600;
+    // Ultra-compact screens (very small phones or constrained windows): use full-screen modal
+    final isFullScreen = screenWidth < 360 || screenHeight < 600;
 
     return AnimatedBuilder(
       animation: _animationController,
@@ -180,16 +184,23 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
             opacity: _fadeAnimation.value,
             child: Dialog(
               backgroundColor: Colors.transparent,
-              insetPadding: EdgeInsets.all(isMobile ? 16 : 40),
+              insetPadding: isFullScreen
+                  ? EdgeInsets.zero
+                  : EdgeInsets.all(isMobile ? 16 : 40),
               child: Container(
-                width: isDesktop ? 600 : null,
+                width: isDesktop ? 600 : (isFullScreen ? screenWidth : null),
+                height: isFullScreen ? screenHeight : null,
                 constraints: BoxConstraints(
-                  maxWidth: isDesktop ? 600 : double.infinity,
-                  maxHeight: MediaQuery.of(context).size.height * 0.9,
+                  maxWidth: isDesktop
+                      ? 600
+                      : (isFullScreen ? screenWidth : double.infinity),
+                  maxHeight: isFullScreen
+                      ? screenHeight
+                      : MediaQuery.of(context).size.height * 0.9,
                 ),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(isFullScreen ? 0 : 20),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.1),
@@ -199,7 +210,8 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
                   ],
                 ),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize:
+                      isFullScreen ? MainAxisSize.max : MainAxisSize.min,
                   children: [
                     _buildHeader(),
                     Flexible(
@@ -238,8 +250,11 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
   }
 
   Widget _buildHeader() {
+    final width = MediaQuery.of(context).size.width;
+    final isCompact = width < 380;
+    final ultraCompact = width < 340;
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(isCompact ? 16 : 24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: _getTypeGradientColors(),
@@ -262,9 +277,9 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
       child: Row(
         children: [
           Container(
-            width: 50,
-            height: 50,
-            padding: const EdgeInsets.all(12),
+            width: ultraCompact ? 42 : 50,
+            height: ultraCompact ? 42 : 50,
+            padding: EdgeInsets.all(ultraCompact ? 10 : 12),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.2),
               shape: BoxShape.circle,
@@ -274,7 +289,7 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
             child: Icon(
               _getTypeIcon(),
               color: Colors.white,
-              size: 24,
+              size: ultraCompact ? 20 : 24,
             ),
           ),
           const SizedBox(width: 16),
@@ -284,27 +299,33 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
               children: [
                 Text(
                   '${_getTypeEmoji()} Attribution ${widget.type.label}',
-                  style: const TextStyle(
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
                     color: Colors.white,
-                    fontSize: 22,
+                    fontSize: isCompact ? 18 : 22,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   '📦 ${widget.collecte.site} • ${_formatDate(widget.collecte.date)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.9),
-                    fontSize: 14,
+                    fontSize: isCompact ? 12 : 14,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   '⚖️ ${widget.collecte.totalWeight?.toStringAsFixed(1) ?? 'N/A'} kg • 📦 ${widget.collecte.containersCount ?? 0} contenants',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.8),
-                    fontSize: 12,
+                    fontSize: isCompact ? 11 : 12,
                   ),
                 ),
               ],
@@ -431,32 +452,49 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
               color: _getTypeColor().withOpacity(0.05),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _buildStatCard(
-                    '⚖️',
-                    '${widget.collecte.totalWeight?.toStringAsFixed(1) ?? 'N/A'} kg',
-                    'Poids total',
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final narrow = constraints.maxWidth < 520;
+                final veryNarrow = constraints.maxWidth < 360;
+                final itemWidth = veryNarrow
+                    ? constraints.maxWidth
+                    : (narrow
+                        ? (constraints.maxWidth - 8) / 2
+                        : (constraints.maxWidth - 24) / 3);
+                final children = <Widget>[
+                  SizedBox(
+                    width: itemWidth,
+                    child: _buildStatCard(
+                      '⚖️',
+                      '${widget.collecte.totalWeight?.toStringAsFixed(1) ?? 'N/A'} kg',
+                      'Poids total',
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildStatCard(
-                    '📦',
-                    '${widget.collecte.containersCount ?? 0}',
-                    'Contenants',
+                  SizedBox(width: narrow ? 8 : 12),
+                  SizedBox(
+                    width: itemWidth,
+                    child: _buildStatCard(
+                      '📦',
+                      '${widget.collecte.containersCount ?? 0}',
+                      'Contenants',
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildStatCard(
-                    '💰',
-                    '${widget.collecte.totalAmount?.toStringAsFixed(0) ?? 'N/A'} F',
-                    'Montant',
+                  SizedBox(width: narrow ? 8 : 12),
+                  SizedBox(
+                    width: itemWidth,
+                    child: _buildStatCard(
+                      '💰',
+                      '${widget.collecte.totalAmount?.toStringAsFixed(0) ?? 'N/A'} F',
+                      'Montant',
+                    ),
                   ),
-                ),
-              ],
+                ];
+                return Wrap(
+                  spacing: narrow ? 8 : 12,
+                  runSpacing: 8,
+                  children: children,
+                );
+              },
             ),
           ),
           const SizedBox(height: 16),
@@ -536,6 +574,7 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
   }
 
   Widget _buildModernInfoRow(IconData icon, String label, String value) {
+    final isNarrow = MediaQuery.of(context).size.width < 340;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -554,7 +593,7 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
           ),
           const SizedBox(width: 12),
           SizedBox(
-            width: 80,
+            width: isNarrow ? 64 : 80,
             child: Text(
               '$label:',
               style: const TextStyle(
@@ -566,6 +605,8 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
           Expanded(
             child: Text(
               value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontWeight: FontWeight.w600,
                 fontSize: 15,
@@ -673,6 +714,8 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
                   contentPadding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
+                isDense: true,
+                isExpanded: true,
                 items: sitesDisponibles.map((site) {
                   return DropdownMenuItem<String>(
                     value: site,
@@ -684,11 +727,27 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
                           color: Colors.grey.shade600,
                         ),
                         const SizedBox(width: 8),
-                        Text(site),
+                        Expanded(
+                          child: Text(
+                            site,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ],
                     ),
                   );
                 }).toList(),
+                selectedItemBuilder: (context) => sitesDisponibles
+                    .map((site) => Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            site,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ))
+                    .toList(),
                 onChanged: (value) {
                   setState(() {
                     _siteReceveur = value ?? '';
@@ -733,6 +792,7 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
   }
 
   Widget _buildContenantsSelection() {
+    final isCompact = MediaQuery.of(context).size.width < 380;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -799,24 +859,38 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
                       topRight: Radius.circular(12),
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '${_availableContenants.length} contenants disponibles',
-                          style: const TextStyle(fontWeight: FontWeight.w500),
+                  child: LayoutBuilder(builder: (context, c) {
+                    final narrow = c.maxWidth < 360;
+                    final title = Text(
+                      '${_availableContenants.length} contenants disponibles',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                      overflow: TextOverflow.ellipsis,
+                    );
+                    final actions = Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      alignment: WrapAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: _selectAllContenants,
+                          child: const Text('Tout sélectionner'),
                         ),
-                      ),
-                      TextButton(
-                        onPressed: _selectAllContenants,
-                        child: const Text('Tout sélectionner'),
-                      ),
-                      TextButton(
-                        onPressed: _deselectAllContenants,
-                        child: const Text('Tout désélectionner'),
-                      ),
-                    ],
-                  ),
+                        TextButton(
+                          onPressed: _deselectAllContenants,
+                          child: const Text('Tout désélectionner'),
+                        ),
+                      ],
+                    );
+                    if (narrow) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [title, const SizedBox(height: 8), actions],
+                      );
+                    }
+                    return Row(
+                      children: [Expanded(child: title), actions],
+                    );
+                  }),
                 ),
                 // Liste des contenants
                 Expanded(
@@ -844,8 +918,13 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
                               }
                             });
                           },
+                          dense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                              horizontal: 8, vertical: isCompact ? 0 : 4),
                           title: Text(
                             contenantId,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontWeight: FontWeight.w500),
                           ),
                           subtitle: Text(
@@ -1003,26 +1082,50 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
           const SizedBox(height: 16),
 
           // Statistiques visuelles
-          Row(
-            children: [
-              Expanded(
-                child: _buildSummaryCard(
-                  _getTypeIcon(),
-                  widget.type.label,
-                  'Type d\'attribution',
-                  _getTypeColor(),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildSummaryCard(
-                  Icons.inventory_2,
-                  '${_selectedContenants.length}',
-                  'Contenants',
-                  Colors.orange.shade600,
-                ),
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, c) {
+              final narrow = c.maxWidth < 420;
+              if (narrow) {
+                return Column(
+                  children: [
+                    _buildSummaryCard(
+                      _getTypeIcon(),
+                      widget.type.label,
+                      'Type d\'attribution',
+                      _getTypeColor(),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildSummaryCard(
+                      Icons.inventory_2,
+                      '${_selectedContenants.length}',
+                      'Contenants',
+                      Colors.orange.shade600,
+                    ),
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(
+                    child: _buildSummaryCard(
+                      _getTypeIcon(),
+                      widget.type.label,
+                      'Type d\'attribution',
+                      _getTypeColor(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildSummaryCard(
+                      Icons.inventory_2,
+                      '${_selectedContenants.length}',
+                      'Contenants',
+                      Colors.orange.shade600,
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 12),
 
@@ -1113,6 +1216,7 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
 
   Widget _buildModernSummaryRow(
       IconData icon, String label, String value, Color color) {
+    final isNarrow = MediaQuery.of(context).size.width < 340;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -1127,7 +1231,7 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
           ),
           const SizedBox(width: 12),
           SizedBox(
-            width: 100,
+            width: isNarrow ? 80 : 100,
             child: Text(
               '$label:',
               style: const TextStyle(
@@ -1140,6 +1244,8 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
           Expanded(
             child: Text(
               value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontWeight: FontWeight.w600,
                 fontSize: 14,
@@ -1152,104 +1258,186 @@ class _ControlAttributionModalState extends State<ControlAttributionModal>
   }
 
   Widget _buildActions() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Colors.white,
-            _getTypeColor().withOpacity(0.03),
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
-        ),
-        border: Border(
-          top: BorderSide(
-            color: Colors.grey.shade200,
-            width: 1,
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: _isLoading ? null : () => Navigator.pop(context),
-              icon: const Icon(Icons.cancel_outlined, size: 18),
-              label: const Text('Annuler'),
-              style: OutlinedButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                side: BorderSide(color: Colors.grey.shade400),
-                foregroundColor: Colors.grey.shade700,
+    final viewInsets = MediaQuery.of(context).viewInsets;
+    final width = MediaQuery.of(context).size.width;
+    final isCompact = width < 380;
+    return SafeArea(
+        top: false,
+        child: Container(
+          padding:
+              EdgeInsets.fromLTRB(24, 16, 24, (viewInsets.bottom > 0) ? 8 : 24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.white,
+                _getTypeColor().withOpacity(0.03),
+              ],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(20),
+              bottomRight: Radius.circular(20),
+            ),
+            border: Border(
+              top: BorderSide(
+                color: Colors.grey.shade200,
+                width: 1,
               ),
             ),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            flex: 2,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: _getTypeGradientColors(),
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: _getTypeColor().withOpacity(0.3),
-                    spreadRadius: 1,
-                    blurRadius: 6,
-                    offset: const Offset(0, 3),
+          child: LayoutBuilder(builder: (context, c) {
+            final narrow = c.maxWidth < 420 || isCompact;
+            if (narrow) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _isLoading ? null : () => Navigator.pop(context),
+                    icon: const Icon(Icons.cancel_outlined, size: 18),
+                    label: const Text('Annuler'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 14, horizontal: 20),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: BorderSide(color: Colors.grey.shade400),
+                      foregroundColor: Colors.grey.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: _getTypeGradientColors(),
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _getTypeColor().withOpacity(0.3),
+                          spreadRadius: 1,
+                          blurRadius: 6,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: ElevatedButton.icon(
+                      onPressed: _isLoading ? null : _validateAndSubmit,
+                      icon: _isLoading
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Icon(_getTypeIcon(), size: 18),
+                      label: Text(
+                        _isLoading
+                            ? 'Attribution en cours...'
+                            : '${_getTypeEmoji()} Confirmer Attribution',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 16, horizontal: 20),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
-              ),
-              child: ElevatedButton.icon(
-                onPressed: _isLoading ? null : _validateAndSubmit,
-                icon: _isLoading
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
+              );
+            }
+            return Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isLoading ? null : () => Navigator.pop(context),
+                    icon: const Icon(Icons.cancel_outlined, size: 18),
+                    label: const Text('Annuler'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 16, horizontal: 20),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: BorderSide(color: Colors.grey.shade400),
+                      foregroundColor: Colors.grey.shade700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 2,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: _getTypeGradientColors(),
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _getTypeColor().withOpacity(0.3),
+                          spreadRadius: 1,
+                          blurRadius: 6,
+                          offset: const Offset(0, 3),
                         ),
-                      )
-                    : Icon(_getTypeIcon(), size: 18),
-                label: Text(
-                  _isLoading
-                      ? 'Attribution en cours...'
-                      : '${_getTypeEmoji()} Confirmer Attribution',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                      ],
+                    ),
+                    child: ElevatedButton.icon(
+                      onPressed: _isLoading ? null : _validateAndSubmit,
+                      icon: _isLoading
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Icon(_getTypeIcon(), size: 18),
+                      label: Text(
+                        _isLoading
+                            ? 'Attribution en cours...'
+                            : '${_getTypeEmoji()} Confirmer Attribution',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 16, horizontal: 20),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+              ],
+            );
+          }),
+        ));
   }
 
   void _selectAllContenants() {

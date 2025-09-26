@@ -69,7 +69,7 @@ class GeographieData {
       // EST (classées alphabétiquement)
       {'code': '01', 'nom': 'GNAGNA'},
       {'code': '02', 'nom': 'GOURMA'},
-      {'code': '03', 'nom': 'KOMONDJARI'},
+      {'code': '03', 'nom': 'KOMANDJOARI'},
       {'code': '04', 'nom': 'KOMPIENGA'},
       {'code': '05', 'nom': 'TAPOA'},
     ],
@@ -122,7 +122,12 @@ class GeographieData {
       {'code': '06', 'nom': 'POMPOI'},
       {'code': '07', 'nom': 'POURA'},
       {'code': '08', 'nom': 'SIBY'},
-      {'code': '09', 'nom': 'YAHO'},
+      {'code': '10', 'nom': 'YAKO'},
+      {'code': '11', 'nom': 'TCHERIBA'},
+      //{'code': '12', 'nom': 'BISSANDEROU'},
+      //{'code': '13', 'nom': 'DIDIE'},
+      //{'code': '14', 'nom': 'SOROBOULI'},
+      //{'code': '15', 'nom': 'SOUHO'},
     ],
     '01-02': [
       // BANWA (classées alphabétiquement)
@@ -318,6 +323,7 @@ class GeographieData {
       {'code': '06', 'nom': 'REO'},
       {'code': '07', 'nom': 'TENADO'},
       {'code': '08', 'nom': 'ZAWARA'},
+      {'code': '09', 'nom': 'GOUNDI'},
     ],
     '06-03': [
       // SISSILI (classées alphabétiquement)
@@ -423,6 +429,7 @@ class GeographieData {
       {'code': '09', 'nom': 'PENI'},
       {'code': '10', 'nom': 'SATIRI'},
       {'code': '11', 'nom': 'TOUSSIANA'},
+      {'code': '12', 'nom': 'BADARA'},
     ],
     '09-02': [
       // KENEDOUGOU (classées alphabétiquement)
@@ -430,7 +437,7 @@ class GeographieData {
       {'code': '02', 'nom': 'KANGALA'},
       {'code': '03', 'nom': 'KOLOKO'},
       {'code': '04', 'nom': 'KOURINION'},
-      {'code': '05', 'nom': 'N\'DOROLA'},
+      {'code': '05', 'nom': 'DOROLA'},
       {'code': '06', 'nom': 'ORODARA'},
       {'code': '07', 'nom': 'SAMOGHOHIRI'},
       {'code': '08', 'nom': 'SAMOGOHIRI'},
@@ -676,8 +683,8 @@ class GeographieData {
       {'code': '01', 'nom': 'KANKALBILA'},
       {'code': '02', 'nom': 'RAMONGO'},
       {'code': '03', 'nom': 'SALLA'},
-      {'code': '04', 'nom': 'SIGAGHIN'},
-      {'code': '05', 'nom': 'TIOGO MOSRI'},
+      {'code': '04', 'nom': 'SIGOGHIN'},
+      {'code': '05', 'nom': 'TIOGO MOSSI'},
     ],
 
     // CENTRE-SUD - NAHOURI
@@ -694,6 +701,13 @@ class GeographieData {
       {'code': '01', 'nom': 'BOUROU'},
       {'code': '02', 'nom': 'TIAKANE'},
       {'code': '03', 'nom': 'YARO'},
+    ],
+
+    '07-02-0"': [
+      // CENTRE-SUD > NAHOURI > GUIARO (classés alphabétiquement)
+      {'code': '01', 'nom': 'KOLLO'},
+      {'code': '02', 'nom': 'OUALEM'},
+      {'code': '03', 'nom': 'SARO'},
     ],
 
     // BOUCLE DU MOUHOUN - BALE

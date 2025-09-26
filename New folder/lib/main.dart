@@ -1,39 +1,44 @@
-// import 'package:apisavana_gestion/screens/collecte_de_donnes/collecte_donnes.dart'; // ANCIEN CODE - DÉSACTIVÉ
-import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
-import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collectes.dart';
-import 'package:apisavana_gestion/screens/commercialisation/commer_home.dart';
-import 'package:apisavana_gestion/screens/conditionnement/condionnement_home.dart';
-import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
-import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
-import 'package:apisavana_gestion/screens/extraction_page/extraction.dart';
-import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/date_symbol_data_local.dart';
-
+import 'firebase_options.dart';
+import 'utils/auth_wrapper.dart';
 import 'authentication/login.dart';
 import 'authentication/sign_up.dart';
+import 'package:flutter/material.dart';
 import 'authentication/user_session.dart';
-import 'utils/auth_wrapper.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'services/push_notifications_service.dart';
+import 'screens/caisse/pages/espace_caissier_page.dart';
+import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
+import 'screens/conditionnement/services/conditionnement_db_service.dart';
+import 'package:apisavana_gestion/screens/extraction_page/extraction.dart';
+import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
+import 'screens/vente/utils/logo_loader.dart'; // Initialisation du logo PDF
+import 'package:apisavana_gestion/screens/commercialisation/commer_home.dart';
+import 'package:apisavana_gestion/screens/conditionnement/condionnement_home.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collectes.dart';
+import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
+// import 'package:apisavana_gestion/screens/collecte_de_donnes/collecte_donnes.dart'; // ANCIEN CODE - DÉSACTIVÉ
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
-    options: const FirebaseOptions(
-      apiKey: "AIzaSyCQVVqssk1aMPh5cgJi2a3XAqFJ2_cOXPc",
-      authDomain: "apisavana-bf-226.firebaseapp.com",
-      projectId: "apisavana-bf-226",
-      storageBucket: "apisavana-bf-226.firebasestorage.app",
-      messagingSenderId: "955408721623",
-      appId: "1:955408721623:web:e78c39e6801db32545b292",
-      measurementId: "G-NH4D0Q9NTS",
-    ),
+    options: DefaultFirebaseOptions.currentPlatform,
   );
 
   await initializeDateFormatting('fr_FR', null);
 
+  // Chargement du logo pour les PDF (doit précéder toute génération de PDF)
+  // Fournir le chemin exact si nécessaire, sinon il testera les candidats.
+  await ApiSavanaLogoLoader.ensureLoaded(assetPath: 'assets/logo/logo.jpeg');
+
+  // Initialiser les services
   Get.put(UserSession());
+  Get.put(ConditionnementDbService());
+
+  // Init push notifications (FCM)
+  await PushNotificationsService.instance.init();
 
   runApp(const ApisavanaApp());
 }
@@ -48,7 +53,8 @@ class ApisavanaApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.amber,
-        fontFamily: 'Montserrat',
+        // Police globale définie via pubspec.yaml
+        fontFamily: 'OpenSans',
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       // Utilisation de l'AuthWrapper comme page d'accueil
@@ -73,6 +79,7 @@ class ApisavanaApp extends StatelessWidget {
         GetPage(
             name: '/gestion_de_ventes',
             page: () => CommercialisationHomePage()),
+        GetPage(name: '/caisse', page: () => const EspaceCaissierPage()),
       ],
     );
   }

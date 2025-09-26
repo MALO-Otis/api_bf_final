@@ -2,9 +2,20 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum HoneyNature { brut, prefilitre }
+enum HoneyNature { brut, prefilitre, cire }
 
 enum ConformityStatus { conforme, nonConforme }
+
+/// Types de contenants disponibles pour le contrôle qualité
+enum ContainerType {
+  bidon('Bidon'),
+  fut('Fût'),
+  seau('Seau'),
+  sac('Sac');
+
+  const ContainerType(this.label);
+  final String label;
+}
 
 /// Modèle pour les données de contrôle qualité
 class QualityControlData {
@@ -20,6 +31,7 @@ class QualityControlData {
   final String containerType;
   final String containerNumber;
   final double totalWeight; // poids ensemble (miel + contenant)
+  final double? containerWeight; // poids du contenant seul
   final double honeyWeight; // poids du miel seul
   final String quality;
   final double? waterContent; // teneur en eau en %
@@ -48,6 +60,7 @@ class QualityControlData {
     required this.containerType,
     required this.containerNumber,
     required this.totalWeight,
+    this.containerWeight,
     required this.honeyWeight,
     required this.quality,
     this.waterContent,
@@ -76,6 +89,7 @@ class QualityControlData {
     String? containerType,
     String? containerNumber,
     double? totalWeight,
+    double? containerWeight,
     double? honeyWeight,
     String? quality,
     double? waterContent,
@@ -103,6 +117,7 @@ class QualityControlData {
       containerType: containerType ?? this.containerType,
       containerNumber: containerNumber ?? this.containerNumber,
       totalWeight: totalWeight ?? this.totalWeight,
+      containerWeight: containerWeight ?? this.containerWeight,
       honeyWeight: honeyWeight ?? this.honeyWeight,
       quality: quality ?? this.quality,
       waterContent: waterContent ?? this.waterContent,
@@ -132,6 +147,7 @@ class QualityControlData {
       'containerType': containerType,
       'containerNumber': containerNumber,
       'totalWeight': totalWeight,
+      'containerWeight': containerWeight,
       'honeyWeight': honeyWeight,
       'quality': quality,
       'waterContent': waterContent,
@@ -179,6 +195,7 @@ class QualityControlData {
       containerType: data['containerType'] ?? '',
       containerNumber: data['containerNumber'] ?? '',
       totalWeight: (data['totalWeight'] ?? 0.0).toDouble(),
+      containerWeight: data['containerWeight']?.toDouble(),
       honeyWeight: (data['honeyWeight'] ?? 0.0).toDouble(),
       quality: data['quality'] ?? '',
       waterContent: data['waterContent']?.toDouble(),
@@ -227,6 +244,7 @@ class QualityControlData {
       containerType: json['containerType'] ?? '',
       containerNumber: json['containerNumber'] ?? '',
       totalWeight: (json['totalWeight'] ?? 0).toDouble(),
+      containerWeight: json['containerWeight']?.toDouble(),
       honeyWeight: (json['honeyWeight'] ?? 0).toDouble(),
       quality: json['quality'] ?? '',
       waterContent: json['waterContent']?.toDouble(),
@@ -257,6 +275,25 @@ class QualityControlUtils {
         return 'Brut';
       case HoneyNature.prefilitre:
         return 'Préfiltré';
+      case HoneyNature.cire:
+        return 'Cire';
+    }
+  }
+
+  static String getContainerTypeLabel(ContainerType containerType) {
+    return containerType.label;
+  }
+
+  static List<ContainerType> getAvailableContainerTypes(
+      HoneyNature? honeyNature) {
+    if (honeyNature == HoneyNature.cire) {
+      // Pour la cire, seul le sac est disponible
+      return [ContainerType.sac];
+    } else {
+      // Pour les autres types, tous les contenants sauf le sac (réservé à la cire)
+      return ContainerType.values
+          .where((type) => type != ContainerType.sac)
+          .toList();
     }
   }
 

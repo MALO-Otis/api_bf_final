@@ -1,10 +1,11 @@
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:apisavana_gestion/authentication/user_session.dart';
-import 'package:apisavana_gestion/authentication/login.dart';
-import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:apisavana_gestion/authentication/login.dart';
+import 'package:apisavana_gestion/authentication/user_session.dart';
+import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
+import 'package:apisavana_gestion/services/push_notifications_service.dart';
 
 /// Wrapper d'authentification qui gère :
 /// - La persistance de session utilisateur
@@ -90,6 +91,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
         site: normalizedSite,
         photoUrl: userData['photoUrl'],
       );
+
+      // Ensure the device token document is updated with fresh uid/site
+      await PushNotificationsService.instance.resyncTokenMetadata();
 
       // Rediriger vers le dashboard
       _redirectToDashboard();
@@ -188,64 +192,69 @@ class _AuthWrapperState extends State<AuthWrapper> {
     }
 
     // Écran de chargement pendant la vérification
-    return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFFFF8F0), Color(0xFFF49101), Color(0xFF2D0C0D)],
-            stops: [0.1, 0.5, 1.0],
+    if (_isLoading) {
+      return Scaffold(
+        body: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFFFF8F0), Color(0xFFF49101), Color(0xFF2D0C0D)],
+              stops: [0.1, 0.5, 1.0],
+            ),
           ),
-        ),
-        child: Center(
-          child: Card(
-            margin: const EdgeInsets.all(24),
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Logo
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.asset(
-                      'assets/logo/logo.jpeg',
-                      height: 80,
-                      width: 80,
-                      fit: BoxFit.cover,
+          child: Center(
+            child: Card(
+              margin: const EdgeInsets.all(24),
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Logo
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.asset(
+                        'assets/logo/logo.jpeg',
+                        height: 80,
+                        width: 80,
+                        fit: BoxFit.cover,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'ApiSavana',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFFF49101),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'ApiSavana',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFF49101),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Vérification de la session...',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Vérification de la session...',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  const CircularProgressIndicator(
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(Color(0xFFF49101)),
-                  ),
-                ],
+                    const SizedBox(height: 24),
+                    const CircularProgressIndicator(
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(Color(0xFFF49101)),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
+      );
+    }
+
+    // En pratique, on ne devrait presque jamais voir ceci car la navigation est déclenchée.
+    return const SizedBox.shrink();
   }
 }

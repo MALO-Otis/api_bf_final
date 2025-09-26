@@ -1,14 +1,16 @@
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import '../models/vente_models.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../services/vente_service.dart';
+import '../../../widgets/location_picker.dart';
+import '../../../widgets/money_icon_widget.dart';
+import '../controllers/espace_commercial_controller.dart';
+
 /// 🛒 MODAL DE FORMULAIRE DE VENTE COMPLET
 ///
 /// Interface complète pour enregistrer une nouvelle vente
-
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:get/get.dart';
-import 'package:intl/intl.dart';
-
-import '../models/vente_models.dart';
-import '../services/vente_service.dart';
 
 class VenteFormModalComplete extends StatefulWidget {
   final Prelevement prelevement;
@@ -32,6 +34,7 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
   final _clientNomController = TextEditingController();
   final _clientTelephoneController = TextEditingController();
   final _clientAdresseController = TextEditingController();
+  final _clientBoutiqueController = TextEditingController();
   final _montantPayeController = TextEditingController();
   final _observationsController = TextEditingController();
 
@@ -43,6 +46,15 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
   Client? _clientSelectionne;
   bool _isNouveauClient = true;
   bool _isLoading = false;
+  bool _montantSaisiManuellement =
+      false; // Pour éviter l'écrasement du montant crédit
+
+  // Nouveaux champs pour client étendu
+  TypeClient _typeClient = TypeClient.particulier;
+  double? _latitude;
+  double? _longitude;
+  double? _altitude;
+  double? _precision;
 
   // Données calculées
   double _montantTotal = 0.0;
@@ -54,6 +66,13 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
     super.initState();
     _loadClients();
     _initializeQuantites();
+
+    // DEBUG: Afficher les quantités reçues dans la modal
+    debugPrint('🎯 MODAL VENTE OUVERTE:');
+    for (final produit in widget.prelevement.produits) {
+      debugPrint('  Produit: ${produit.typeEmballage}');
+      debugPrint('  Quantité reçue dans modal: ${produit.quantitePreleve}');
+    }
   }
 
   @override
@@ -61,6 +80,7 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
     _clientNomController.dispose();
     _clientTelephoneController.dispose();
     _clientAdresseController.dispose();
+    _clientBoutiqueController.dispose();
     _montantPayeController.dispose();
     _observationsController.dispose();
     super.dispose();
@@ -83,23 +103,151 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
   }
 
   void _updateQuantite(String produitId, int nouvelleQuantite) {
+    // Trouver le produit correspondant pour vérifier la limite
+    final produitsCorrespondants = widget.prelevement.produits.where(
+      (p) => p.produitId == produitId,
+    );
+
+    if (produitsCorrespondants.isEmpty) {
+      debugPrint('⚠️ Produit introuvable: $produitId');
+      return;
+    }
+
+    final produit = produitsCorrespondants.first;
+
+    // VALIDATION STRICTE : Refuser toute quantité > stock disponible
+    if (nouvelleQuantite > produit.quantitePreleve) {
+      debugPrint(
+          '❌ Tentative de vente invalide: $nouvelleQuantite > ${produit.quantitePreleve} pour ${produit.typeEmballage}');
+      Get.snackbar(
+        'Quantité invalide',
+        'Impossible de vendre $nouvelleQuantite unités.\nStock disponible: ${produit.quantitePreleve} unités pour ${produit.typeEmballage}',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 3),
+        snackPosition: SnackPosition.TOP,
+      );
+      return; // Rejeter complètement la modification
+    }
+
+    // VALIDATION STRICTE : Refuser les quantités négatives
+    if (nouvelleQuantite < 0) {
+      debugPrint('❌ Tentative de quantité négative: $nouvelleQuantite');
+      return;
+    }
+
     setState(() {
       _quantitesVendues[produitId] = nouvelleQuantite;
       _calculerMontants();
     });
+
+    debugPrint(
+        '✅ Quantité mise à jour: ${produit.typeEmballage} = $nouvelleQuantite/${produit.quantitePreleve}');
   }
 
   void _calculerMontants() {
-    double total = 0.0;
+    setState(() {
+      double total = 0.0;
 
-    for (final produit in widget.prelevement.produits) {
-      final quantite = _quantitesVendues[produit.produitId] ?? 0;
-      total += quantite * produit.prixUnitaire;
+      for (final produit in widget.prelevement.produits) {
+        final quantite = _quantitesVendues[produit.produitId] ?? 0;
+        total += quantite * produit.prixUnitaire;
+      }
+
+      _montantTotal = total;
+
+      debugPrint('🧮 CALCUL MONTANTS:');
+      debugPrint('  Mode: $_modePaiement');
+      debugPrint('  Saisie manuelle: $_montantSaisiManuellement');
+      debugPrint('  Champ montant: ${_montantPayeController.text}');
+
+      // LOGIQUE SIMPLIFIÉE ET ROBUSTE
+      if (_modePaiement == ModePaiement.credit) {
+        // MODE CRÉDIT : Toujours utiliser la valeur du champ de saisie
+        _montantPaye = double.tryParse(_montantPayeController.text) ?? 0.0;
+        debugPrint('  → CRÉDIT: _montantPaye = $_montantPaye (depuis champ)');
+      } else {
+        // AUTRES MODES : Auto-remplir avec le total
+        if (total > 0) {
+          _montantPayeController.text = total.toStringAsFixed(0);
+          _montantPaye = total;
+          debugPrint(
+              '  → NON-CRÉDIT: _montantPaye = $_montantPaye (auto-rempli)');
+        } else {
+          _montantPaye = 0.0;
+        }
+      }
+
+      _montantRestant = _montantTotal - _montantPaye;
+      debugPrint(
+          '  RÉSULTAT: Total=$_montantTotal, Payé=$_montantPaye, Restant=$_montantRestant');
+    });
+  }
+
+  // Validation en temps réel du montant selon le mode de paiement
+  String? _validerMontantPaiement() {
+    if (_montantTotal <= 0) return null; // Pas de validation si pas de total
+
+    switch (_modePaiement) {
+      case ModePaiement.credit:
+        if (_montantPaye >= _montantTotal) {
+          return 'En crédit, le montant payé doit être inférieur au total (${_montantTotal.toStringAsFixed(0)} FCFA)';
+        }
+        break;
+      case ModePaiement.espece:
+      case ModePaiement.carte:
+      case ModePaiement.mobile:
+      case ModePaiement.cheque:
+      case ModePaiement.virement:
+        if (_montantPaye != _montantTotal) {
+          return 'Pour ce mode de paiement, le montant doit être égal au total (${_montantTotal.toStringAsFixed(0)} FCFA)';
+        }
+        break;
     }
+    return null;
+  }
 
-    _montantTotal = total;
-    _montantPaye = double.tryParse(_montantPayeController.text) ?? 0.0;
-    _montantRestant = _montantTotal - _montantPaye;
+  // Couleur selon le statut de paiement
+  Color _getStatutPaiementColor() {
+    final erreur = _validerMontantPaiement();
+    if (erreur != null) return Colors.red;
+
+    if (_montantRestant > 0) return Colors.orange;
+    return Colors.green;
+  }
+
+  // Icône selon le statut de paiement
+  IconData _getStatutPaiementIcon() {
+    final erreur = _validerMontantPaiement();
+    if (erreur != null) return Icons.error;
+
+    if (_montantRestant > 0) return Icons.credit_card;
+    return Icons.check_circle;
+  }
+
+  // Message selon le statut de paiement
+  String _getStatutPaiementMessage() {
+    final erreur = _validerMontantPaiement();
+    if (erreur != null) return 'Erreur';
+
+    if (_montantRestant > 0) return 'Crédit';
+    return 'Payé intégralement';
+  }
+
+  // Texte du bouton d'enregistrement selon le mode de paiement
+  String _getTexteBoutonEnregistrer() {
+    if (_modePaiement == ModePaiement.credit && _montantRestant > 0) {
+      return 'Enregistrer Vente (${VenteUtils.formatPrix(_montantPaye)} payés)';
+    }
+    return 'Enregistrer Vente (${VenteUtils.formatPrix(_montantTotal)})';
+  }
+
+  // Message de succès selon le mode de paiement
+  String _getMessageSucces(Vente vente) {
+    if (vente.modePaiement == ModePaiement.credit && vente.montantRestant > 0) {
+      return 'Vente enregistrée : ${vente.montantPaye.toStringAsFixed(0)} FCFA payés, ${vente.montantRestant.toStringAsFixed(0)} FCFA en crédit';
+    }
+    return 'Vente enregistrée avec succès pour ${vente.montantPaye.toStringAsFixed(0)} FCFA';
   }
 
   @override
@@ -286,7 +434,7 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
             const SizedBox(height: 16),
 
             if (_isNouveauClient) ...[
-              // Nouveau client
+              // Nouveau client - Nom et téléphone
               TextFormField(
                 controller: _clientNomController,
                 decoration: InputDecoration(
@@ -322,10 +470,10 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: TextFormField(
-                      controller: _clientAdresseController,
+                      controller: _clientBoutiqueController,
                       decoration: InputDecoration(
-                        labelText: 'Adresse',
-                        prefixIcon: const Icon(Icons.location_on),
+                        labelText: 'Nom boutique',
+                        prefixIcon: const Icon(Icons.storefront),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -333,6 +481,83 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 16),
+              // Adresse traditionnelle
+              TextFormField(
+                controller: _clientAdresseController,
+                decoration: InputDecoration(
+                  labelText: 'Adresse',
+                  prefixIcon: const Icon(Icons.location_on),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Type de client
+              DropdownButtonFormField<TypeClient>(
+                value: _typeClient,
+                decoration: InputDecoration(
+                  labelText: 'Type de client',
+                  prefixIcon: const Icon(Icons.category),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                items: TypeClient.values.map((type) {
+                  return DropdownMenuItem<TypeClient>(
+                    value: type,
+                    child: Text(_getTypeClientLabel(type)),
+                  );
+                }).toList(),
+                onChanged: (value) => setState(() => _typeClient = value!),
+              ),
+              const SizedBox(height: 16),
+              // Localisation GPS
+              Card(
+                elevation: 1,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.map, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          const Text('Localisation GPS',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          const Spacer(),
+                          ElevatedButton.icon(
+                            onPressed: _openLocationPicker,
+                            icon:
+                                const Icon(Icons.location_searching, size: 16),
+                            label: const Text('Choisir'),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (_latitude != null && _longitude != null) ...[
+                        Text('Latitude: ${_latitude!.toStringAsFixed(6)}'),
+                        Text('Longitude: ${_longitude!.toStringAsFixed(6)}'),
+                        if (_altitude != null)
+                          Text('Altitude: ${_altitude!.toStringAsFixed(1)} m'),
+                        if (_precision != null)
+                          Text(
+                              'Précision: ±${_precision!.toStringAsFixed(1)} m'),
+                      ] else
+                        const Text('Aucune localisation sélectionnée',
+                            style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                ),
               ),
             ] else ...[
               // Client existant
@@ -502,14 +727,24 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                '${produit.quantitePreleve} prélevé${produit.quantitePreleve > 1 ? 's' : ''}',
-                style: TextStyle(
-                  fontSize: isMobile ? 10 : 12,
-                  color: Colors.blue,
-                  fontWeight: FontWeight.w500,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: quantiteVendue > 0
+                      ? Colors.green.withOpacity(0.1)
+                      : Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  'Disponible: ${produit.quantitePreleve}',
+                  style: TextStyle(
+                    fontSize: isMobile ? 10 : 12,
+                    color: quantiteVendue > 0 ? Colors.green : Colors.blue,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
+              const SizedBox(height: 4),
               Text(
                 VenteUtils.formatPrix(produit.prixUnitaire),
                 style: TextStyle(
@@ -518,6 +753,17 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+              if (quantiteVendue > 0)
+                Text(
+                  'Reste: ${produit.quantitePreleve - quantiteVendue}',
+                  style: TextStyle(
+                    fontSize: isMobile ? 9 : 10,
+                    color: produit.quantitePreleve - quantiteVendue > 0
+                        ? Colors.grey.shade600
+                        : Colors.red,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
             ],
           ),
 
@@ -547,27 +793,86 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
                     initialValue: quantiteVendue.toString(),
                     textAlign: TextAlign.center,
                     keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      // Limiteur de saisie : empêche les valeurs > quantitePreleve
+                      TextInputFormatter.withFunction((oldValue, newValue) {
+                        if (newValue.text.isEmpty) return newValue;
+                        final quantite = int.tryParse(newValue.text) ?? 0;
+                        if (quantite > produit.quantitePreleve) {
+                          // Rejeter la saisie et garder l'ancienne valeur
+                          return oldValue;
+                        }
+                        return newValue;
+                      }),
+                    ],
                     style: TextStyle(fontSize: isMobile ? 12 : 14),
                     decoration: InputDecoration(
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: quantiteVendue > produit.quantitePreleve
+                              ? Colors.red
+                              : Colors.grey.shade300,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: quantiteVendue > produit.quantitePreleve
+                              ? Colors.red
+                              : Colors.grey.shade300,
+                        ),
                       ),
                       contentPadding: const EdgeInsets.symmetric(vertical: 8),
                       isDense: true,
+                      hintText: 'Max: ${produit.quantitePreleve}',
+                      hintStyle: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade500,
+                      ),
                     ),
+                    validator: (value) {
+                      final quantite = int.tryParse(value ?? '') ?? 0;
+                      if (quantite > produit.quantitePreleve) {
+                        return 'Max: ${produit.quantitePreleve}';
+                      }
+                      return null;
+                    },
                     onChanged: (value) {
                       final quantite = int.tryParse(value) ?? 0;
+                      // Validation double - ne devrait jamais être nécessaire grâce au TextInputFormatter
                       if (quantite <= produit.quantitePreleve) {
                         _updateQuantite(produit.produitId, quantite);
+                      } else {
+                        // Afficher un message d'erreur
+                        Get.snackbar(
+                          'Quantité invalide',
+                          'Impossible de vendre plus de ${produit.quantitePreleve} unités pour ${produit.typeEmballage}',
+                          backgroundColor: Colors.red,
+                          colorText: Colors.white,
+                          duration: const Duration(seconds: 2),
+                        );
                       }
                     },
                   ),
                 ),
                 IconButton(
                   onPressed: quantiteVendue < produit.quantitePreleve
-                      ? () =>
-                          _updateQuantite(produit.produitId, quantiteVendue + 1)
+                      ? () {
+                          if (quantiteVendue + 1 <= produit.quantitePreleve) {
+                            _updateQuantite(
+                                produit.produitId, quantiteVendue + 1);
+                          } else {
+                            Get.snackbar(
+                              'Limite atteinte',
+                              'Vous ne pouvez pas vendre plus de ${produit.quantitePreleve} unités',
+                              backgroundColor: Colors.orange,
+                              colorText: Colors.white,
+                              duration: const Duration(seconds: 2),
+                            );
+                          }
+                        }
                       : null,
                   icon: const Icon(Icons.add),
                   iconSize: 16,
@@ -666,7 +971,24 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
                         child: Text(_getModePaiementLabel(mode)),
                       ))
                   .toList(),
-              onChanged: (mode) => setState(() => _modePaiement = mode!),
+              onChanged: (mode) {
+                setState(() => _modePaiement = mode!);
+
+                // Auto-remplissage pour les modes non-crédit
+                if (mode != ModePaiement.credit && _montantTotal > 0) {
+                  _montantPayeController.text =
+                      _montantTotal.toStringAsFixed(0);
+                  _montantSaisiManuellement =
+                      false; // Auto-remplissage, pas manuel
+                } else if (mode == ModePaiement.credit) {
+                  // En mode crédit, garder la saisie existante si elle a été faite manuellement
+                  if (!_montantSaisiManuellement) {
+                    _montantPayeController.text = '';
+                  }
+                }
+
+                _calculerMontants(); // Recalculer pour valider le nouveau mode
+              },
             ),
 
             const SizedBox(height: 16),
@@ -678,7 +1000,7 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
                     controller: _montantPayeController,
                     decoration: InputDecoration(
                       labelText: 'Montant payé *',
-                      prefixIcon: const Icon(Icons.attach_money),
+                      prefixIcon: const SimpleMoneyIcon(),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -686,7 +1008,12 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
                     ),
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    onChanged: (value) => _calculerMontants(),
+                    onChanged: (value) {
+                      debugPrint(
+                          '💰 SAISIE MANUELLE: $value (mode: $_modePaiement)');
+                      _montantSaisiManuellement = true;
+                      _calculerMontants();
+                    },
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return 'Le montant payé est requis';
@@ -695,6 +1022,13 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
                       if (montant == null || montant < 0) {
                         return 'Montant invalide';
                       }
+
+                      // Validation selon le mode de paiement
+                      final erreurMontant = _validerMontantPaiement();
+                      if (erreurMontant != null) {
+                        return erreurMontant;
+                      }
+
                       return null;
                     },
                   ),
@@ -704,24 +1038,31 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: _montantRestant > 0
-                          ? Colors.orange.shade50
-                          : Colors.green.shade50,
+                      color: _getStatutPaiementColor().withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: _montantRestant > 0
-                            ? Colors.orange.shade200
-                            : Colors.green.shade200,
+                        color: _getStatutPaiementColor().withOpacity(0.3),
+                        width: _validerMontantPaiement() != null ? 2 : 1,
                       ),
                     ),
                     child: Column(
                       children: [
-                        Text(
-                          'Montant restant',
-                          style: TextStyle(
-                            fontSize: isMobile ? 12 : 14,
-                            color: Colors.grey.shade600,
-                          ),
+                        Row(
+                          children: [
+                            Icon(
+                              _getStatutPaiementIcon(),
+                              size: 16,
+                              color: _getStatutPaiementColor(),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Montant restant',
+                              style: TextStyle(
+                                fontSize: isMobile ? 12 : 14,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -729,11 +1070,21 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
                           style: TextStyle(
                             fontSize: isMobile ? 14 : 16,
                             fontWeight: FontWeight.bold,
-                            color: _montantRestant > 0
-                                ? Colors.orange
-                                : Colors.green,
+                            color: _getStatutPaiementColor(),
                           ),
                         ),
+                        if (_validerMontantPaiement() != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            _getStatutPaiementMessage(),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: _getStatutPaiementColor(),
+                              fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -829,8 +1180,7 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
                     width: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Text(
-                    'Enregistrer Vente (${VenteUtils.formatPrix(_montantTotal)})'),
+                : Text(_getTexteBoutonEnregistrer()),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
@@ -890,6 +1240,36 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
     }
   }
 
+  String _getTypeClientLabel(TypeClient type) {
+    switch (type) {
+      case TypeClient.particulier:
+        return '👤 Particulier';
+      case TypeClient.semiGrossiste:
+        return '🏪 Semi-Grossiste';
+      case TypeClient.grossiste:
+        return '🏭 Grossiste';
+    }
+  }
+
+  Future<void> _openLocationPicker() async {
+    final result = await Navigator.of(context).push<LocationResult>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialLat: _latitude,
+          initialLng: _longitude,
+        ),
+      ),
+    );
+    if (result != null) {
+      setState(() {
+        _latitude = result.latitude;
+        _longitude = result.longitude;
+        _altitude = result.altitude;
+        _precision = result.accuracy;
+      });
+    }
+  }
+
   Future<void> _enregistrerVente() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -917,6 +1297,19 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
       return;
     }
 
+    // Validation du montant selon le mode de paiement
+    final erreurMontant = _validerMontantPaiement();
+    if (erreurMontant != null) {
+      Get.snackbar(
+        'Erreur de paiement',
+        erreurMontant,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 4),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -936,7 +1329,7 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
             ? _clientAdresseController.text.trim()
             : null;
 
-        // Créer le nouveau client
+        // Créer le nouveau client étendu
         final nouveauClient = Client(
           id: clientId,
           nom: clientNom,
@@ -944,11 +1337,19 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
           email: null,
           adresse: clientAdresse,
           ville: null,
-          type: TypeClient.particulier,
+          nomBoutique: _clientBoutiqueController.text.trim().isNotEmpty
+              ? _clientBoutiqueController.text.trim()
+              : null,
+          site: null, // sera injecté par le service
+          type: _typeClient,
           dateCreation: DateTime.now(),
           totalAchats: _montantTotal,
           nombreAchats: 1,
-          estActif: true,
+          estActif: true, // Toujours actif par défaut
+          latitude: _latitude,
+          longitude: _longitude,
+          altitude: _altitude,
+          precision: _precision,
         );
 
         await _service.creerClient(nouveauClient);
@@ -975,6 +1376,14 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
         );
       }).toList();
 
+      // DEBUG: Afficher les montants avant enregistrement
+      debugPrint('🐛 DEBUG VENTE:');
+      debugPrint('  Mode paiement: $_modePaiement');
+      debugPrint('  Montant total: $_montantTotal');
+      debugPrint('  Montant payé: $_montantPaye');
+      debugPrint('  Montant restant: $_montantRestant');
+      debugPrint('  Contenu champ montant: ${_montantPayeController.text}');
+
       // Créer la vente
       final vente = Vente(
         id: 'VENTE_${DateTime.now().millisecondsSinceEpoch}',
@@ -991,8 +1400,10 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
         montantPaye: _montantPaye,
         montantRestant: _montantRestant,
         modePaiement: _modePaiement,
-        statut:
-            _montantRestant > 0 ? StatutVente.enAttente : StatutVente.terminee,
+        // Nouveau mapping des statuts : crédit vs payé directement
+        statut: _montantRestant > 0
+            ? StatutVente.creditEnAttente
+            : StatutVente.payeeEnTotalite,
         observations: _observationsController.text.trim().isNotEmpty
             ? _observationsController.text.trim()
             : null,
@@ -1002,10 +1413,84 @@ class _VenteFormModalCompleteState extends State<VenteFormModalComplete> {
       final success = await _service.enregistrerVente(vente);
 
       if (success) {
+        // Génération et affichage du reçu immédiatement
+        try {
+          final service = VenteService();
+          final recu = service.generateReceipt(vente);
+          await Clipboard.setData(ClipboardData(text: recu));
+          // Afficher un dialog léger avec le reçu et options
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Reçu de Vente'),
+                content: SizedBox(
+                  width: 420,
+                  child: SingleChildScrollView(
+                    child: SelectableText(recu,
+                        style: const TextStyle(
+                            fontFamily: 'monospace', fontSize: 12)),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                      onPressed: () {
+                        Navigator.of(ctx).pop();
+                      },
+                      child: const Text('Fermer')),
+                  TextButton(
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: recu));
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content:
+                                    Text('Reçu copié dans le presse-papiers')),
+                          );
+                        }
+                      },
+                      child: const Text('Copier')),
+                ],
+              ),
+            );
+          }
+        } catch (e) {
+          debugPrint('Erreur génération reçu: $e');
+        }
+        // Fallback / Optimistic update : ajouter immédiatement la vente à la liste réactive
+        // si le listener temps réel Firestore n'a pas encore propagé l'événement.
+        try {
+          if (Get.isRegistered<EspaceCommercialController>()) {
+            final espaceCtrl = Get.find<EspaceCommercialController>();
+            final already = espaceCtrl.ventes.any((v) => v.id == vente.id);
+            if (!already) {
+              // Insertion en tête pour visibilité instantanée
+              espaceCtrl.ventes.insert(0, vente);
+              espaceCtrl.ventes.refresh();
+
+              // 🔥 CRUCIAL: Forcer le recalcul des quantités restantes après la vente
+              espaceCtrl.forceRecalculQuantites();
+
+              // Délai pour laisser le temps aux listeners de se mettre à jour
+              Future.delayed(const Duration(milliseconds: 500), () {
+                espaceCtrl.forceRecalculQuantites();
+              });
+
+              // DEBUG: log optimistic insertion
+              // ignore: avoid_print
+              print(
+                  '[OPTIMISTIC_VENTE] Insertion immédiate vente ${vente.id} montant=${vente.montantTotal}');
+              print(
+                  '[OPTIMISTIC_VENTE] Recalcul des quantités restantes effectué');
+            }
+          }
+        } catch (_) {
+          // Ignore discrètement : fallback purement UX, le listener reprendra derrière
+        }
         Get.back();
         Get.snackbar(
           'Succès',
-          'Vente enregistrée avec succès pour ${vente.montantTotal.toStringAsFixed(0)} FCFA',
+          _getMessageSucces(vente),
           backgroundColor: Colors.green,
           colorText: Colors.white,
           duration: const Duration(seconds: 3),

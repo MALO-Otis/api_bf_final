@@ -1,15 +1,15 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import '../../controle_de_donnes/models/collecte_models.dart';
+import '../../controle_de_donnes/models/attribution_models_v2.dart';
+import '../../controle_de_donnes/models/quality_control_models.dart';
+import '../../controle_de_donnes/services/firestore_data_service.dart';
+import '../../controle_de_donnes/services/quality_control_service.dart';
 /// 🎯 SERVICE POUR L'ATTRIBUTION DES COLLECTES
 ///
 /// Ce service gère la logique d'attribution des produits contrôlés,
 /// en s'inspirant de la logique du module de contrôle qualité.
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import '../../controle_de_donnes/models/collecte_models.dart';
-import '../../controle_de_donnes/services/firestore_data_service.dart';
-import '../../controle_de_donnes/services/quality_control_service.dart';
-import '../../controle_de_donnes/models/quality_control_models.dart';
-import '../../controle_de_donnes/models/attribution_models_v2.dart';
 
 class AttributionCollectesService {
   static final AttributionCollectesService _instance =
@@ -33,7 +33,7 @@ class AttributionCollectesService {
 
       if (kDebugMode) {
         print(
-            '✅ [Attribution Service] \${collectesData.values.expand((list) => list).length} collectes chargées');
+            '✅ [Attribution Service] ${collectesData.values.expand((list) => list).length} collectes chargées');
       }
 
       return collectesData;
@@ -64,10 +64,10 @@ class AttributionCollectesService {
           await _qualityService.getQualityControlsForCollecte(collecteId);
 
       if (kDebugMode) {
-        print('   📊 Contrôles qualité trouvés: \${controles.length}');
+        print('   📊 Contrôles qualité trouvés: ${controles.length}');
         for (final controle in controles) {
           print(
-              '      - \${controle.containerCode}: \${controle.totalWeight}kg total, \${controle.honeyWeight}kg miel, \${controle.conformityStatus}');
+              '      - ${controle.containerCode}: ${controle.totalWeight}kg total, ${controle.honeyWeight}kg miel, ${controle.conformityStatus}');
         }
       }
 
@@ -128,9 +128,9 @@ class AttributionCollectesService {
         print('   😞 Non conformes: \${controlInfo.nonConformeCount}');
         print('   ⏳ Restants: \${controlInfo.totalRestants}');
         print(
-            '   🎯 Produits conformes disponibles: \${controlInfo.produitsConformesDisponibles.length}');
+            '   🎯 Produits conformes disponibles: ${controlInfo.produitsConformesDisponibles.length}');
         print(
-            '   📈 Taux de completion: \${(controlInfo.completionPercentage * 100).toStringAsFixed(1)}%');
+            '   📈 Taux de completion: ${(controlInfo.completionPercentage * 100).toStringAsFixed(1)}%');
 
         // Afficher les poids réels de Firestore
         double totalWeightFromFirestore = 0;
@@ -140,9 +140,9 @@ class AttributionCollectesService {
           honeyWeightFromFirestore += controle.honeyWeight;
         }
         print(
-            '   💰 Poids total réel (Firestore): \${totalWeightFromFirestore}kg');
+            '   💰 Poids total réel (Firestore): ${totalWeightFromFirestore}kg');
         print(
-            '   🍯 Poids miel réel (Firestore): \${honeyWeightFromFirestore}kg');
+            '   🍯 Poids miel réel (Firestore): ${honeyWeightFromFirestore}kg');
       }
 
       return controlInfo;
@@ -175,20 +175,32 @@ class AttributionCollectesService {
       for (final controle in controles) {
         if (controle.conformityStatus == ConformityStatus.conforme) {
           final produit = ProductControle(
-            id: '\${collecte.id}_\${controle.containerCode}',
-            collecteId: collecte.id,
-            containerCode: controle.containerCode,
-            collecteType: section,
-            localite: _getCollecteLocation(collecte),
-            technicien: collecte.technicien ?? 'Non défini',
+            id: '${collecte.id}_${controle.containerCode}',
+            codeContenant: controle.containerCode,
             dateReception: controle.receptionDate,
-            productType: _getProductTypeFromSection(section),
-            quantity:
-                controle.totalWeight, // 🔧 UTILISER LE VRAI POIDS DE FIRESTORE
-            qualityControl: controle, // 🔧 UTILISER LES VRAIES DONNÉES
-            isAttributed: false,
-            attributionDate: null,
-            attributionDetails: null,
+            producteur: collecte.technicien ?? 'Non défini',
+            village: _getCollecteLocation(collecte),
+            commune: _getCollecteLocation(collecte),
+            quartier: '',
+            nature: _getProductNatureFromSection(section),
+            typeContenant: 'Standard',
+            numeroContenant: controle.containerCode,
+            poidsTotal: controle.totalWeight,
+            poidsMiel: controle.honeyWeight,
+            qualite: controle.quality,
+            teneurEau: controle.waterContent,
+            predominanceFlorale: controle.floralPredominance,
+            estConforme: controle.conformityStatus == ConformityStatus.conforme,
+            causeNonConformite: controle.nonConformityCause,
+            observations: controle.observations,
+            dateControle: controle.createdAt,
+            controleur: controle.controllerName,
+            estAttribue: false,
+            siteOrigine: collecte.site,
+            collecteId: collecte.id,
+            typeCollecte: section.toString(),
+            dateCollecte: collecte.date,
+            controlId: controle.documentId,
           );
 
           produits.add(produit);
@@ -251,33 +263,24 @@ class AttributionCollectesService {
   /// Obtient la localisation d'une collecte
   String _getCollecteLocation(BaseCollecte collecte) {
     if (collecte is Recolte) {
-      return collecte.village ??
-          collecte.commune ??
-          collecte.localisation ??
-          collecte.site;
+      return collecte.village ?? collecte.commune ?? collecte.site;
     } else if (collecte is Scoop) {
-      return collecte.village ??
-          collecte.commune ??
-          collecte.localisation ??
-          collecte.site;
+      return collecte.village ?? collecte.commune ?? collecte.site;
     } else if (collecte is Individuel) {
-      return collecte.village ??
-          collecte.commune ??
-          collecte.localisation ??
-          collecte.site;
+      return collecte.village ?? collecte.commune ?? collecte.site;
     }
     return collecte.site;
   }
 
-  /// Détermine le type de produit selon la section
-  ProductType _getProductTypeFromSection(Section section) {
+  /// Détermine la nature du produit selon la section
+  ProductNature _getProductNatureFromSection(Section section) {
     switch (section) {
       case Section.recoltes:
-        return ProductType.extraction;
+        return ProductNature.brut;
       case Section.scoop:
       case Section.individuel:
       case Section.miellerie:
-        return ProductType.filtrage;
+        return ProductNature.liquide;
     }
   }
 }

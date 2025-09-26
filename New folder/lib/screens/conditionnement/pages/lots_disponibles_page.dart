@@ -1,16 +1,15 @@
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import '../conditionnement_edit.dart';
+import 'package:flutter/material.dart';
+import '../conditionnement_models.dart';
+import '../../../utils/smart_appbar.dart';
+import '../services/conditionnement_db_service.dart';
+
 /// 📦 PAGE DES LOTS FILTRÉS DISPONIBLES POUR CONDITIONNEMENT
 ///
 /// Affiche tous les lots filtrés avec leurs numéros de lot et permet de lancer le conditionnement
 /// Connectée à la base de données Firestore
-
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:intl/intl.dart';
-
-import '../../../utils/smart_appbar.dart';
-import '../conditionnement_edit.dart';
-import '../conditionnement_models.dart';
-import '../services/conditionnement_db_service.dart';
 
 class LotsDisponiblesPage extends StatefulWidget {
   const LotsDisponiblesPage({super.key});
@@ -60,11 +59,35 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
   }
 
   void _initializeService() {
-    _conditionnementService = Get.put(ConditionnementDbService());
+    try {
+      _conditionnementService = Get.find<ConditionnementDbService>();
+    } catch (_) {
+      _conditionnementService = Get.put(ConditionnementDbService());
+    }
+    // 🔁 Ecoute des enregistrements de conditionnement pour mise à jour immédiate de la liste
+    ever<String?>(_conditionnementService.lastSaveId, (id) {
+      if (id != null) {
+        // On force un rebuild pour retirer le lot déjà conditionné
+        setState(() {
+          // La logique de retrait est déjà faite côté service mais on filtre au cas où
+          _conditionnementService.lotsDisponibles
+              .removeWhere((lot) => lot.estConditionne);
+        });
+      }
+    });
   }
 
   List<LotFiltre> get _filteredLots {
-    final lots = _conditionnementService.lotsDisponibles;
+    // Toujours exclure les lots déjà conditionnés par sécurité
+    final idsConditionnes = _conditionnementService.conditionnements
+        .map((c) => c.lotOrigine.id)
+        .toSet();
+    final lots = _conditionnementService.lotsDisponibles
+        .where((l) =>
+            !l.estConditionne &&
+            l.peutEtreConditionne &&
+            !idsConditionnes.contains(l.id))
+        .toList();
     if (_searchQuery.isEmpty) return lots;
 
     return lots.where((lot) {
@@ -123,33 +146,29 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
   Widget _buildMainContent(bool isMobile) {
     return AnimatedBuilder(
       animation: _fadeAnimation,
-      builder: (context, child) {
-        return Opacity(
-          opacity: _fadeAnimation.value,
-          child: Column(
-            children: [
-              // Header avec statistiques et recherche
-              _buildHeaderSection(isMobile),
-
-              // Liste des lots
-              Expanded(
-                child: _buildLotsList(isMobile),
-              ),
-            ],
-          ),
-        );
-      },
+      builder: (context, child) => Opacity(
+        opacity: _fadeAnimation.value,
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(child: _buildHeaderSection(isMobile)),
+            SliverPadding(
+              padding: EdgeInsets.only(
+                  left: isMobile ? 16 : 24,
+                  right: isMobile ? 16 : 24,
+                  bottom: 40),
+              sliver: _buildLotsListSliver(isMobile),
+            )
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildHeaderSection(bool isMobile) {
-    final lotsDisponibles =
-        _filteredLots.where((lot) => lot.peutEtreConditionne).length;
-    final lotsConditionnes =
-        _filteredLots.where((lot) => lot.estConditionne).length;
-    final quantiteTotale = _filteredLots
-        .where((lot) => lot.peutEtreConditionne)
-        .fold(0.0, (sum, lot) => sum + lot.quantiteRestante);
+    final lotsDisponibles = _filteredLots.length;
+    final lotsConditionnes = _conditionnementService.conditionnements.length;
+    final quantiteTotale =
+        _filteredLots.fold(0.0, (sum, lot) => sum + lot.quantiteRestante);
 
     return Container(
       margin: EdgeInsets.all(isMobile ? 16 : 24),
@@ -172,36 +191,34 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
       child: Column(
         children: [
           // Statistiques
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard(
-                  'Lots disponibles',
-                  lotsDisponibles.toString(),
-                  Icons.inventory_2,
-                  isMobile,
-                ),
+          Row(children: [
+            Expanded(
+              child: _buildStatCard(
+                'Lots disponibles',
+                lotsDisponibles.toString(),
+                Icons.inventory_2,
+                isMobile,
               ),
-              SizedBox(width: isMobile ? 12 : 16),
-              Expanded(
-                child: _buildStatCard(
-                  'Déjà conditionnés',
-                  lotsConditionnes.toString(),
-                  Icons.check_circle,
-                  isMobile,
-                ),
+            ),
+            SizedBox(width: isMobile ? 12 : 16),
+            Expanded(
+              child: _buildStatCard(
+                'Déjà conditionnés',
+                lotsConditionnes.toString(),
+                Icons.check_circle,
+                isMobile,
               ),
-              SizedBox(width: isMobile ? 12 : 16),
-              Expanded(
-                child: _buildStatCard(
-                  'Quantité totale',
-                  '${quantiteTotale.toStringAsFixed(1)} kg',
-                  Icons.scale,
-                  isMobile,
-                ),
+            ),
+            SizedBox(width: isMobile ? 12 : 16),
+            Expanded(
+              child: _buildStatCard(
+                'Quantité restante',
+                '${quantiteTotale.toStringAsFixed(1)} kg',
+                Icons.scale,
+                isMobile,
               ),
-            ],
-          ),
+            ),
+          ]),
 
           const SizedBox(height: 20),
 
@@ -269,51 +286,56 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
     );
   }
 
-  Widget _buildLotsList(bool isMobile) {
-    final filteredLots = _filteredLots;
+  // Ancienne méthode list remplacée par slivers (supprimée)
 
+  SliverList _buildLotsListSliver(bool isMobile) {
+    final filteredLots = _filteredLots;
     if (filteredLots.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.search_off,
-              size: 64,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              _searchQuery.isEmpty
-                  ? 'Aucun lot filtré disponible'
-                  : 'Aucun lot trouvé pour "${_searchQuery}"',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey.shade600,
-                fontWeight: FontWeight.w500,
+      return SliverList(
+        delegate: SliverChildListDelegate([
+          Padding(
+            padding: const EdgeInsets.only(top: 80),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(Icons.search_off, size: 64, color: Colors.grey.shade400),
+                  const SizedBox(height: 16),
+                  Text(
+                    _searchQuery.isEmpty
+                        ? 'Aucun lot filtré disponible'
+                        : 'Aucun lot trouvé pour "$_searchQuery"',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          )
+        ]),
       );
     }
-
-    return ListView.builder(
-      padding: EdgeInsets.all(isMobile ? 16 : 24),
-      itemCount: filteredLots.length,
-      itemBuilder: (context, index) {
-        final lot = filteredLots[index];
-        return TweenAnimationBuilder<double>(
-          duration: Duration(milliseconds: 600 + (index * 100)),
-          tween: Tween(begin: 0, end: 1),
-          builder: (context, animationValue, child) {
-            return Transform.scale(
-              scale: animationValue,
-              child: _buildLotCard(lot, isMobile),
-            );
-          },
-        );
-      },
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (context, index) {
+          final lot = filteredLots[index];
+          return TweenAnimationBuilder<double>(
+            duration: Duration(milliseconds: 400 + index * 90),
+            tween: Tween(begin: 0, end: 1),
+            builder: (context, value, child) => Opacity(
+              opacity: value,
+              child: Transform.translate(
+                offset: Offset(0, (1 - value) * 20),
+                child: child,
+              ),
+            ),
+            child: _buildLotCard(lot, isMobile),
+          );
+        },
+        childCount: filteredLots.length,
+      ),
     );
   }
 
@@ -672,6 +694,15 @@ class _LotsDisponiblesPageState extends State<LotsDisponiblesPage>
       () => ConditionnementEditPage(lotFiltrageData: lotFiltrageData),
       transition: Transition.rightToLeftWithFade,
       duration: const Duration(milliseconds: 300),
-    );
+    )?.then((result) async {
+      // Si le formulaire a signalé un rafraîchissement après enregistrement
+      if (result is Map && result['action'] == 'refresh') {
+        // Forcer un rechargement complet des données (lots + conditionnements)
+        await _conditionnementService.refreshData();
+        if (mounted) {
+          setState(() {}); // Sécurité : redessiner l'interface
+        }
+      }
+    });
   }
 }

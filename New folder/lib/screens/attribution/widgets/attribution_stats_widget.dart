@@ -16,27 +16,33 @@ class AttributionStatsWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.indigo[600]!,
-            Colors.indigo[700]!,
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.indigo.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 400;
+
+        return Container(
+          padding: EdgeInsets.all(isMobile ? 12 : 16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.indigo[600]!,
+                Colors.indigo[700]!,
+              ],
+            ),
+            borderRadius: BorderRadius.circular(isMobile ? 12 : 16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.indigo.withOpacity(0.3),
+                blurRadius: isMobile ? 8 : 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: isLoading ? _buildLoadingState() : _buildStatsContent(),
+          child: isLoading ? _buildLoadingState() : _buildStatsContent(),
+        );
+      },
     );
   }
 
@@ -74,8 +80,8 @@ class AttributionStatsWidget extends StatelessWidget {
 
       return LayoutBuilder(
         builder: (context, constraints) {
-          final isNarrow = constraints.maxWidth < 600;
-          final isVeryNarrow = constraints.maxWidth < 420;
+          final isNarrow = constraints.maxWidth < 400;
+          final isVeryNarrow = constraints.maxWidth < 320;
 
           return Column(
             children: [
@@ -109,7 +115,7 @@ class AttributionStatsWidget extends StatelessWidget {
                               : '$total produits prêts pour attribution',
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.9),
-                            fontSize: 14,
+                            fontSize: isNarrow ? 12 : 14,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -119,8 +125,10 @@ class AttributionStatsWidget extends StatelessWidget {
                   ),
                   if (urgents > 0)
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isVeryNarrow ? 4 : 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.red[600],
                         borderRadius: BorderRadius.circular(12),
@@ -136,10 +144,10 @@ class AttributionStatsWidget extends StatelessWidget {
                             ),
                           if (!isVeryNarrow) const SizedBox(width: 4),
                           Text(
-                            isVeryNarrow ? '$urgents!' : '$urgents urgents',
-                            style: const TextStyle(
+                            isVeryNarrow ? '$urgents' : '$urgents urgents',
+                            style: TextStyle(
                               color: Colors.white,
-                              fontSize: 12,
+                              fontSize: isVeryNarrow ? 10 : 12,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -148,79 +156,85 @@ class AttributionStatsWidget extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(height: 20),
+              SizedBox(height: isVeryNarrow ? 10 : (isNarrow ? 12 : 20)),
 
               // Statistiques détaillées
-              isVeryNarrow
-                  ? Column(
-                      children: [
-                        _buildStatCard(
-                          'Extraction',
-                          bruts.toString(),
-                          Icons.science,
-                          Colors.brown,
-                          total > 0 ? (bruts / total) * 100 : 0,
-                          isCompact: true,
-                          isMobile: true,
-                        ),
-                        const SizedBox(height: 6),
-                        _buildStatCard(
-                          'Filtrage',
-                          liquides.toString(),
-                          Icons.water_drop,
-                          Colors.blue,
-                          total > 0 ? (liquides / total) * 100 : 0,
-                          isCompact: true,
-                          isMobile: true,
-                        ),
-                        const SizedBox(height: 6),
-                        _buildStatCard(
-                          'Cire',
-                          cire.toString(),
-                          Icons.spa,
-                          Colors.amber[700]!,
-                          total > 0 ? (cire / total) * 100 : 0,
-                          isCompact: true,
-                          isMobile: true,
-                        ),
-                      ],
-                    )
-                  : Row(
-                      children: [
-                        Flexible(
-                          child: _buildStatCard(
-                            'Extraction',
-                            bruts.toString(),
-                            Icons.science,
-                            Colors.brown,
-                            total > 0 ? (bruts / total) * 100 : 0,
-                            isCompact: isNarrow,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Flexible(
-                          child: _buildStatCard(
-                            'Filtrage',
-                            liquides.toString(),
-                            Icons.water_drop,
-                            Colors.blue,
-                            total > 0 ? (liquides / total) * 100 : 0,
-                            isCompact: isNarrow,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Flexible(
-                          child: _buildStatCard(
-                            isVeryNarrow ? 'Cire' : 'Traitement Cire',
-                            cire.toString(),
-                            Icons.spa,
-                            Colors.amber[700]!,
-                            total > 0 ? (cire / total) * 100 : 0,
-                            isCompact: isNarrow,
-                          ),
-                        ),
-                      ],
+              if (isVeryNarrow)
+                // Stack vertically on very narrow screens with optimized spacing
+                Column(
+                  children: [
+                    _buildStatCard(
+                      'Extraction',
+                      bruts.toString(),
+                      Icons.science,
+                      Colors.brown,
+                      total > 0 ? (bruts / total) * 100 : 0,
+                      isCompact: true,
+                      isMobile: true,
                     ),
+                    const SizedBox(height: 6),
+                    _buildStatCard(
+                      'Filtrage',
+                      liquides.toString(),
+                      Icons.water_drop,
+                      Colors.blue,
+                      total > 0 ? (liquides / total) * 100 : 0,
+                      isCompact: true,
+                      isMobile: true,
+                    ),
+                    const SizedBox(height: 6),
+                    _buildStatCard(
+                      'Cire',
+                      cire.toString(),
+                      Icons.spa,
+                      Colors.amber[700]!,
+                      total > 0 ? (cire / total) * 100 : 0,
+                      isCompact: true,
+                      isMobile: true,
+                    ),
+                  ],
+                )
+              else
+                // Horizontal layout for wider screens with better proportions
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 1,
+                      child: _buildStatCard(
+                        'Extraction',
+                        bruts.toString(),
+                        Icons.science,
+                        Colors.brown,
+                        total > 0 ? (bruts / total) * 100 : 0,
+                        isCompact: isNarrow,
+                      ),
+                    ),
+                    SizedBox(width: isNarrow ? 10 : 16),
+                    Expanded(
+                      flex: 1,
+                      child: _buildStatCard(
+                        'Filtrage',
+                        liquides.toString(),
+                        Icons.water_drop,
+                        Colors.blue,
+                        total > 0 ? (liquides / total) * 100 : 0,
+                        isCompact: isNarrow,
+                      ),
+                    ),
+                    SizedBox(width: isNarrow ? 10 : 16),
+                    Expanded(
+                      flex: 1,
+                      child: _buildStatCard(
+                        isNarrow ? 'Cire' : 'Traitement Cire',
+                        cire.toString(),
+                        Icons.spa,
+                        Colors.amber[700]!,
+                        total > 0 ? (cire / total) * 100 : 0,
+                        isCompact: isNarrow,
+                      ),
+                    ),
+                  ],
+                ),
             ],
           );
         },
@@ -309,10 +323,12 @@ class AttributionStatsWidget extends StatelessWidget {
             )
           : // Desktop/tablet layout - vertical organization
           Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 // Icône et valeur
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
                       padding: EdgeInsets.all(isCompact ? 6 : 8),
@@ -362,7 +378,7 @@ class AttributionStatsWidget extends StatelessWidget {
                   '${percentage.toStringAsFixed(1)}%',
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.7),
-                    fontSize: isCompact ? 8 : 10,
+                    fontSize: isCompact ? 9 : 10,
                   ),
                 ),
               ],

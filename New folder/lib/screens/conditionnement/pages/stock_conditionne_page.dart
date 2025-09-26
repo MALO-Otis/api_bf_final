@@ -1,14 +1,13 @@
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter/material.dart';
+import '../conditionnement_models.dart';
+import '../../../utils/smart_appbar.dart';
+import '../services/conditionnement_db_service.dart';
+
 /// 📊 PAGE STOCK CONDITIONNÉ
 ///
 /// Interface moderne pour visualiser et gérer le stock de produits conditionnés
-
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:intl/intl.dart';
-
-import '../../../utils/smart_appbar.dart';
-import '../conditionnement_models.dart';
-import '../services/conditionnement_service.dart';
 
 class StockConditionnePage extends StatefulWidget {
   const StockConditionnePage({super.key});
@@ -19,7 +18,7 @@ class StockConditionnePage extends StatefulWidget {
 
 class _StockConditionnePageState extends State<StockConditionnePage>
     with TickerProviderStateMixin {
-  final ConditionnementService _service = ConditionnementService();
+  late ConditionnementDbService _service;
 
   // Animation controllers
   late AnimationController _fadeController;
@@ -27,7 +26,7 @@ class _StockConditionnePageState extends State<StockConditionnePage>
 
   // Animations
   late Animation<double> _fadeAnimation;
-  late Animation<double> _listAnimation;
+  late Animation<double> _listAnimation; // (conservé pour future animations)
 
   // État de l'application
   bool _isLoading = true;
@@ -42,9 +41,24 @@ class _StockConditionnePageState extends State<StockConditionnePage>
   @override
   void initState() {
     super.initState();
+
+    try {
+      _service = Get.find<ConditionnementDbService>();
+    } catch (e) {
+      print(
+          'ℹ️ [StockPage] Instance service absente, initialisation nouvelle: $e');
+      _service = Get.put(ConditionnementDbService());
+    }
+
     _initializeAnimations();
-    _loadData();
     _searchController.addListener(_onSearchChanged);
+
+    // 🔥 Décaler le chargement après l'initialisation complète
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadData();
+      }
+    });
   }
 
   @override
@@ -83,36 +97,183 @@ class _StockConditionnePageState extends State<StockConditionnePage>
     ));
 
     // Démarrer les animations
-    _fadeController.forward();
-    Future.delayed(const Duration(milliseconds: 300), () {
-      _listController.forward();
-    });
-  }
-
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-
-    try {
-      final results = await Future.wait([
-        _service.getConditionnements(),
-        _service.getStatistiquesConditionnement(),
-      ]);
-
-      _conditionnements = results[0] as List<ConditionnementData>;
-      _statistics = results[1] as Map<String, dynamic>;
-    } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les données: $e',
-        backgroundColor: Colors.red.shade600,
-        colorText: Colors.white,
-      );
-    } finally {
-      setState(() => _isLoading = false);
+    if (mounted) {
+      _fadeController.forward();
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          _listController.forward();
+        }
+      });
     }
   }
 
+  Future<void> _loadData() async {
+    if (!mounted) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      print('🔄 [StockPage] Début du chargement des données...');
+
+      // 🔥 UTILISATION DU SERVICE DB MODERNE
+      await _service.refreshData();
+
+      if (!mounted) return;
+
+      _conditionnements = _service.conditionnements;
+      print(
+          '📊 [StockPage] Conditionnements récupérés: ${_conditionnements.length}');
+
+      _statistics = _generateStatistics(_conditionnements);
+      print('📈 [StockPage] Statistiques générées: $_statistics');
+    } catch (e) {
+      print('❌ [StockPage] Erreur chargement: $e');
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Get.snackbar(
+            'Erreur',
+            'Impossible de charger les données: $e',
+            backgroundColor: Colors.red.shade600,
+            colorText: Colors.white,
+          );
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+      print('✅ [StockPage] Chargement terminé');
+    }
+  }
+
+  /// 🐛 DEBUG - Forcer le rechargement avec logs détaillés
+  Future<void> _debugLoadData() async {
+    print('🐛 [DEBUG] =================================');
+    print('🐛 [DEBUG] DÉMARRAGE DEBUG STOCK CONDITIONNÉ');
+    print('🐛 [DEBUG] =================================');
+
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      // Vérifier l'état du service
+      print('🐛 [DEBUG] Service disponible: true');
+      print('🐛 [DEBUG] Service loading: ${_service.isLoading}');
+      print(
+          '🐛 [DEBUG] Conditionnements actuels: ${_service.conditionnements.length}');
+
+      // Forcer le rechargement complet
+      print('🐛 [DEBUG] Lancement refreshData...');
+      await _service.refreshData();
+
+      // Vérifier les résultats
+      _conditionnements = _service.conditionnements;
+      print(
+          '🐛 [DEBUG] Après refresh - Conditionnements: ${_conditionnements.length}');
+
+      if (_conditionnements.isNotEmpty) {
+        print('🐛 [DEBUG] Premier conditionnement:');
+        final premier = _conditionnements.first;
+        print('  - ID: ${premier.id}');
+        print('  - Lot: ${premier.lotOrigine.lotOrigine}');
+        print('  - Date: ${premier.dateConditionnement}');
+        print('  - Quantité: ${premier.quantiteConditionnee}kg');
+        print('  - Emballages: ${premier.emballages.length}');
+      }
+
+      _statistics = _generateStatistics(_conditionnements);
+      print('🐛 [DEBUG] Statistiques: $_statistics');
+
+      // Message de succès
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Get.snackbar(
+            'Debug Info',
+            'Conditionnements trouvés: ${_conditionnements.length}',
+            backgroundColor: Colors.blue.shade600,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 3),
+          );
+        });
+      }
+    } catch (e) {
+      print('🐛 [DEBUG] ERREUR: $e');
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Get.snackbar(
+            'Erreur Debug',
+            'Erreur: $e',
+            backgroundColor: Colors.red.shade600,
+            colorText: Colors.white,
+          );
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+      print('🐛 [DEBUG] =================================');
+      print('🐛 [DEBUG] FIN DEBUG STOCK CONDITIONNÉ');
+      print('🐛 [DEBUG] =================================');
+    }
+  }
+
+  // Test data creation removed per requirement
+
+  /// 📊 GÉNÉRATION DES STATISTIQUES À PARTIR DES CONDITIONNEMENTS
+  Map<String, dynamic> _generateStatistics(
+      List<ConditionnementData> conditionnements) {
+    if (conditionnements.isEmpty) {
+      return {
+        'totalLots': 0,
+        'quantiteTotale': 0.0,
+        'valeurTotale': 0.0,
+      };
+    }
+
+    double quantiteTotale = 0.0;
+    double valeurTotale = 0.0;
+    final sitesStats = <String, Map<String, dynamic>>{};
+    final floraleStats = <String, Map<String, dynamic>>{};
+
+    for (final conditionnement in conditionnements) {
+      quantiteTotale += conditionnement.quantiteConditionnee;
+      valeurTotale += conditionnement.prixTotal;
+
+      // Stats par site
+      final site = conditionnement.lotOrigine.site;
+      sitesStats[site] ??= {'nombre': 0, 'quantite': 0.0, 'valeur': 0.0};
+      sitesStats[site]!['nombre'] = (sitesStats[site]!['nombre'] as int) + 1;
+      sitesStats[site]!['quantite'] =
+          (sitesStats[site]!['quantite'] as double) +
+              conditionnement.quantiteConditionnee;
+      sitesStats[site]!['valeur'] =
+          (sitesStats[site]!['valeur'] as double) + conditionnement.prixTotal;
+
+      // Stats par florale
+      final florale = conditionnement.lotOrigine.predominanceFlorale;
+      floraleStats[florale] ??= {'nombre': 0, 'quantite': 0.0, 'valeur': 0.0};
+      floraleStats[florale]!['nombre'] =
+          (floraleStats[florale]!['nombre'] as int) + 1;
+      floraleStats[florale]!['quantite'] =
+          (floraleStats[florale]!['quantite'] as double) +
+              conditionnement.quantiteConditionnee;
+      floraleStats[florale]!['valeur'] =
+          (floraleStats[florale]!['valeur'] as double) +
+              conditionnement.prixTotal;
+    }
+
+    return {
+      'totalLots': conditionnements.length,
+      'quantiteTotale': quantiteTotale,
+      'valeurTotale': valeurTotale,
+      'repartitionSites': sitesStats,
+      'repartitionFlorale': floraleStats,
+    };
+  }
+
   void _onSearchChanged() {
+    if (!mounted) return;
     setState(() {
       _searchQuery = _searchController.text.toLowerCase();
     });
@@ -154,6 +315,11 @@ class _StockConditionnePageState extends State<StockConditionnePage>
             onPressed: _loadData,
             tooltip: 'Actualiser',
           ),
+          IconButton(
+            icon: const Icon(Icons.bug_report),
+            onPressed: _debugLoadData,
+            tooltip: 'Debug - Forcer rechargement',
+          ),
         ],
       ),
       body: _isLoading ? _buildLoadingView() : _buildMainContent(isMobile),
@@ -190,21 +356,60 @@ class _StockConditionnePageState extends State<StockConditionnePage>
       builder: (context, child) {
         return Opacity(
           opacity: _fadeAnimation.value,
-          child: Column(
-            children: [
-              // En-tête avec statistiques
-              _buildHeaderSection(isMobile),
-
-              // Filtres et recherche
-              _buildFiltersSection(isMobile),
-
-              // Liste du stock
-              Expanded(child: _buildStockList(isMobile)),
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(child: _buildHeaderSection(isMobile)),
+              SliverToBoxAdapter(child: _buildFiltersSection(isMobile)),
+              SliverPadding(
+                padding: EdgeInsets.only(
+                    left: isMobile ? 12 : 20,
+                    right: isMobile ? 12 : 20,
+                    bottom: 40),
+                sliver: _buildStockListSliver(isMobile),
+              ),
             ],
           ),
         );
       },
     );
+  }
+
+  SliverList _buildStockListSliver(bool isMobile) {
+    final items = _filteredConditionnements;
+    if (items.isEmpty) {
+      return SliverList(
+        delegate: SliverChildListDelegate([
+          Padding(
+            padding: EdgeInsets.only(
+                left: isMobile ? 12 : 20, right: isMobile ? 12 : 20, top: 40),
+            child: _buildEmptyState(),
+          )
+        ]),
+      );
+    }
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (context, index) {
+          final conditionnement = items[index];
+          return AnimatedBuilder(
+            animation: _listAnimation,
+            builder: (context, child) => Opacity(
+              opacity: _listAnimation.value,
+              child: Transform.translate(
+                offset: Offset(0, (1 - _listAnimation.value) * 20),
+                child: child,
+              ),
+            ),
+            child: _buildStockCard(conditionnement, isMobile, index),
+          );
+        },
+        childCount: items.length,
+      ),
+    );
+  }
+
+  Widget _buildStockCard(ConditionnementData c, bool isMobile, int index) {
+    return _buildConditionnementCard(c, isMobile);
   }
 
   Widget _buildHeaderSection(bool isMobile) {
@@ -271,36 +476,35 @@ class _StockConditionnePageState extends State<StockConditionnePage>
 
             const SizedBox(height: 20),
 
-            // Statistiques
+            // Statistiques 🔥 MISE À JOUR
             Row(
               children: [
                 Expanded(
                   child: _buildStatCard(
-                    'Lots en stock',
-                    _statistics['lotsConditionnes']?.toString() ?? '0',
-                    Icons.warehouse,
-                    Colors.white,
+                    '🏭',
+                    'Lots',
+                    '${_statistics['totalLots'] ?? 0}',
+                    'Total de lots conditionnés',
                     isMobile,
                   ),
                 ),
-                SizedBox(width: isMobile ? 8 : 16),
+                const SizedBox(width: 12),
                 Expanded(
                   child: _buildStatCard(
-                    'Quantité totale',
-                    '${(_statistics['quantiteTotaleConditionnee'] ?? 0).toStringAsFixed(1)} kg',
-                    Icons.scale,
-                    Colors.white,
+                    '⚖️',
+                    'Quantité',
+                    '${(_statistics['quantiteTotale'] ?? 0.0).toStringAsFixed(1)} kg',
+                    'Poids total en stock',
                     isMobile,
                   ),
                 ),
-                SizedBox(width: isMobile ? 8 : 16),
+                const SizedBox(width: 12),
                 Expanded(
                   child: _buildStatCard(
-                    'Valeur stock',
-                    ConditionnementUtils.formatPrix(
-                        _statistics['valeurTotaleConditionnee'] ?? 0),
-                    Icons.attach_money,
-                    Colors.white,
+                    '💰',
+                    'Valeur',
+                    '${(_statistics['valeurTotale'] ?? 0.0).toStringAsFixed(0)} FCFA',
+                    'Valeur totale du stock',
                     isMobile,
                   ),
                 ),
@@ -312,35 +516,51 @@ class _StockConditionnePageState extends State<StockConditionnePage>
     );
   }
 
+  /// 📊 WIDGET CARD STATISTIQUE
   Widget _buildStatCard(
-      String title, String value, IconData icon, Color color, bool isMobile) {
+      String icon, String title, String value, String subtitle, bool isMobile) {
     return Container(
-      padding: EdgeInsets.all(isMobile ? 10 : 16),
+      padding: EdgeInsets.all(isMobile ? 12 : 16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
+        color: Colors.white.withOpacity(0.15),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.3)),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.3),
+          width: 1,
+        ),
       ),
       child: Column(
         children: [
-          Icon(icon, color: color, size: isMobile ? 18 : 24),
-          SizedBox(height: isMobile ? 4 : 8),
           Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontSize: isMobile ? 10 : 14,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
+            icon,
+            style: TextStyle(fontSize: isMobile ? 20 : 24),
           ),
+          const SizedBox(height: 8),
           Text(
             title,
             style: TextStyle(
-              color: color.withOpacity(0.9),
+              color: Colors.white.withOpacity(0.9),
+              fontSize: isMobile ? 10 : 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: isMobile ? 14 : 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.7),
               fontSize: isMobile ? 8 : 10,
             ),
-            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -353,339 +573,64 @@ class _StockConditionnePageState extends State<StockConditionnePage>
       padding: EdgeInsets.all(isMobile ? 12 : 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: Colors.black.withOpacity(0.1),
             blurRadius: 10,
-            offset: const Offset(0, 5),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
       child: Row(
         children: [
-          // Recherche
           Expanded(
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
                 hintText: 'Rechercher un lot...',
-                prefixIcon: const Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search, color: Color(0xFF9C27B0)),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
                 ),
                 filled: true,
                 fillColor: Colors.grey.shade100,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
           ),
-
-          if (!isMobile) ...[
-            const SizedBox(width: 16),
-
-            // Filtre par site
-            SizedBox(
-              width: 200,
-              child: DropdownButtonFormField<String>(
-                value: _selectedSiteFilter,
-                decoration: InputDecoration(
-                  labelText: 'Site',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide.none,
-                  ),
-                  filled: true,
-                  fillColor: Colors.grey.shade100,
-                ),
-                items: const [
-                  DropdownMenuItem(value: null, child: Text('Tous les sites')),
-                  DropdownMenuItem(
-                      value: 'Koudougou', child: Text('Koudougou')),
-                  DropdownMenuItem(
-                      value: 'Ouagadougou', child: Text('Ouagadougou')),
-                  DropdownMenuItem(
-                      value: 'Bobo-Dioulasso', child: Text('Bobo-Dioulasso')),
-                  DropdownMenuItem(value: 'Kaya', child: Text('Kaya')),
-                ],
-                onChanged: (value) {
-                  setState(() => _selectedSiteFilter = value);
-                },
+          const SizedBox(width: 12),
+          DropdownButton<String>(
+            value: _selectedSiteFilter,
+            hint: const Text('Site'),
+            items: [
+              const DropdownMenuItem<String>(
+                value: null,
+                child: Text('Tous les sites'),
               ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStockList(bool isMobile) {
-    final filteredList = _filteredConditionnements;
-
-    if (filteredList.isEmpty) {
-      return _buildEmptyState();
-    }
-
-    return AnimatedBuilder(
-      animation: _listAnimation,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: _listAnimation.value,
-          child: ListView.builder(
-            padding: EdgeInsets.all(isMobile ? 12 : 20),
-            itemCount: filteredList.length,
-            itemBuilder: (context, index) {
-              return AnimatedContainer(
-                duration: Duration(milliseconds: 300 + (index * 50)),
-                margin: const EdgeInsets.only(bottom: 16),
-                child: _buildStockCard(filteredList[index], isMobile, index),
-              );
+              ...(_statistics['repartitionSites'] as Map<String, dynamic>? ??
+                      {})
+                  .keys
+                  .map((site) => DropdownMenuItem<String>(
+                        value: site,
+                        child: Text(site),
+                      )),
+            ],
+            onChanged: (value) {
+              if (mounted) {
+                setState(() {
+                  _selectedSiteFilter = value;
+                });
+              }
             },
           ),
-        );
-      },
-    );
-  }
-
-  Widget _buildStockCard(
-      ConditionnementData conditionnement, bool isMobile, int index) {
-    return TweenAnimationBuilder<double>(
-      duration: Duration(milliseconds: 600 + (index * 100)),
-      tween: Tween(begin: 0, end: 1),
-      builder: (context, animationValue, child) {
-        return Transform.translate(
-          offset: Offset(0, 30 * (1 - animationValue)),
-          child: Opacity(
-            opacity: animationValue,
-            child: Card(
-              elevation: 6,
-              shadowColor: Colors.purple.withOpacity(0.2),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.white,
-                      _getFloralTypeColor(
-                              conditionnement.lotOrigine.typeFlorale)
-                          .withOpacity(0.05),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(isMobile ? 16 : 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // En-tête
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: _getFloralTypeColor(
-                                      conditionnement.lotOrigine.typeFlorale)
-                                  .withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              ConditionnementUtils.iconesByFlorale[
-                                      conditionnement.lotOrigine.typeFlorale] ??
-                                  '🍯',
-                              style: const TextStyle(fontSize: 24),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Lot ${conditionnement.lotOrigine.lotOrigine}',
-                                  style: TextStyle(
-                                    fontSize: isMobile ? 16 : 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  conditionnement
-                                      .lotOrigine.predominanceFlorale,
-                                  style: TextStyle(
-                                    fontSize: isMobile ? 12 : 14,
-                                    color: Colors.grey.shade600,
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                ),
-                                Text(
-                                  'Conditionné le ${DateFormat('dd/MM/yyyy').format(conditionnement.dateConditionnement)}',
-                                  style: TextStyle(
-                                    fontSize: isMobile ? 10 : 12,
-                                    color: Colors.grey.shade500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade100,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.green.shade300),
-                            ),
-                            child: Text(
-                              'En stock',
-                              style: TextStyle(
-                                color: Colors.green.shade700,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Informations détaillées
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                _buildInfoColumn(
-                                  'Quantité',
-                                  '${conditionnement.quantiteConditionnee.toStringAsFixed(1)} kg',
-                                  Icons.scale,
-                                  Colors.blue.shade600,
-                                  isMobile,
-                                ),
-                                _buildInfoColumn(
-                                  'Total pots',
-                                  conditionnement.nbTotalPots.toString(),
-                                  Icons.inventory_2,
-                                  Colors.orange.shade600,
-                                  isMobile,
-                                ),
-                                _buildInfoColumn(
-                                  'Valeur',
-                                  ConditionnementUtils.formatPrix(
-                                      conditionnement.prixTotal),
-                                  Icons.attach_money,
-                                  Colors.green.shade600,
-                                  isMobile,
-                                ),
-                              ],
-                            ),
-                            if (conditionnement.emballages.isNotEmpty) ...[
-                              const SizedBox(height: 16),
-                              const Divider(),
-                              const SizedBox(height: 8),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  'Détail des emballages :',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: isMobile ? 12 : 14,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: conditionnement.emballages
-                                    .map(
-                                      (emballage) => Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: _getFloralTypeColor(
-                                                  conditionnement
-                                                      .lotOrigine.typeFlorale)
-                                              .withOpacity(0.1),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                          border: Border.all(
-                                            color: _getFloralTypeColor(
-                                                    conditionnement
-                                                        .lotOrigine.typeFlorale)
-                                                .withOpacity(0.3),
-                                          ),
-                                        ),
-                                        child: Text(
-                                          '${emballage.type.nom}: ${emballage.nombreUnitesReelles}',
-                                          style: TextStyle(
-                                            fontSize: isMobile ? 10 : 12,
-                                            fontWeight: FontWeight.w600,
-                                            color: _getFloralTypeColor(
-                                                conditionnement
-                                                    .lotOrigine.typeFlorale),
-                                          ),
-                                        ),
-                                      ),
-                                    )
-                                    .toList(),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildInfoColumn(
-      String label, String value, IconData icon, Color color, bool isMobile) {
-    return Expanded(
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: isMobile ? 16 : 20),
-          SizedBox(height: isMobile ? 4 : 8),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: isMobile ? 12 : 14,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: isMobile ? 8 : 10,
-              color: Colors.grey.shade600,
-            ),
-            textAlign: TextAlign.center,
-          ),
         ],
       ),
     );
   }
+
+  // Ancienne méthode _buildStockList supprimée (remplacée par SliverList)
 
   Widget _buildEmptyState() {
     return Center(
@@ -699,7 +644,7 @@ class _StockConditionnePageState extends State<StockConditionnePage>
               shape: BoxShape.circle,
             ),
             child: Icon(
-              Icons.warehouse_outlined,
+              Icons.inventory_2,
               size: 64,
               color: Colors.grey.shade400,
             ),
@@ -708,34 +653,68 @@ class _StockConditionnePageState extends State<StockConditionnePage>
           Text(
             'Aucun stock trouvé',
             style: TextStyle(
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
               color: Colors.grey.shade600,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            _searchQuery.isNotEmpty
-                ? 'Aucun stock ne correspond à votre recherche'
-                : 'Aucun produit conditionné en stock',
+            'Aucun produit conditionné en stock',
+            textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 14,
               color: Colors.grey.shade500,
             ),
-            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: _loadData,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Actualiser'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF9C27B0),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(25),
-              ),
+
+          // Bouton de debug visible pour diagnostiquer
+          Container(
+            padding: const EdgeInsets.all(16),
+            margin: const EdgeInsets.symmetric(horizontal: 32),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.shade200),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue.shade600),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Diagnostic',
+                      style: TextStyle(
+                        color: Colors.blue.shade600,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton.icon(
+                  onPressed: _debugLoadData,
+                  icon: const Icon(Icons.bug_report),
+                  label: const Text('Diagnostiquer le problème'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade600,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Button for creating test data removed
+                const SizedBox(height: 8),
+                Text(
+                  'Cliquez pour voir les détails techniques\ndans la console de debug',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.blue.shade600,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -743,14 +722,379 @@ class _StockConditionnePageState extends State<StockConditionnePage>
     );
   }
 
-  Color _getFloralTypeColor(TypeFlorale type) {
-    switch (type) {
-      case TypeFlorale.monoFleur:
-        return const Color(0xFFFF6B35);
-      case TypeFlorale.milleFleurs:
-        return const Color(0xFFF7931E);
-      case TypeFlorale.mixte:
-        return const Color(0xFFFFD23F);
-    }
+  Widget _buildConditionnementCard(
+      ConditionnementData conditionnement, bool isMobile) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        elevation: 3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: InkWell(
+          onTap: () => _showConditionnementDetails(conditionnement),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: EdgeInsets.all(isMobile ? 12 : 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF9C27B0).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        ConditionnementUtils.iconesByFlorale[
+                                conditionnement.lotOrigine.typeFlorale] ??
+                            '🍯',
+                        style: const TextStyle(fontSize: 20),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Lot ${conditionnement.lotOrigine.lotOrigine}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: isMobile ? 14 : 16,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            conditionnement.lotOrigine.predominanceFlorale,
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: isMobile ? 12 : 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '${conditionnement.quantiteConditionnee.toStringAsFixed(1)} kg',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF9C27B0),
+                            fontSize: isMobile ? 12 : 14,
+                          ),
+                        ),
+                        Text(
+                          '${conditionnement.prixTotal.toStringAsFixed(0)} FCFA',
+                          style: TextStyle(
+                            color: Colors.green.shade600,
+                            fontSize: isMobile ? 10 : 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.location_on,
+                      size: 16,
+                      color: Colors.grey.shade500,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      conditionnement.lotOrigine.site,
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      Icons.calendar_today,
+                      size: 16,
+                      color: Colors.grey.shade500,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      DateFormat('dd/MM/yyyy')
+                          .format(conditionnement.dateConditionnement),
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    ...conditionnement.emballages.take(3).map(
+                          (emb) => Container(
+                            margin: const EdgeInsets.only(right: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF9C27B0).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '${emb.nombreSaisi}x ${emb.type.nom}',
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                          ),
+                        ),
+                    if (conditionnement.emballages.length > 3)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '+${conditionnement.emballages.length - 3}',
+                          style: const TextStyle(fontSize: 10),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showConditionnementDetails(ConditionnementData conditionnement) {
+    Get.dialog(
+      Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 620, maxHeight: 700),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF9C27B0).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          ConditionnementUtils.iconesByFlorale[
+                                  conditionnement.lotOrigine.typeFlorale] ??
+                              '🍯',
+                          style: const TextStyle(fontSize: 24),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Lot ${conditionnement.lotOrigine.lotOrigine}',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              conditionnement.lotOrigine.predominanceFlorale,
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Get.back(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _buildDetailRow('Site', conditionnement.lotOrigine.site),
+                  _buildDetailRow(
+                      'Date de conditionnement',
+                      DateFormat('dd/MM/yyyy')
+                          .format(conditionnement.dateConditionnement)),
+                  _buildDetailRow('Quantité conditionnée',
+                      '${conditionnement.quantiteConditionnee.toStringAsFixed(2)} kg'),
+                  _buildDetailRow('Prix total',
+                      '${conditionnement.prixTotal.toStringAsFixed(0)} FCFA'),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Emballages:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  // En-tête des colonnes
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 24), // espace pour icône
+                        Expanded(
+                          flex: 3,
+                          child: Text(
+                            'Type',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text('Contenu',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey.shade700)),
+                        ),
+                        Expanded(
+                          child: Text('Unites',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey.shade700)),
+                        ),
+                        Expanded(
+                          child: Text('Poids',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey.shade700)),
+                        ),
+                        Expanded(
+                          child: Text('Prix',
+                              textAlign: TextAlign.end,
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey.shade700)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  ...conditionnement.emballages.map((emb) {
+                    final contenance = emb.type.contenanceKg;
+                    final nb = emb.nombreUnitesReelles;
+                    final poids = emb.poidsTotal;
+                    final prix = emb.prixTotal;
+                    final prixUnitaire = nb > 0 ? prix / nb : 0;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Text(emb.type.icone),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 3,
+                            child: Text('${emb.type.nom}'),
+                          ),
+                          Expanded(
+                            child: Text('${contenance.toStringAsFixed(2)}kg',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontSize: 12)),
+                          ),
+                          Expanded(
+                            child: Text('$nb',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontSize: 12)),
+                          ),
+                          Expanded(
+                            child: Text('${poids.toStringAsFixed(2)}kg',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontSize: 12)),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text('${prix.toStringAsFixed(0)} FCFA',
+                                    style: TextStyle(
+                                        color: Colors.green.shade600,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12)),
+                                Text('${prixUnitaire.toStringAsFixed(0)} u',
+                                    style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                        fontSize: 10)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 16),
+                  Divider(color: Colors.grey.shade300),
+                  const SizedBox(height: 8),
+                  _buildDetailRow('Quantité restante',
+                      '${conditionnement.quantiteRestante.toStringAsFixed(2)} kg'),
+                  if (conditionnement.observations?.isNotEmpty == true)
+                    _buildDetailRow(
+                        'Observations', conditionnement.observations!.trim()),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 140,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const Text(' : '),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

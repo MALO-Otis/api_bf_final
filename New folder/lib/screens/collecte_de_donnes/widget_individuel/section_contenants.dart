@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../data/models/collecte_models.dart';
 import 'contenant_card.dart';
+import '../../../../widgets/money_icon_widget.dart';
 
 class SectionContenants extends StatefulWidget {
   final List<ContenantModel> contenants;
@@ -27,7 +28,6 @@ class _SectionContenantsState extends State<SectionContenants> {
 
   // Énumérations pour la cire (comme SCOOP)
   static const List<String> _typesMiel = ['Liquide', 'Brute', 'Cire'];
-  static const List<String> _typesContenant = ['Bidon', 'Seau', 'Fût'];
   static const List<String> _typesCire = ['Brute', 'Purifiée'];
   static const List<String> _couleursCire = ['Jaune', 'Marron'];
 
@@ -36,6 +36,18 @@ class _SectionContenantsState extends State<SectionContenants> {
   String? _typeCire;
   String? _couleurCire;
   String _typeContenant = 'Bidon';
+
+  /// Retourne les types de contenants disponibles selon le type de miel sélectionné
+  List<String> _getAvailableContenantTypes() {
+    if (_typeMiel == 'Cire') {
+      // 🆕 Pour la cire, seul le sac est autorisé
+      return ['Sac'];
+    } else {
+      // Pour les autres types de miel (Liquide, Brute), tous les contenants sont disponibles
+      return ['Bidon', 'Seau', 'Fût'];
+    }
+  }
+
   final _poidsController = TextEditingController();
   final _prixController = TextEditingController();
   final _notesController = TextEditingController();
@@ -288,6 +300,14 @@ class _SectionContenantsState extends State<SectionContenants> {
                 _typeCire = null;
                 _couleurCire = null;
               }
+              // 🆕 Si on passe à Cire, forcer le type de contenant à Sac
+              if (_typeMiel == 'Cire') {
+                _typeContenant = 'Sac';
+              }
+              // Si on passe à un autre type que Cire, remettre à Bidon par défaut
+              else {
+                _typeContenant = 'Bidon';
+              }
             });
           },
         ),
@@ -388,6 +408,8 @@ class _SectionContenantsState extends State<SectionContenants> {
   }
 
   Widget _buildTypeContenantField() {
+    final availableTypes = _getAvailableContenantTypes();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -397,12 +419,14 @@ class _SectionContenantsState extends State<SectionContenants> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: _typeContenant,
+          value: availableTypes.contains(_typeContenant)
+              ? _typeContenant
+              : availableTypes.first,
           decoration: InputDecoration(
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
             prefixIcon: const Icon(Icons.inventory),
           ),
-          items: _typesContenant.map((type) {
+          items: availableTypes.map((type) {
             return DropdownMenuItem(
               value: type,
               child: Text(type),
@@ -412,6 +436,33 @@ class _SectionContenantsState extends State<SectionContenants> {
             setState(() => _typeContenant = value!);
           },
         ),
+        // 🆕 Message informatif pour la cire
+        if (_typeMiel == 'Cire') ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.blue.shade600, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Pour la cire, seul le sac est disponible',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.blue.shade800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -472,7 +523,7 @@ class _SectionContenantsState extends State<SectionContenants> {
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8)),
-                  prefixIcon: const Icon(Icons.monetization_on),
+                  prefixIcon: const SimpleMoneyIcon(),
                   hintText: '0',
                   suffixText: 'CFA',
                 ),

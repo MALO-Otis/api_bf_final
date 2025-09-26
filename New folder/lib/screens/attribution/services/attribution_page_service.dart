@@ -352,6 +352,9 @@ class AttributionPageService {
             case HoneyNature.prefilitre:
               nature = ProductNature.liquide;
               break;
+            case HoneyNature.cire:
+              nature = ProductNature.cire;
+              break;
           }
 
           final produit = ProductControle(

@@ -827,6 +827,7 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
                 child: DropdownButtonFormField<String>(
                   value: _sortBy,
                   decoration: InputDecoration(
+                    isDense: true,
                     labelText: 'Trier par',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -877,6 +878,7 @@ class _AttributedProductsPageState extends State<AttributedProductsPage>
                 child: DropdownButtonFormField<String>(
                   value: _groupBy,
                   decoration: InputDecoration(
+                    isDense: true,
                     labelText: 'Grouper par',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),

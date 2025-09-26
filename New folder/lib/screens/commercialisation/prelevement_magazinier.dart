@@ -686,7 +686,7 @@ class _PrelevementMagasinierFormPageState
                                           fontSize: 13)),
                                   Row(
                                     children: [
-                                      Icon(Icons.monetization_on,
+                                      Icon(Icons.text_fields,
                                           color: Colors.green[800], size: 18),
                                       const SizedBox(width: 2),
                                       Text(
@@ -719,7 +719,7 @@ class _PrelevementMagasinierFormPageState
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        Icon(Icons.monetization_on, color: Colors.green[800]),
+                        Icon(Icons.text_fields, color: Colors.green[800]),
                         const SizedBox(width: 8),
                         Text("Prix estimé : ",
                             style: TextStyle(fontWeight: FontWeight.bold)),

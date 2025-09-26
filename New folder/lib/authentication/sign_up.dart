@@ -1,10 +1,9 @@
-import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-
 import 'login.dart';
+import 'package:get/get.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -105,6 +104,32 @@ class _SignupPageState extends State<SignupPage> {
     passwordController.dispose();
     confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  // --- Méthode pour vider tous les champs ---
+  void _clearAllFields() {
+    setState(() {
+      // Vider tous les controllers
+      firstNameController.clear();
+      lastNameController.clear();
+      emailController.clear();
+      phoneController.clear();
+      passwordController.clear();
+      confirmPasswordController.clear();
+
+      // Réinitialiser les sélections
+      selectedSite = null;
+      selectedRole = null;
+      availableRoles = [];
+
+      // Réinitialiser les états
+      showPassword = false;
+      showConfirmPassword = false;
+      passwordStrength = 0;
+
+      // Vider les erreurs
+      errors.clear();
+    });
   }
 
   // --- Validation en temps réel ---
@@ -267,6 +292,9 @@ class _SignupPageState extends State<SignupPage> {
 
       setState(() => isLoading = false);
 
+      // Vider tous les champs après création réussie
+      _clearAllFields();
+
       // Affichage du popup de vérification d'email
       _showEmailVerificationDialog();
     } on FirebaseAuthException catch (e) {
@@ -400,7 +428,8 @@ class _SignupPageState extends State<SignupPage> {
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                Get.offAll(() => LoginPage());
+                // Revenir à la page précédente (gestion des utilisateurs) ou dashboard
+                Get.back();
               },
               child: Text(
                 'Continuer',
@@ -861,10 +890,17 @@ class _SignupPageState extends State<SignupPage> {
                           ),
                           SizedBox(height: 18),
                           OutlinedButton.icon(
-                            onPressed: () => Get.offAll(DashboardPage()),
+                            onPressed: () {
+                              // Si on peut revenir en arrière, on le fait, sinon on va au dashboard
+                              if (Get.routing.previous.isNotEmpty) {
+                                Get.back();
+                              } else {
+                                Get.offAll(() => DashboardPage());
+                              }
+                            },
                             icon: Icon(Icons.arrow_back,
                                 color: Color(0xFF2D0C0D)),
-                            label: Text("Retour au dashboard",
+                            label: Text("Retour",
                                 style: TextStyle(color: Color(0xFF2D0C0D))),
                             style: OutlinedButton.styleFrom(
                               padding: EdgeInsets.symmetric(vertical: 16),

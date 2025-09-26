@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/miellerie_models.dart';
+import 'miellerie_service.dart';
 
 class StatsMielleriesService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -179,41 +180,42 @@ class StatsMielleriesService {
     }
   }
 
-  /// Charge les Mielleries existantes pour un site
+  /// Charge les Mielleries existantes pour un site (utilise le nouveau service)
   static Future<List<MiellerieModel>> loadMielleriesForSite(String site) async {
     try {
-      final snapshot = await _firestore
-          .collection('Sites')
-          .doc(site)
-          .collection('listes_mielleries')
-          .orderBy('nom')
-          .get();
-
-      return snapshot.docs
-          .map((doc) => MiellerieModel.fromFirestore(doc))
-          .toList();
+      return await MiellerieService.getMielleriesForSite();
     } catch (e) {
       print('❌ Erreur chargement Mielleries: $e');
       return [];
     }
   }
 
-  /// Crée une nouvelle Miellerie
-  static Future<String> createMiellerie(
-      MiellerieModel miellerie, String site) async {
+  /// Charge les noms des mielleries pour les dropdowns
+  static Future<List<String>> loadMiellerieNamesForSite() async {
     try {
-      final miellerieId =
-          'miellerie_${miellerie.nom.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}';
+      return await MiellerieService.getMiellerieNamesForSite();
+    } catch (e) {
+      print('❌ Erreur chargement noms mielleries: $e');
+      return [];
+    }
+  }
 
-      await _firestore
-          .collection('Sites')
-          .doc(site)
-          .collection('listes_mielleries')
-          .doc(miellerieId)
-          .set(miellerie.toFirestore());
-
-      print('✅ Miellerie créée avec ID: $miellerieId');
-      return miellerieId;
+  /// Crée une nouvelle Miellerie (utilise le nouveau service)
+  static Future<String> createMiellerie({
+    required String nom,
+    required String localite,
+    String? telephone,
+    String? adresse,
+    String? notes,
+  }) async {
+    try {
+      return await MiellerieService.addMiellerie(
+        nom: nom,
+        localite: localite,
+        telephone: telephone,
+        adresse: adresse,
+        notes: notes,
+      );
     } catch (e) {
       print('❌ Erreur création Miellerie: $e');
       rethrow;

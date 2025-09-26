@@ -75,4 +75,5 @@ class _MainExtractionPageState extends State<MainExtractionPage>
   }
 }
 
-// Ancien placeholder supprimé (migration terminée)
+/// Page placeholder pour l'ancien historique d'extraction
+// Ancien placeholder d'historique supprimé (remplacé par ExtractionHistoryPage)

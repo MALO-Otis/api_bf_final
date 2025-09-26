@@ -39,6 +39,7 @@ class _QualityControlFormState extends State<QualityControlForm> {
   late final TextEditingController _containerTypeController;
   late final TextEditingController _containerNumberController;
   late final TextEditingController _totalWeightController;
+  late final TextEditingController _containerWeightController;
   late final TextEditingController _honeyWeightController;
   late final TextEditingController _qualityController;
   late final TextEditingController _waterContentController;
@@ -52,6 +53,7 @@ class _QualityControlFormState extends State<QualityControlForm> {
   DateTime? _collectionStartDate;
   DateTime? _collectionEndDate;
   HoneyNature _honeyNature = HoneyNature.brut;
+  ContainerType? _selectedContainerType;
   ConformityStatus _conformityStatus = ConformityStatus.conforme;
 
   // Nouveau système d'ID universel
@@ -68,6 +70,11 @@ class _QualityControlFormState extends State<QualityControlForm> {
     super.initState();
     _initializeControllers();
     _loadExistingData();
+
+    // Auto-remplir la prédominance florale si c'est un nouveau formulaire
+    if (widget.existingData == null) {
+      _autoFillFloralPredominance();
+    }
   }
 
   void _initializeControllers() {
@@ -77,6 +84,7 @@ class _QualityControlFormState extends State<QualityControlForm> {
     _containerTypeController = TextEditingController();
     _containerNumberController = TextEditingController();
     _totalWeightController = TextEditingController();
+    _containerWeightController = TextEditingController();
     _honeyWeightController = TextEditingController();
     _qualityController = TextEditingController();
     _waterContentController = TextEditingController();
@@ -95,6 +103,7 @@ class _QualityControlFormState extends State<QualityControlForm> {
       _containerTypeController.text = data.containerType;
       _containerNumberController.text = data.containerNumber;
       _totalWeightController.text = data.totalWeight.toString();
+      _containerWeightController.text = data.containerWeight?.toString() ?? '';
       _honeyWeightController.text = data.honeyWeight.toString();
       _qualityController.text = data.quality;
       _waterContentController.text = data.waterContent?.toString() ?? '';
@@ -108,12 +117,168 @@ class _QualityControlFormState extends State<QualityControlForm> {
       _collectionEndDate = data.collectionEndDate;
       _honeyNature = data.honeyNature;
       _conformityStatus = data.conformityStatus;
+
+      // Initialiser le type de contenant sélectionné
+      try {
+        _selectedContainerType = ContainerType.values.firstWhere(
+          (type) => type.label == data.containerType,
+        );
+      } catch (e) {
+        _selectedContainerType = null;
+      }
     } else {
       // Pré-remplir avec les données de la collecte
       _producerController.text = widget.collecteItem.technicien ?? '';
       _villageController.text = widget.collecteItem.site;
       _containerNumberController.text = widget.containerCode;
     }
+  }
+
+  /// Calcule automatiquement le poids du miel
+  void _calculateHoneyWeight() {
+    final totalWeightText = _totalWeightController.text;
+    final containerWeightText = _containerWeightController.text;
+
+    if (totalWeightText.isNotEmpty && containerWeightText.isNotEmpty) {
+      try {
+        final totalWeight = double.parse(totalWeightText);
+        final containerWeight = double.parse(containerWeightText);
+        final honeyWeight = totalWeight - containerWeight;
+
+        if (honeyWeight >= 0) {
+          _honeyWeightController.text = honeyWeight.toStringAsFixed(2);
+        } else {
+          _honeyWeightController.text = '';
+          _showSnackBar(
+              'Erreur: Le poids du contenant ne peut pas être supérieur au poids total',
+              true);
+        }
+      } catch (e) {
+        _honeyWeightController.text = '';
+      }
+    } else {
+      _honeyWeightController.text = '';
+    }
+  }
+
+  /// Détermine automatiquement la qualité et la conformité selon la teneur en eau
+  void _determineQualityFromWaterContent() {
+    final waterContentText = _waterContentController.text;
+
+    if (waterContentText.isNotEmpty) {
+      try {
+        final waterContent = double.parse(waterContentText);
+        String quality;
+        ConformityStatus conformity;
+
+        if (waterContent < 21) {
+          quality = 'Très bonne';
+          conformity = ConformityStatus.conforme;
+        } else if (waterContent >= 21 && waterContent <= 22) {
+          quality = 'Bonne';
+          conformity = ConformityStatus.conforme;
+        } else {
+          quality = 'Mauvaise';
+          conformity = ConformityStatus.nonConforme;
+        }
+
+        setState(() {
+          _qualityController.text = quality;
+          _conformityStatus = conformity;
+        });
+      } catch (e) {
+        // En cas d'erreur de parsing, on ne fait rien
+      }
+    }
+  }
+
+  /// Auto-remplissage de la prédominance florale selon les données récupérées
+  void _autoFillFloralPredominance() {
+    // Récupérer les données du collecte item
+    final collecteItem = widget.collecteItem;
+
+    // Auto-remplir selon le type de collecte
+    if (collecteItem is Individuel) {
+      // Pour les collectes individuelles, utiliser le site
+      _autoFillFromRegionalData(collecteItem.site);
+    } else {
+      // Pour les autres types, utiliser la propriété site générique
+      _autoFillFromRegionalData(collecteItem.site);
+    }
+  }
+
+  /// Auto-remplissage selon la région/site
+  void _autoFillFromRegionalData(String? site) {
+    if (site == null || site.isEmpty) return;
+
+    // Mapping basique selon les sites (peut être étendu avec une base de données)
+    final Map<String, String> regionalFloralData = {
+      'Koudougou': 'Karité, Baobab',
+      'Bobo Dioulasso': 'Acacia, Néré',
+      'Ouagadougou': 'Eucalyptus, Manguier',
+      'Bingo': 'Karité, Acacia',
+      'Soaw': 'Néré, Baobab',
+      'Dalo': 'Acacia, Tamarinier',
+      'Dassa': 'Karité, Eucalyptus',
+      'Léo': 'Baobab, Karité',
+      'PÔ': 'Acacia, Néré',
+      'Bagré': 'Eucalyptus, Manguier',
+      'Dereguan': 'Karité, Baobab',
+      'Sifarasso': 'Acacia, Karité',
+      'Mahon': 'Néré, Acacia',
+      'Mangodara': 'Karité, Tamarinier',
+      'Niantono': 'Baobab, Karité',
+      'Nalere': 'Acacia, Eucalyptus',
+      'Tourni': 'Karité, Néré',
+      'Bougoula': 'Baobab, Acacia',
+      'Bouroum Bouroum': 'Karité, Manguier',
+    };
+
+    // Mapping des types de ruches selon les sites
+    final Map<String, String> regionalHiveData = {
+      'Koudougou': 'Ruche kenyane',
+      'Bobo Dioulasso': 'Ruche traditionnelle',
+      'Ouagadougou': 'Ruche moderne',
+      'Bingo': 'Ruche kenyane',
+      'Soaw': 'Ruche traditionnelle',
+      'Dalo': 'Ruche kenyane',
+      'Dassa': 'Ruche moderne',
+      'Léo': 'Ruche traditionnelle',
+      'PÔ': 'Ruche kenyane',
+      'Bagré': 'Ruche moderne',
+      'Dereguan': 'Ruche traditionnelle',
+      'Sifarasso': 'Ruche kenyane',
+      'Mahon': 'Ruche traditionnelle',
+      'Mangodara': 'Ruche kenyane',
+      'Niantono': 'Ruche traditionnelle',
+      'Nalere': 'Ruche moderne',
+      'Tourni': 'Ruche kenyane',
+      'Bougoula': 'Ruche traditionnelle',
+      'Bouroum Bouroum': 'Ruche kenyane',
+    };
+
+    // Auto-remplir la prédominance florale
+    final floralSuggestion = regionalFloralData[site];
+    if (floralSuggestion != null &&
+        _floralPredominanceController.text.isEmpty) {
+      _floralPredominanceController.text = floralSuggestion;
+    }
+
+    // Auto-remplir le type de ruche
+    final hiveSuggestion = regionalHiveData[site];
+    if (hiveSuggestion != null && _hiveTypeController.text.isEmpty) {
+      _hiveTypeController.text = hiveSuggestion;
+    }
+  }
+
+  void _showSnackBar(String message, bool isError) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   @override
@@ -125,6 +290,7 @@ class _QualityControlFormState extends State<QualityControlForm> {
     _containerTypeController.dispose();
     _containerNumberController.dispose();
     _totalWeightController.dispose();
+    _containerWeightController.dispose();
     _honeyWeightController.dispose();
     _qualityController.dispose();
     _waterContentController.dispose();
@@ -465,15 +631,7 @@ class _QualityControlFormState extends State<QualityControlForm> {
               const SizedBox(height: 16),
             ],
             if (isMobile && isVerySmall) ...[
-              _buildTextField(
-                'Contenant du miel',
-                _containerTypeController,
-                'Type de contenant',
-                isMobile,
-                isRequired: true,
-                isReadOnly:
-                    false, // ✏️ Modifiable à la demande de l'utilisateur
-              ),
+              _buildContainerTypeSelector(theme, isMobile),
               const SizedBox(height: 16),
               _buildTextField(
                 'Numéro (code) *',
@@ -487,15 +645,7 @@ class _QualityControlFormState extends State<QualityControlForm> {
               Row(
                 children: [
                   Expanded(
-                    child: _buildTextField(
-                      'Contenant du miel',
-                      _containerTypeController,
-                      'Type de contenant',
-                      isMobile,
-                      isRequired: true,
-                      isReadOnly:
-                          false, // ✏️ Modifiable à la demande de l'utilisateur
-                    ),
+                    child: _buildContainerTypeSelector(theme, isMobile),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -530,14 +680,25 @@ class _QualityControlFormState extends State<QualityControlForm> {
                 'kg',
                 isMobile,
                 isRequired: true,
+                onChanged: (value) => _calculateHoneyWeight(),
               ),
               const SizedBox(height: 16),
               _buildNumberField(
-                'Poids du miel',
+                'Poids du contenant',
+                _containerWeightController,
+                'kg',
+                isMobile,
+                isRequired: true,
+                onChanged: (value) => _calculateHoneyWeight(),
+              ),
+              const SizedBox(height: 16),
+              _buildNumberField(
+                'Poids du miel (calculé automatiquement)',
                 _honeyWeightController,
                 'kg',
                 isMobile,
                 isRequired: true,
+                isReadOnly: true,
               ),
               const SizedBox(height: 16),
               _buildNumberField(
@@ -545,7 +706,8 @@ class _QualityControlFormState extends State<QualityControlForm> {
                 _waterContentController,
                 '%',
                 isMobile,
-                isOptional: true,
+                isRequired: true,
+                onChanged: (value) => _determineQualityFromWaterContent(),
               ),
             ] else ...[
               Row(
@@ -557,16 +719,29 @@ class _QualityControlFormState extends State<QualityControlForm> {
                       'kg',
                       isMobile,
                       isRequired: true,
+                      onChanged: (value) => _calculateHoneyWeight(),
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: _buildNumberField(
-                      'Poids du miel',
+                      'Poids du contenant',
+                      _containerWeightController,
+                      'kg',
+                      isMobile,
+                      isRequired: true,
+                      onChanged: (value) => _calculateHoneyWeight(),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _buildNumberField(
+                      'Poids du miel (auto)',
                       _honeyWeightController,
                       'kg',
                       isMobile,
                       isRequired: true,
+                      isReadOnly: true,
                     ),
                   ),
                 ],
@@ -577,7 +752,8 @@ class _QualityControlFormState extends State<QualityControlForm> {
                 _waterContentController,
                 '%',
                 isMobile,
-                isOptional: true,
+                isRequired: true,
+                onChanged: (value) => _determineQualityFromWaterContent(),
               ),
             ],
           ],
@@ -593,11 +769,12 @@ class _QualityControlFormState extends State<QualityControlForm> {
           Icons.verified,
           [
             _buildTextField(
-              'Qualité',
+              'Qualité (déterminée automatiquement selon la teneur en eau)',
               _qualityController,
-              'Description de la qualité',
+              'Très bonne (<21%), Bonne (21-22%), Mauvaise (>22%)',
               isMobile,
               isRequired: true,
+              isReadOnly: true,
             ),
             const SizedBox(height: 16),
             _buildTextField(
@@ -792,6 +969,8 @@ class _QualityControlFormState extends State<QualityControlForm> {
     bool isMobile, {
     bool isRequired = false,
     bool isOptional = false,
+    bool isReadOnly = false,
+    Function(String)? onChanged,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -825,11 +1004,20 @@ class _QualityControlFormState extends State<QualityControlForm> {
         const SizedBox(height: 6),
         TextFormField(
           controller: controller,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          style: TextStyle(fontSize: isMobile ? 14 : 16),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
-          ],
+          readOnly: isReadOnly,
+          keyboardType: isReadOnly
+              ? null
+              : const TextInputType.numberWithOptions(decimal: true),
+          style: TextStyle(
+            fontSize: isMobile ? 14 : 16,
+            color: isReadOnly ? Colors.grey[600] : null,
+          ),
+          inputFormatters: isReadOnly
+              ? null
+              : [
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                ],
+          onChanged: onChanged,
           decoration: InputDecoration(
             suffixText: unit,
             border: OutlineInputBorder(
@@ -840,6 +1028,8 @@ class _QualityControlFormState extends State<QualityControlForm> {
               vertical: isMobile ? 12 : 16,
             ),
             isDense: isMobile,
+            filled: isReadOnly,
+            fillColor: isReadOnly ? Colors.grey[100] : null,
           ),
           validator: isRequired
               ? (value) {
@@ -972,7 +1162,21 @@ class _QualityControlFormState extends State<QualityControlForm> {
                   groupValue: _honeyNature,
                   onChanged: (value) {
                     if (value != null) {
-                      setState(() => _honeyNature = value);
+                      setState(() {
+                        _honeyNature = value;
+                        // Réinitialiser le type de contenant si nécessaire
+                        final availableTypes =
+                            QualityControlUtils.getAvailableContainerTypes(
+                                value);
+                        if (_selectedContainerType != null &&
+                            !availableTypes.contains(_selectedContainerType)) {
+                          _selectedContainerType = availableTypes.isNotEmpty
+                              ? availableTypes.first
+                              : null;
+                          _containerTypeController.text =
+                              _selectedContainerType?.label ?? '';
+                        }
+                      });
                     }
                   },
                   contentPadding: EdgeInsets.zero,
@@ -982,6 +1186,69 @@ class _QualityControlFormState extends State<QualityControlForm> {
             );
           }).toList(),
         ),
+      ],
+    );
+  }
+
+  Widget _buildContainerTypeSelector(ThemeData theme, bool isMobile) {
+    final availableTypes =
+        QualityControlUtils.getAvailableContainerTypes(_honeyNature);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Type de contenant *',
+          style: theme.textTheme.labelMedium?.copyWith(
+            fontWeight: FontWeight.w500,
+            fontSize: isMobile ? 12 : 14,
+          ),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<ContainerType>(
+          value: _selectedContainerType,
+          decoration: InputDecoration(
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            hintText: 'Sélectionner un type',
+          ),
+          items: availableTypes.map((type) {
+            return DropdownMenuItem<ContainerType>(
+              value: type,
+              child: Text(
+                type.label,
+                style: TextStyle(fontSize: isMobile ? 13 : 14),
+              ),
+            );
+          }).toList(),
+          onChanged: (value) {
+            setState(() {
+              _selectedContainerType = value;
+              _containerTypeController.text = value?.label ?? '';
+            });
+          },
+          validator: (value) {
+            if (value == null) {
+              return 'Veuillez sélectionner un type de contenant';
+            }
+            return null;
+          },
+        ),
+        if (_honeyNature == HoneyNature.cire)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Pour la cire, seul le sac est disponible',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.orange.shade600,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -1179,9 +1446,13 @@ class _QualityControlFormState extends State<QualityControlForm> {
           collectionStartDate: _collectionStartDate,
           collectionEndDate: _collectionEndDate,
           honeyNature: _honeyNature,
-          containerType: _containerTypeController.text.trim(),
+          containerType: _selectedContainerType?.label ??
+              _containerTypeController.text.trim(),
           containerNumber: _containerNumberController.text.trim(),
           totalWeight: double.parse(_totalWeightController.text),
+          containerWeight: _containerWeightController.text.isNotEmpty
+              ? double.parse(_containerWeightController.text)
+              : null,
           honeyWeight: double.parse(_honeyWeightController.text),
           quality: _qualityController.text.trim(),
           waterContent: _waterContentController.text.isNotEmpty

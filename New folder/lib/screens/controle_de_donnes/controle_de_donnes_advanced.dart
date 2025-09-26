@@ -1,29 +1,35 @@
-// Page principale du module de contrôle avancé
-import 'dart:async';
 import 'dart:io';
-import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:typed_data';
 import 'package:get/get.dart';
-import 'package:flutter/services.dart';
-import '../../authentication/user_session.dart';
+import 'utils/formatters.dart';
+import 'package:intl/intl.dart';
+import 'widgets/stat_card.dart';
+import 'widgets/collecte_card.dart';
+import 'package:pdf/pdf.dart' as pdf;
 import 'models/collecte_models.dart';
+import 'widgets/details_dialog.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'historique_controle_page.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:flutter/foundation.dart';
+import 'historique_attribution_page.dart';
 import 'models/attribution_models_v2.dart';
-// import 'services/mock_data_service.dart'; // SERVICE SUPPRIMÉ - Générait des données fictives
+import 'widgets/multi_select_popover.dart';
+import 'package:share_plus/share_plus.dart';
 import 'services/firestore_data_service.dart';
 import 'services/pdf_statistics_service.dart';
-import 'services/quality_control_service.dart';
-import 'package:share_plus/share_plus.dart';
-// Import supprimé car non utilisé
 import 'services/global_refresh_service.dart';
-import 'utils/formatters.dart';
-import 'widgets/stat_card.dart';
-import 'widgets/multi_select_popover.dart';
-import 'widgets/collecte_card.dart';
-import 'widgets/details_dialog.dart';
+import 'services/quality_control_service.dart';
+import '../../authentication/user_session.dart';
 import 'widgets/control_attribution_modal.dart';
 import '../extraction/pages/main_extraction_page.dart';
 import '../attribution/attribution_page_complete.dart';
-import 'historique_controle_page.dart';
-import 'historique_attribution_page.dart';
+import '../../utils/pdf_download_helper.dart' as pdf_saver;
+// Page principale du module de contrôle avancé
+// import 'services/mock_data_service.dart'; // SERVICE SUPPRIMÉ - Générait des données fictives
+// Import supprimé car non utilisé
 
 class ControlePageDashboard extends StatefulWidget {
   const ControlePageDashboard({super.key});
@@ -273,53 +279,86 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
     try {
       print('🔄 Génération du rapport PDF...');
 
-      // Générer le PDF avec toutes les données (sans vérification de permissions)
-      final pdfFile =
-          await PDFStatisticsService.generateStatisticsReport(_allData);
+      // Nom de fichier (commun aux plateformes)
+      final site = (Get.isRegistered<UserSession>()
+              ? (Get.find<UserSession>().site ?? 'Site')
+              : 'Site')
+          .replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final nowStr = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final fileName = 'Statistiques_Collectes_${site}_$nowStr.pdf';
 
-      print('✅ PDF généré: ${pdfFile.path}');
+      if (kIsWeb) {
+        // Génération d'un PDF minimal côté Web + téléchargement via ancre HTML
+        final bytes = await _buildMinimalStatsPdfBytes(site);
+        await pdf_saver.savePdfBytes(bytes, fileName);
 
-      if (!mounted) return;
-
-      // Afficher une notification de succès avec option de partage
-      final isInDownloads = pdfFile.path.contains('Download');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle, color: Colors.white),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'Rapport PDF généré avec succès !',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    Text(
-                      isInDownloads
-                          ? 'Fichier sauvé dans Téléchargements'
-                          : 'Fichier sauvé dans Documents',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white.withValues(alpha: 0.8)),
-                    ),
-                  ],
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Rapport PDF téléchargé dans votre navigateur',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 6),
           ),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 8),
-          action: SnackBarAction(
-            label: 'OUVRIR DOSSIER',
-            textColor: Colors.white,
-            onPressed: () => _showFileLocation(pdfFile),
+        );
+      } else {
+        // Plateformes IO (Windows/Android/iOS): utiliser le service existant puis afficher l'emplacement
+        final pdfFile =
+            await PDFStatisticsService.generateStatisticsReport(_allData);
+
+        print('✅ PDF généré: ${pdfFile.path}');
+
+        if (!mounted) return;
+
+        final isInDownloads = pdfFile.path.contains('Download');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Rapport PDF généré avec succès !',
+                        style: TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      Text(
+                        isInDownloads
+                            ? 'Fichier sauvé dans Téléchargements'
+                            : 'Fichier sauvé dans Documents',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white.withValues(alpha: 0.8)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: 'OUVRIR DOSSIER',
+              textColor: Colors.white,
+              onPressed: () => _showFileLocation(pdfFile),
+            ),
           ),
-        ),
-      );
+        );
+      }
     } catch (e) {
       print('❌ Erreur génération PDF: $e');
 
@@ -358,6 +397,79 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
         setState(() => _isGeneratingPDF = false);
       }
     }
+  }
+
+  /// Construit un PDF minimal (web) avec les stats essentielles pour éviter les APIs non supportées
+  Future<Uint8List> _buildMinimalStatsPdfBytes(String site) async {
+    final doc = pw.Document();
+
+    // Calcul basique des stats (totaux) pour ne pas dépendre du service IO
+    int totalCollectes = 0;
+    int totalContainers = 0;
+    double totalWeight = 0;
+    double totalAmount = 0;
+
+    for (final list in _allData.values) {
+      for (final collecte in list) {
+        totalCollectes += 1;
+        totalContainers += collecte.containersCount ?? 0;
+        totalWeight += collecte.totalWeight ?? 0;
+        totalAmount += collecte.totalAmount ?? 0;
+      }
+    }
+
+    final now = DateTime.now();
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: pdf.PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(24),
+        build: (ctx) => [
+          pw.Container(
+            padding: const pw.EdgeInsets.all(16),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: pdf.PdfColors.green),
+              borderRadius: pw.BorderRadius.circular(8),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text('RAPPORT STATISTIQUE (VERSION WEB)',
+                    style: pw.TextStyle(
+                      fontSize: 18,
+                      fontWeight: pw.FontWeight.bold,
+                      color: pdf.PdfColors.green800,
+                    )),
+                pw.SizedBox(height: 8),
+                pw.Text('Site: $site'),
+                pw.Text('Date: ${DateFormat('dd/MM/yyyy HH:mm').format(now)}'),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 16),
+          pw.Table(
+            border: pw.TableBorder.all(color: pdf.PdfColors.grey300),
+            children: [
+              _row('Total collectes', '$totalCollectes'),
+              _row('Contenants', '$totalContainers'),
+              _row('Poids total (kg)', totalWeight.toStringAsFixed(1)),
+              _row('Montant total (FCFA)',
+                  NumberFormat('#,###').format(totalAmount)),
+            ],
+          ),
+          pw.SizedBox(height: 24),
+        ],
+      ),
+    );
+
+    return await doc.save();
+  }
+
+  pw.TableRow _row(String a, String b) {
+    return pw.TableRow(children: [
+      pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(a)),
+      pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(b)),
+    ]);
   }
 
   /// Génère le PDF sans vérification de permissions (utilise le cache de l'app)
@@ -533,6 +645,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
   }
 
   /// Gère l'attribution d'une collecte vers extraction ou filtration
+  // ignore: unused_element
   void _handleAttribution(BaseCollecte collecte, AttributionType type) async {
     final result = await showDialog<bool>(
       context: context,
@@ -558,11 +671,19 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
     var filtered = sectionData.where((item) {
       if (_userRole == Role.controller) {
         // Un contrôleur ne voit que son site
-        final userSession = Get.find<UserSession>();
-        final userSite = userSession.site ?? '';
-        if (userSite.isNotEmpty && item.site != userSite) {
-          return false;
+        String? userSite;
+        try {
+          final userSession = Get.find<UserSession>();
+          userSite = (userSession.site ?? '').trim();
+        } catch (_) {
+          userSite = null;
         }
+
+        // Si le site utilisateur est inconnu, on NE montre rien (sécurité stricte)
+        if (userSite == null || userSite.isEmpty) return false;
+
+        // Filtrer strictement par le site de l'utilisateur
+        if (item.site != userSite) return false;
       }
       return true;
     }).toList();
@@ -584,6 +705,19 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
     filtered.sort((a, b) => _compareBySortKey(a, b));
 
     return filtered;
+  }
+
+  /// Autorisations d'édition: admin = tout; contrôleur = uniquement son site
+  bool _canEditCollecte(BaseCollecte item) {
+    if (_userRole == Role.admin) return true;
+    try {
+      final userSession = Get.find<UserSession>();
+      final userSite = (userSession.site ?? '').trim();
+      if (userSite.isEmpty) return false;
+      return item.site == userSite;
+    } catch (_) {
+      return false;
+    }
   }
 
   bool _matchesFilters(BaseCollecte item) {
@@ -701,6 +835,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
   }
 
   /// Calcule les statistiques avec les données de contrôle qualité
+  // ignore: unused_element
   Future<CollecteStats> _calculateStatsWithQualityControl(
       List<BaseCollecte> data) async {
     final baseStats = _calculateStats(data);
@@ -740,7 +875,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
     final theme = Theme.of(context);
     final filteredData = _getFilteredAndSortedData();
     final stats = _calculateStats(filteredData);
-    final isMobile = MediaQuery.of(context).size.width < 600;
+    // Unified sliver layout is used for all sizes now
 
     return Focus(
       autofocus: true,
@@ -762,17 +897,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
         backgroundColor: theme.colorScheme.surface,
         body: _isLoading
             ? _buildLoadingView()
-            : isMobile
-                // Nouveau layout mobile basé sur Slivers pour éviter les overflows
-                ? _buildMobileScrollContent(theme, stats, filteredData)
-                // Layout desktop/tablette existant
-                : Column(
-                    children: [
-                      _buildHeader(theme, stats),
-                      if (_showFilters) _buildFiltersBar(theme),
-                      Expanded(child: _buildMainContent(theme, filteredData)),
-                    ],
-                  ),
+            : _buildScrollContent(theme, stats, filteredData),
         floatingActionButton: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -943,8 +1068,8 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
     );
   }
 
-  /// Nouveau contenu mobile: tout en Slivers (header, filtres, stats, liste)
-  Widget _buildMobileScrollContent(
+  /// Contenu unique: tout en Slivers (header, filtres, stats, liste) pour toutes tailles d'écran
+  Widget _buildScrollContent(
     ThemeData theme,
     CollecteStats stats,
     List<BaseCollecte> filteredData,
@@ -974,6 +1099,15 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
           ),
         ),
 
+        // Etat vide explicite sur mobile
+        if (filteredData.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: _buildEmptyState(theme),
+            ),
+          ),
+
         // Liste des collectes
         SliverList(
           delegate: SliverChildBuilderDelegate(
@@ -986,7 +1120,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                   child: CollecteCard(
                     section: _activeTab,
                     item: visible[index],
-                    canEdit: _userRole == Role.admin,
+                    canEdit: _canEditCollecte(visible[index]),
                     onOpen: () {
                       showModalBottomSheet(
                         context: context,
@@ -1051,10 +1185,12 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
           // Titre et actions
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
+            child: Builder(
+              builder: (context) {
+                final isMobile = MediaQuery.of(context).size.width < 600;
+                if (isMobile) {
+                  // Sur mobile: empiler le titre et les actions verticalement
+                  return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
@@ -1069,13 +1205,38 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      _buildHeaderActions(theme),
                     ],
-                  ),
-                ),
+                  );
+                }
 
-                // Actions header
-                _buildHeaderActions(theme),
-              ],
+                // Desktop/tablette: titre à gauche, actions à droite
+                return Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Collectes — Détails avancés',
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            'Module de contrôle et d\'analyse des collectes',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _buildHeaderActions(theme),
+                  ],
+                );
+              },
             ),
           ),
 
@@ -2101,6 +2262,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
   }
 
   // Nouvelles fonctions pour le mobile responsive
+  // ignore: unused_element
   Widget _buildCompactDateFilter(
     String label,
     DateTime? value,
@@ -2154,6 +2316,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
     );
   }
 
+  // ignore: unused_element
   Widget _buildMobileNumericFiltersAccordion(ThemeData theme) {
     return Theme(
       data: theme.copyWith(dividerColor: Colors.transparent),
@@ -2265,6 +2428,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
     );
   }
 
+  // ignore: unused_element
   Widget _buildMainContent(ThemeData theme, List<BaseCollecte> filteredData) {
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -2311,7 +2475,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
         label: isMobile ? 'Montant' : 'Montant total',
         value: Formatters.formatFCFA(stats.montant),
         tone: StatCardTone.warning,
-        icon: Icons.attach_money,
+        icon: Icons.text_fields,
       ),
       StatCard(
         label: isMobile ? 'Contenants' : 'Nombre de contenants',
@@ -2443,7 +2607,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
                   child: CollecteCard(
                     section: _activeTab,
                     item: visibleData[index],
-                    canEdit: _userRole == Role.admin,
+                    canEdit: _canEditCollecte(visibleData[index]),
                     onOpen: () {
                       showModalBottomSheet(
                         context: context,
@@ -2889,6 +3053,7 @@ class _ControlePageDashboardState extends State<ControlePageDashboard>
   }
 
   /// FloatingActionButton pour l'attribution de produits
+  // ignore: unused_element
   Widget _buildProductAttributionFAB(ThemeData theme) {
     return FloatingActionButton.extended(
       heroTag: 'fab-advanced-product-attribution',
