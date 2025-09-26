@@ -7,11 +7,10 @@ import '../../utils/smart_appbar.dart';
 import 'package:flutter/foundation.dart';
 import 'services/conditionnement_db_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 /// 🎯 PAGE D'ÉDITION DE CONDITIONNEMENT MODERNE
 ///
 /// Interface simplifiée et fonctionnelle avec calculs en temps réel
-
-
 
 class ConditionnementEditController extends GetxController {
   // Données du lot filtré
@@ -554,11 +553,67 @@ class ConditionnementEditController extends GetxController {
                                   ),
                                   child: Row(
                                     children: [
-                                      Text(
-                                        detail['icone'],
-                                        style: const TextStyle(fontSize: 24),
-                                      ),
-                                      const SizedBox(width: 12),
+                                      Builder(builder: (_) {
+                                        // Tenter d'afficher l'image pour ce type s'il y en a une
+                                        String _assetFromLabel(String label) {
+                                          final s = label.toLowerCase();
+                                          if (s.contains('1.5') ||
+                                              s.contains('1,5'))
+                                            return 'assets/images/1,5kg.png';
+                                          if (s.contains('1kg') ||
+                                              s.contains('1 kg'))
+                                            return 'assets/images/1kg.png';
+                                          if (s.contains('750g'))
+                                            return 'assets/images/750g.png';
+                                          if (s.contains('500g'))
+                                            return 'assets/images/500g.png';
+                                          if (s.contains('250g'))
+                                            return 'assets/images/250g.png';
+                                          if (s.contains('30g'))
+                                            return 'assets/images/30g.png';
+                                          if (s.contains('20g'))
+                                            return 'assets/images/20g.png';
+                                          return '';
+                                        }
+
+                                        final typeNom =
+                                            (detail['type'] as String?) ?? '';
+                                        final asset = _assetFromLabel(typeNom);
+                                        if (asset.isNotEmpty) {
+                                          return Padding(
+                                            padding: const EdgeInsets.only(
+                                                right: 12.0),
+                                            child: Image.asset(
+                                              asset,
+                                              width: 40,
+                                              height: 40,
+                                              fit: BoxFit.contain,
+                                              errorBuilder:
+                                                  (context, error, stackTrace) {
+                                                return Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                          right: 12.0),
+                                                  child: Text(
+                                                    detail['icone'] ?? '🫙',
+                                                    style: const TextStyle(
+                                                        fontSize: 24),
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          );
+                                        }
+                                        return Padding(
+                                          padding: const EdgeInsets.only(
+                                              right: 12.0),
+                                          child: Text(
+                                            detail['icone'] ?? '🫙',
+                                            style:
+                                                const TextStyle(fontSize: 24),
+                                          ),
+                                        );
+                                      }),
                                       Expanded(
                                         child: Column(
                                           crossAxisAlignment:
@@ -1399,6 +1454,41 @@ class ConditionnementEditPage extends StatelessWidget {
   /// Construit une ligne d'emballage ultra-réactive avec stats permanentes
   Widget _buildEmballageRow(ConditionnementEditController controller,
       EmballageType emballage, bool isMobile) {
+    // Essaie de fournir un visuel réaliste si une image existe pour ce type d'emballage.
+    String? _getEmballageAsset(EmballageType e) {
+      final id = e.id.toLowerCase();
+      final nom = e.nom.toLowerCase();
+      // 1,5kg
+      if (id.contains('1_5') || nom.contains('1.5') || nom.contains('1,5')) {
+        return 'assets/images/1,5kg.png';
+      }
+      // 1kg
+      if (id.contains('1kg') || nom.contains('1kg')) {
+        return 'assets/images/1kg.png';
+      }
+      // 750g (si jamais présent)
+      if (id.contains('750g') || nom.contains('750g')) {
+        return 'assets/images/750g.png';
+      }
+      // 500g
+      if (id.contains('500g') || nom.contains('500g')) {
+        return 'assets/images/500g.png';
+      }
+      // 250g
+      if (id.contains('250g') || nom.contains('250g')) {
+        return 'assets/images/250g.png';
+      }
+      // 30g (ex: Pot alvéoles 30g)
+      if (id.contains('30g') || nom.contains('30g')) {
+        return 'assets/images/30g.png';
+      }
+      // 20g (ex: Stick 20g)
+      if (id.contains('20g') || nom.contains('20g')) {
+        return 'assets/images/20g.png';
+      }
+      return null;
+    }
+
     return Obx(() {
       final quantiteSaisie = controller.getQuantiteEmballage(emballage.id);
       final quantiteMaxDisponible =
@@ -1455,8 +1545,8 @@ class ConditionnementEditPage extends StatelessWidget {
                 // Icône avec animation
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
-                  width: 60,
-                  height: 60,
+                  width: 68,
+                  height: 68,
                   decoration: BoxDecoration(
                     color: isActive
                         ? (isValid
@@ -1476,21 +1566,54 @@ class ConditionnementEditPage extends StatelessWidget {
                         : null,
                   ),
                   child: Center(
-                    child: Text(
-                      emballage.icone,
-                      style: TextStyle(
-                        fontSize: isActive ? 28 : 24,
-                        shadows: isActive
-                            ? [
-                                Shadow(
-                                  color: Colors.black.withOpacity(0.3),
-                                  offset: const Offset(1, 1),
-                                  blurRadius: 2,
+                    child: Builder(builder: (_) {
+                      final asset = _getEmballageAsset(emballage);
+                      if (asset != null) {
+                        return Padding(
+                          padding: const EdgeInsets.all(6.0),
+                          child: Image.asset(
+                            asset,
+                            width: isActive ? 64 : 56,
+                            height: isActive ? 64 : 56,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Text(
+                                emballage.icone,
+                                style: TextStyle(
+                                  fontSize: isActive ? 30 : 26,
+                                  shadows: isActive
+                                      ? [
+                                          Shadow(
+                                            color:
+                                                Colors.black.withOpacity(0.3),
+                                            offset: const Offset(1, 1),
+                                            blurRadius: 2,
+                                          ),
+                                        ]
+                                      : null,
                                 ),
-                              ]
-                            : null,
-                      ),
-                    ),
+                              );
+                            },
+                          ),
+                        );
+                      }
+                      // Fallback: utiliser l'emoji existant
+                      return Text(
+                        emballage.icone,
+                        style: TextStyle(
+                          fontSize: isActive ? 30 : 26,
+                          shadows: isActive
+                              ? [
+                                  Shadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    offset: const Offset(1, 1),
+                                    blurRadius: 2,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                      );
+                    }),
                   ),
                 ),
 

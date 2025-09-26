@@ -32,21 +32,90 @@ enum RoleGroup {
 /// Service de gestion des rôles utilisateurs
 class UserRoleService extends GetxController {
   static UserRoleService get instance => Get.find();
-  
+
   final UserSession _userSession = Get.find<UserSession>();
+
+  /// Normalise une chaîne pour comparaison de rôles (minuscule, sans accents, sans espaces superflus)
+  String _normalize(String s) {
+    s = s.toLowerCase().trim();
+    const replacements = {
+      'à': 'a',
+      'â': 'a',
+      'ä': 'a',
+      'á': 'a',
+      'ã': 'a',
+      'å': 'a',
+      'é': 'e',
+      'è': 'e',
+      'ê': 'e',
+      'ë': 'e',
+      'î': 'i',
+      'ï': 'i',
+      'ì': 'i',
+      'í': 'i',
+      'ô': 'o',
+      'ö': 'o',
+      'ò': 'o',
+      'ó': 'o',
+      'õ': 'o',
+      'û': 'u',
+      'ü': 'u',
+      'ù': 'u',
+      'ú': 'u',
+      'ç': 'c',
+      'ñ': 'n',
+      'œ': 'oe',
+      'æ': 'ae',
+    };
+    for (final entry in replacements.entries) {
+      s = s.replaceAll(entry.key, entry.value);
+    }
+    // Unifier espaces multiples
+    s = s.replaceAll(RegExp(r"\s+"), ' ');
+    return s;
+  }
 
   /// Obtient le rôle actuel de l'utilisateur
   UserRole? get currentUserRole {
     final roleString = _userSession.role;
     if (roleString == null) return null;
-    
-    try {
-      return UserRole.values.firstWhere(
-        (role) => role.label.toLowerCase() == roleString.toLowerCase(),
-      );
-    } catch (e) {
-      return null;
+
+    final normalizedInput = _normalize(roleString);
+
+    // 1) Correspondance directe (labels normalisés)
+    for (final role in UserRole.values) {
+      if (_normalize(role.label) == normalizedInput) {
+        return role;
+      }
     }
+
+    // 2) Synonymes connus / corrections d'orthographe fréquentes
+    // Map des synonymes normalisés -> UserRole
+    final Map<String, UserRole> synonyms = {
+      'administrateur': UserRole.admin,
+      'admin': UserRole.admin,
+      'controleur': UserRole.controleur,
+      'controlleur': UserRole.controleur, // faute fréquente
+      'controle': UserRole.controleur,
+      'extraction': UserRole.extracteur,
+      'extracteur': UserRole.extracteur,
+      'filtreur': UserRole.filtreur,
+      'conditionneur': UserRole.conditionneur,
+      'magazinier': UserRole.magazinier,
+      'magasinier': UserRole.magazinier, // variante orthographique
+      'gestionnaire commercial': UserRole.gestionnaireCommercial,
+      'gestionnairecommercial': UserRole.gestionnaireCommercial,
+      'commercial': UserRole.commercial,
+      'caisse': UserRole.caissier,
+      'caissier': UserRole.caissier,
+      'caissiere': UserRole.caissiere,
+    };
+    if (synonyms.containsKey(normalizedInput)) {
+      return synonyms[normalizedInput];
+    }
+
+    // 3) Aucune correspondance trouvée
+    return null;
   }
 
   /// Obtient le groupe de rôle pour l'interface
@@ -69,7 +138,8 @@ class UserRoleService extends GetxController {
       case UserRole.caissiere:
         return RoleGroup.caissier;
       default:
-        return RoleGroup.admin; // Fallback
+        // Fallback sécurisé: ne jamais promouvoir en admin par défaut
+        return RoleGroup.commercial;
     }
   }
 
@@ -79,25 +149,14 @@ class UserRoleService extends GetxController {
       case RoleGroup.admin:
         return true; // Admin a accès à tout
       case RoleGroup.controleur:
-        return [
-          'collecte',
-          'controle',
-          'attribution',
-          'stats_controle'
-        ].contains(module);
+        return ['collecte', 'controle', 'attribution', 'stats_controle']
+            .contains(module);
       case RoleGroup.extracteurFiltreur:
-        return [
-          'extraction',
-          'filtrage',
-          'attribution',
-          'stats_production'
-        ].contains(module);
+        return ['extraction', 'filtrage', 'attribution', 'stats_production']
+            .contains(module);
       case RoleGroup.conditionneur:
-        return [
-          'conditionnement',
-          'filtrage_history',
-          'stats_conditionnement'
-        ].contains(module);
+        return ['conditionnement', 'filtrage_history', 'stats_conditionnement']
+            .contains(module);
       case RoleGroup.commercial:
         return [
           'vente',
@@ -106,11 +165,7 @@ class UserRoleService extends GetxController {
           'stats_commercial'
         ].contains(module);
       case RoleGroup.caissier:
-        return [
-          'vente',
-          'caisse',
-          'stats_caisse'
-        ].contains(module);
+        return ['vente', 'caisse', 'stats_caisse'].contains(module);
     }
   }
 
@@ -129,25 +184,11 @@ class UserRoleService extends GetxController {
           'stats_global'
         ];
       case RoleGroup.controleur:
-        return [
-          'collecte',
-          'controle',
-          'attribution',
-          'stats_controle'
-        ];
+        return ['collecte', 'controle', 'attribution', 'stats_controle'];
       case RoleGroup.extracteurFiltreur:
-        return [
-          'extraction',
-          'filtrage',
-          'attribution',
-          'stats_production'
-        ];
+        return ['extraction', 'filtrage', 'attribution', 'stats_production'];
       case RoleGroup.conditionneur:
-        return [
-          'conditionnement',
-          'filtrage_history',
-          'stats_conditionnement'
-        ];
+        return ['conditionnement', 'filtrage_history', 'stats_conditionnement'];
       case RoleGroup.commercial:
         return [
           'vente',
@@ -156,11 +197,7 @@ class UserRoleService extends GetxController {
           'stats_commercial'
         ];
       case RoleGroup.caissier:
-        return [
-          'vente',
-          'caisse',
-          'stats_caisse'
-        ];
+        return ['vente', 'caisse', 'stats_caisse'];
     }
   }
 
@@ -224,15 +261,35 @@ class UserRoleService extends GetxController {
       case RoleGroup.admin:
         return ['ventes_mois', 'credits_attente', 'stock_total', 'ca_mensuel'];
       case RoleGroup.controleur:
-        return ['produits_controles', 'taux_conformite', 'en_attente_controle', 'rejets'];
+        return [
+          'produits_controles',
+          'taux_conformite',
+          'en_attente_controle',
+          'rejets'
+        ];
       case RoleGroup.extracteurFiltreur:
-        return ['kg_extraits', 'kg_filtres', 'rendement_extraction', 'lots_en_cours'];
+        return [
+          'kg_extraits',
+          'kg_filtres',
+          'rendement_extraction',
+          'lots_en_cours'
+        ];
       case RoleGroup.conditionneur:
-        return ['lots_conditionnes', 'pots_produits', 'stock_emballages', 'commandes_urgentes'];
+        return [
+          'lots_conditionnes',
+          'pots_produits',
+          'stock_emballages',
+          'commandes_urgentes'
+        ];
       case RoleGroup.commercial:
         return ['ventes_jour', 'ca_commercial', 'clients_actifs', 'objectifs'];
       case RoleGroup.caissier:
-        return ['encaissements_jour', 'credits_accordes', 'retards_paiement', 'solde_caisse'];
+        return [
+          'encaissements_jour',
+          'credits_accordes',
+          'retards_paiement',
+          'solde_caisse'
+        ];
     }
   }
 }
