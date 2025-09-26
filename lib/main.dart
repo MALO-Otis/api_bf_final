@@ -8,6 +8,8 @@ import 'authentication/user_session.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'services/push_notifications_service.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/caisse/pages/espace_caissier_page.dart';
 import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
 import 'screens/conditionnement/services/conditionnement_db_service.dart';
@@ -20,8 +22,6 @@ import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collect
 import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
 // import 'package:apisavana_gestion/screens/collecte_de_donnes/collecte_donnes.dart'; // ANCIEN CODE - DÉSACTIVÉ
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,8 +37,8 @@ void main() async {
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: false,
       webExperimentalAutoDetectLongPolling: true,
-      // If issues persist, consider forcing long polling explicitly:
-      // webExperimentalForceLongPolling: true,
+      // Force long polling to avoid WebChannel/WebSocket issues on some hosts
+      webExperimentalForceLongPolling: true,
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
     );
   }
