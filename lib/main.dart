@@ -20,12 +20,28 @@ import 'package:apisavana_gestion/screens/collecte_de_donnes/historiques_collect
 import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
 // import 'package:apisavana_gestion/screens/collecte_de_donnes/collecte_donnes.dart'; // ANCIEN CODE - DÉSACTIVÉ
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Important: configure Firestore BEFORE any Firestore usage (services, listeners...)
+  // Mitigation for Firestore JS 11.9.x INTERNAL ASSERTION on some hosts (e.g., Vercel):
+  // - Disable persistence on web
+  // - Auto-detect long polling (falls back when WebChannel/WebSockets are blocked)
+  if (kIsWeb) {
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: false,
+      webExperimentalAutoDetectLongPolling: true,
+      // If issues persist, consider forcing long polling explicitly:
+      // webExperimentalForceLongPolling: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+  }
 
   await initializeDateFormatting('fr_FR', null);
 
