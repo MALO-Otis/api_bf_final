@@ -1,0 +1,22 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run Flutter Windows debug",
+			"type": "shell",
+			"command": "flutter run -d windows",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Run Flutter Windows debug",
+			"type": "shell",
+			"command": "flutter run -d windows --no-verbose",
+			"isBackground": false,
+			"group": "build"
+		}
+	]
+}
