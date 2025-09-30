@@ -176,6 +176,36 @@ class VenteService {
         .doc(id)
         .set(cloture.toMap());
 
+    // Marquer le prélèvement et l'attribution comme "en attente" (verrou UI)
+    try {
+      final prelevRef = firestore
+          .collection('Vente')
+          .doc(site)
+          .collection('prelevements')
+          .doc(prelevementId);
+      // Utiliser set(merge:true) pour éviter l'erreur not-found
+      await prelevRef
+          .set({'enAttenteValidation': true}, SetOptions(merge: true));
+
+      // Verrou spécifique à l'attribution: Vente/{site}/locks_attributions/{attributionId}
+      // L'attributionId original est souvent la première partie de prelevementId (avant suffixe "_prelevement_temp")
+      final attributionId = prelevementId.replaceAll('_prelevement_temp', '');
+      await firestore
+          .collection('Vente')
+          .doc(site)
+          .collection('locks_attributions')
+          .doc(attributionId)
+          .set({
+        'enAttenteValidation': true,
+        'prelevementId': prelevementId,
+        'date': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      // ignore if prelevement doc not present
+      debugPrint(
+          '⚠️ [VenteService] Impossible de marquer prelevement en attente: $e');
+    }
+
     return cloture;
   }
 
@@ -984,10 +1014,8 @@ class VenteService {
       String? commercialId, bool isAdmin, String? siteActuel) {
     return source.where((v) {
       if (!isAdmin) {
-        // restreint au site et commercial courant si défini
-        if (siteActuel != null &&
-            v.commercialId != (commercialId ?? _userSession.email)) {
-          // on peut afficher quand même si même site? (Supposons prélevements isolés par commercial) => on limite
+        // Si un commercialId est fourni, on filtre dessus. Sinon (ex: Caissier), on ne filtre pas par commercial.
+        if (commercialId != null && v.commercialId != commercialId) {
           return false;
         }
       }

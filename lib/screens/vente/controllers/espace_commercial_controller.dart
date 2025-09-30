@@ -31,6 +31,11 @@ class EspaceCommercialController extends GetxController {
       <Prelevement>[].obs; // legacy (sera retiré)
   final RxList<AttributionPartielle> attributions =
       <AttributionPartielle>[].obs; // nouvelle base stock
+
+  // Map réactive des verrous d'attribution (en attente de caisse)
+  // Now store full lock docs so we can access dateValidation and other metadata
+  final RxMap<String, Map<String, dynamic>> attributionsLocks =
+      <String, Map<String, dynamic>>{}.obs;
   // Vue réconciliée des attributions : produits restants (quantité) par attribution
   final RxMap<String, int> attributionRestant =
       <String, int>{}.obs; // attributionId -> restant
@@ -49,6 +54,11 @@ class EspaceCommercialController extends GetxController {
   final RxList<Vente> ventes = <Vente>[].obs;
   final RxList<Restitution> restitutions = <Restitution>[].obs;
   final RxList<Perte> pertes = <Perte>[].obs;
+  // Map to track persisted validation expiries for elements in the Espace commercial
+  // keyed by element id (vente/restitution/perte id). Populated from realtime
+  // snapshots so countdowns survive navigation and refresh.
+  final RxMap<String, DateTime> _validationExpiryEspace =
+      <String, DateTime>{}.obs;
   final RxList<ClientLight> clients = <ClientLight>[].obs;
   final RxList<CaisseCloture> clotures = <CaisseCloture>[].obs;
   int get clientsCount => clients.length;
@@ -212,6 +222,18 @@ class EspaceCommercialController extends GetxController {
   // Rôles avec portée élargie (pas de filtrage par commercialId)
   bool get isWideScopeRole => isAdminRole || isCashierRole;
 
+  // Public helper: returns true if an element with id is currently within a
+  // persisted validation expiry (should be hidden/locked in UI).
+  bool isElementHiddenDueToValidation(String elementId) {
+    final expiry = _validationExpiryEspace[elementId];
+    if (expiry == null) return false;
+    return DateTime.now().isBefore(expiry);
+  }
+
+  /// Public accessor for the persisted expiry DateTime for an element id.
+  DateTime? getValidationExpiry(String elementId) =>
+      _validationExpiryEspace[elementId];
+
   String get effectiveSite => isAdminRole
       ? (selectedSite.value.isNotEmpty
           ? selectedSite.value
@@ -315,6 +337,20 @@ class EspaceCommercialController extends GetxController {
     }
 
     final firestore = FirebaseFirestore.instance;
+    // Listener sur les verrous d'attribution: Vente/{site}/locks_attributions
+    final locksStream = firestore
+        .collection('Vente')
+        .doc(site)
+        .collection('locks_attributions')
+        .snapshots();
+    _realtimeSubscriptions.add(locksStream.listen((snapshot) {
+      for (final doc in snapshot.docs) {
+        final data = Map<String, dynamic>.from(doc.data());
+        // normalize keys
+        attributionsLocks[doc.id] = data;
+      }
+      attributionsLocks.refresh();
+    }));
     // Listener pour les prélèvements (ajouté)
     if (!_useAttributionsRefactor) {
       final prelevementsStream = firestore
@@ -346,6 +382,26 @@ class EspaceCommercialController extends GetxController {
           '🔥 [EspaceCommercialController] Listener ventes déclenché - ${snapshot.docs.length} documents');
       final ventesFromSnapshot =
           snapshot.docs.map((doc) => Vente.fromMap(doc.data())).toList();
+
+      // Hydrate validationExpiry map from raw document data so UI can
+      // preserve countdowns after refresh/navigation.
+      for (final doc in snapshot.docs) {
+        final data = Map<String, dynamic>.from(doc.data());
+        final id = (data['id'] ?? doc.id).toString();
+        final rawExpiry =
+            data['validationExpiryEspace'] ?? data['validationExpiry'];
+        if (rawExpiry is Timestamp) {
+          _validationExpiryEspace[id] = rawExpiry.toDate();
+        } else if (rawExpiry is String) {
+          try {
+            _validationExpiryEspace[id] = DateTime.parse(rawExpiry);
+          } catch (_) {
+            _validationExpiryEspace.remove(id);
+          }
+        } else {
+          _validationExpiryEspace.remove(id);
+        }
+      }
 
       debugPrint(
           '🔥 [EspaceCommercialController] Ventes récupérées: ${ventesFromSnapshot.length}');
@@ -383,6 +439,24 @@ class EspaceCommercialController extends GetxController {
       final restitutionsFromSnapshot =
           snapshot.docs.map((doc) => Restitution.fromMap(doc.data())).toList();
 
+      for (final doc in snapshot.docs) {
+        final data = Map<String, dynamic>.from(doc.data());
+        final id = (data['id'] ?? doc.id).toString();
+        final rawExpiry =
+            data['validationExpiryEspace'] ?? data['validationExpiry'];
+        if (rawExpiry is Timestamp) {
+          _validationExpiryEspace[id] = rawExpiry.toDate();
+        } else if (rawExpiry is String) {
+          try {
+            _validationExpiryEspace[id] = DateTime.parse(rawExpiry);
+          } catch (_) {
+            _validationExpiryEspace.remove(id);
+          }
+        } else {
+          _validationExpiryEspace.remove(id);
+        }
+      }
+
       final siteFilter = isAdminRole ? null : site;
       final commercialId = isAdminRole ? null : _session.email;
       final filtered = _filtrerRestitutionsLocal(
@@ -406,6 +480,24 @@ class EspaceCommercialController extends GetxController {
     _realtimeSubscriptions.add(pertesStream.listen((snapshot) {
       final pertesFromSnapshot =
           snapshot.docs.map((doc) => Perte.fromMap(doc.data())).toList();
+
+      for (final doc in snapshot.docs) {
+        final data = Map<String, dynamic>.from(doc.data());
+        final id = (data['id'] ?? doc.id).toString();
+        final rawExpiry =
+            data['validationExpiryEspace'] ?? data['validationExpiry'];
+        if (rawExpiry is Timestamp) {
+          _validationExpiryEspace[id] = rawExpiry.toDate();
+        } else if (rawExpiry is String) {
+          try {
+            _validationExpiryEspace[id] = DateTime.parse(rawExpiry);
+          } catch (_) {
+            _validationExpiryEspace.remove(id);
+          }
+        } else {
+          _validationExpiryEspace.remove(id);
+        }
+      }
 
       final siteFilter = isAdminRole ? null : site;
       final commercialId = isAdminRole ? null : _session.email;

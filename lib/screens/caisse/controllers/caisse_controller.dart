@@ -1,6 +1,10 @@
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import '../services/sales_kpi_service.dart';
 import '../../vente/models/vente_models.dart';
+import '../models/transaction_commerciale.dart';
+import '../../../authentication/user_session.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart'; // pour DateTimeRange
 import '../../vente/controllers/espace_commercial_controller.dart';
 
@@ -11,9 +15,9 @@ class CaisseController extends GetxController {
       Get.find<EspaceCommercialController>();
 
   // Filtres
+  // Par défaut: 6 derniers mois (évite KPIs = 0 si aucune vente aujourd'hui)
   final Rx<DateTimeRange> periode = Rx<DateTimeRange>(DateTimeRange(
-    start:
-        DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
+    start: DateTime.now().subtract(const Duration(days: 180)),
     end: DateTime.now(),
   ));
   final RxString commercialFiltre = ''.obs; // vide = tous (selon rôle)
@@ -61,6 +65,8 @@ class CaisseController extends GetxController {
   final RxMap<String, double> _cashRecu =
       <String, double>{}.obs; // commercialId -> montant saisi
   final RxBool reconciliationAuto = true.obs; // si recalcul auto après saisie
+  // Evite d'élargir la période plus d'une fois automatiquement
+  bool _autoExpandedOnce = false;
 
   void setCashRecu(String commercialId, double montant) {
     _cashRecu[commercialId] = montant;
@@ -101,105 +107,341 @@ class CaisseController extends GetxController {
     return commercialId == commercialFiltre.value;
   }
 
-  void _recompute() {
-    // Filtrage
-    final ventes = espaceCtrl.ventes
-        .where(
-            (v) => _inPeriode(v.dateVente) && _matchCommercial(v.commercialId))
-        .toList();
-    final restits = espaceCtrl.restitutions
-        .where((r) =>
-            _inPeriode(r.dateRestitution) && _matchCommercial(r.commercialId))
-        .toList();
-    final pertes = espaceCtrl.pertes
-        .where(
-            (p) => _inPeriode(p.datePerte) && _matchCommercial(p.commercialId))
-        .toList();
+  Future<void> _recompute() async {
+    // Diagnostics sur la période et le commercial
+    final r = periode.value;
+    final filtre =
+        commercialFiltre.value.isEmpty ? 'TOUS' : commercialFiltre.value;
+    print("📆 [CaisseController] Recompute KPIs pour période: "
+        "${DateFormat('yyyy-MM-dd HH:mm').format(r.start)} -> "
+        "${DateFormat('yyyy-MM-dd HH:mm').format(r.end)} | filtre commercial=$filtre");
 
-    ventesFiltrees.assignAll(ventes);
-    restitutionsFiltrees.assignAll(restits);
-    pertesFiltrees.assignAll(pertes);
-
-    double _caBrut = 0, _creditAttente = 0, _creditRembourse = 0;
-    double _espece = 0,
-        _mobile = 0,
-        _autres = 0; // ventilation brute (non annulées uniquement)
-    int produitsVendus = 0;
-    for (final v in ventes) {
-      if (v.statut != StatutVente.annulee) {
-        _caBrut += v.montantTotal;
-        produitsVendus += v.produits.fold(0, (s, p) => s + p.quantiteVendue);
-        // Ventilation par mode (on répartit en brut, même si crédit partiel)
-        switch (v.modePaiement) {
-          case ModePaiement.espece:
-            _espece += v.montantTotal;
-            break;
-          case ModePaiement.mobile:
-            _mobile += v.montantTotal;
-            break;
-          case ModePaiement.virement:
-          case ModePaiement.carte:
-          case ModePaiement.cheque:
-          case ModePaiement
-                .credit: // On regroupe dans autres pour la ventilation brute
-            _autres += v.montantTotal;
-            break;
+    // 1) DB-first aggregation for KPIs
+    try {
+      final site = espaceCtrl.effectiveSite;
+      final r = periode.value;
+      String? commercialId;
+      if (commercialFiltre.value.isNotEmpty) {
+        commercialId = commercialFiltre.value;
+      } else if (espaceCtrl.isWideScopeRole) {
+        commercialId = null; // agrégation site complète
+      } else {
+        // Commercial: prendre l'email utilisateur courant
+        try {
+          final session = Get.find<UserSession>();
+          commercialId = session.email;
+        } catch (_) {
+          commercialId = null;
         }
       }
-      if (v.statut == StatutVente.creditEnAttente)
-        _creditAttente += v.montantTotal;
-      if (v.statut == StatutVente.creditRembourse)
-        _creditRembourse += v.montantTotal;
+      final svc = await SalesKpiService.getKpis(
+        site: site,
+        start: r.start,
+        end: r.end,
+        commercialId: commercialId,
+      );
+      if (svc != null) {
+        caBrut.value = svc.caBrut;
+        creditAttente.value = svc.creditAttente;
+        creditRembourse.value = svc.creditRembourse;
+        caNet.value = svc.caNet;
+        valeurRestitutions.value = svc.valeurRestitutions;
+        valeurPertes.value = svc.valeurPertes;
+        tauxRestitution.value =
+            svc.caBrut > 0 ? (svc.valeurRestitutions / svc.caBrut * 100) : 0;
+        tauxPertes.value =
+            svc.caBrut > 0 ? (svc.valeurPertes / svc.caBrut * 100) : 0;
+        cashTheorique.value = svc.caNet;
+        caEspece.value = svc.caEspece;
+        caMobile.value = svc.caMobile;
+        caAutres.value = svc.caAutres;
+        if (svc.caBrut > 0) {
+          pctEspece.value = svc.caEspece / svc.caBrut * 100;
+          pctMobile.value = svc.caMobile / svc.caBrut * 100;
+          pctAutres.value = svc.caAutres / svc.caBrut * 100;
+        } else {
+          pctEspece.value = pctMobile.value = pctAutres.value = 0;
+        }
+
+        print('✅ [CaisseController] KPIs mis à jour depuis Firestore '
+            '(DB-first). Site=$site, commercial=${commercialId ?? 'ALL'}');
+
+        // Top produits & timeline need concrete lists; if ventes list is empty, we attempt a light fetch to build them
+        // Here, keep legacy derived lists if present; otherwise leave charts as-is
+      } else {
+        print(
+            '🟡 [CaisseController] Service KPIs Firestore nul — on passe au chemin local.');
+        throw Exception('Service KPI null');
+      }
+    } catch (e) {
+      print(
+          '🟠 [CaisseController] DB-first KPIs échoués: $e — on utilise les listes locales.');
+
+      // 2) Legacy local lists as fallback for KPIs and charts
+      final ventes = espaceCtrl.ventes
+          .where((v) =>
+              _inPeriode(v.dateVente) && _matchCommercial(v.commercialId))
+          .toList();
+      final restits = espaceCtrl.restitutions
+          .where((r) =>
+              _inPeriode(r.dateRestitution) && _matchCommercial(r.commercialId))
+          .toList();
+      final pertes = espaceCtrl.pertes
+          .where((p) =>
+              _inPeriode(p.datePerte) && _matchCommercial(p.commercialId))
+          .toList();
+
+      print(
+          '📊 [CaisseController] Données filtrées (fallback local) — ventes=${ventes.length}, '
+          'restitutions=${restits.length}, pertes=${pertes.length}');
+
+      // Auto‑expand (une seule fois) si aucune donnée trouvée dans la période
+      if (ventes.isEmpty &&
+          restits.isEmpty &&
+          pertes.isEmpty &&
+          !_autoExpandedOnce) {
+        _autoExpandedOnce = true;
+        final expanded = DateTimeRange(
+          start: DateTime.now().subtract(const Duration(days: 365)),
+          end: DateTime.now(),
+        );
+        print(
+            'ℹ️ [CaisseController] Aucune donnée locale — extension automatique à 12 mois: '
+            '${DateFormat('yyyy-MM-dd').format(expanded.start)} -> '
+            '${DateFormat('yyyy-MM-dd').format(expanded.end)}');
+        periode.value = expanded; // déclenchera un nouveau _recompute
+        return;
+      }
+
+      // Fallback: si toujours aucune donnée (même après éventuelle extension),
+      // tenter une agrégation depuis transactions_commerciales
+      if (ventes.isEmpty && restits.isEmpty && pertes.isEmpty) {
+        final ok = await _recomputeFromTransactionsFallback();
+        if (ok) return; // KPIs mis à jour via fallback
+      }
+
+      ventesFiltrees.assignAll(ventes);
+      restitutionsFiltrees.assignAll(restits);
+      pertesFiltrees.assignAll(pertes);
+
+      double _caBrut = 0, _creditAttente = 0, _creditRembourse = 0;
+      double _espece = 0,
+          _mobile = 0,
+          _autres = 0; // ventilation brute (non annulées uniquement)
+      int produitsVendus = 0;
+      for (final v in ventes) {
+        if (v.statut != StatutVente.annulee) {
+          _caBrut += v.montantTotal;
+          produitsVendus += v.produits.fold(0, (s, p) => s + p.quantiteVendue);
+          // Ventilation par mode (on répartit en brut, même si crédit partiel)
+          switch (v.modePaiement) {
+            case ModePaiement.espece:
+              _espece += v.montantTotal;
+              break;
+            case ModePaiement.mobile:
+              _mobile += v.montantTotal;
+              break;
+            case ModePaiement.virement:
+            case ModePaiement.carte:
+            case ModePaiement.cheque:
+            case ModePaiement
+                  .credit: // On regroupe dans autres pour la ventilation brute
+              _autres += v.montantTotal;
+              break;
+          }
+        }
+        if (v.statut == StatutVente.creditEnAttente)
+          _creditAttente += v.montantTotal;
+        if (v.statut == StatutVente.creditRembourse)
+          _creditRembourse += v.montantTotal;
+      }
+
+      double _valRestits = 0;
+      int produitsRestitues = 0;
+      for (final r in restits) {
+        _valRestits += r.valeurTotale;
+        produitsRestitues +=
+            r.produits.fold(0, (s, p) => s + p.quantiteRestituee);
+      }
+
+      double _valPertes = 0;
+      int produitsPerdus = 0;
+      for (final p in pertes) {
+        _valPertes += p.valeurTotale;
+        produitsPerdus += p.produits.fold(0, (s, x) => s + x.quantitePerdue);
+      }
+
+      final _caNet = _caBrut - _creditAttente;
+      final _cashTheo =
+          _caNet; // (si politique: pertes déjà exclues des ventes)
+
+      caBrut.value = _caBrut;
+      creditAttente.value = _creditAttente;
+      creditRembourse.value = _creditRembourse;
+      caNet.value = _caNet;
+      valeurRestitutions.value = _valRestits;
+      valeurPertes.value = _valPertes;
+      tauxRestitution.value = _caBrut > 0 ? (_valRestits / _caBrut * 100) : 0;
+      tauxPertes.value = _caBrut > 0 ? (_valPertes / _caBrut * 100) : 0;
+      cashTheorique.value = _cashTheo;
+
+      // Ventilation
+      caEspece.value = _espece;
+      caMobile.value = _mobile;
+      caAutres.value = _autres;
+      if (_caBrut > 0) {
+        pctEspece.value = _espece / _caBrut * 100;
+        pctMobile.value = _mobile / _caBrut * 100;
+        pctAutres.value = _autres / _caBrut * 100;
+      } else {
+        pctEspece.value = pctMobile.value = pctAutres.value = 0;
+      }
+
+      // Efficacité simple = produits vendus / (produits vendus + restitués + perdus)
+      final denom = (produitsVendus + produitsRestitues + produitsPerdus);
+      efficacite.value = denom > 0 ? (produitsVendus / denom * 100) : 0;
+
+      _computeTopProduits(ventes);
+      _computeTimeline(ventes);
+      _detectAnomalies(ventes, restits, pertes);
+      _recomputeReconciliation();
     }
+  }
 
-    double _valRestits = 0;
-    int produitsRestitues = 0;
-    for (final r in restits) {
-      _valRestits += r.valeurTotale;
-      produitsRestitues +=
-          r.produits.fold(0, (s, p) => s + p.quantiteRestituee);
+  /// Recalcule les KPIs depuis la collection transactions_commerciales
+  /// lorsque les sous-collections Vente/{site}/... sont vides.
+  /// Retourne true si le fallback a été utilisé et les KPIs mis à jour.
+  Future<bool> _recomputeFromTransactionsFallback() async {
+    try {
+      final site = espaceCtrl.effectiveSite;
+      if (site.isEmpty) return false;
+      final r = periode.value;
+
+      print('🟡 [CaisseController] Fallback transactions_commerciales activé '
+          'pour site=$site, période='
+          '${DateFormat('yyyy-MM-dd').format(r.start)} -> '
+          '${DateFormat('yyyy-MM-dd').format(r.end)}');
+
+      final snap = await FirebaseFirestore.instance
+          .collection('transactions_commerciales')
+          .where('site', isEqualTo: site)
+          .where('dateCreation',
+              isGreaterThanOrEqualTo: Timestamp.fromDate(r.start))
+          .where('dateCreation', isLessThanOrEqualTo: Timestamp.fromDate(r.end))
+          .get();
+
+      if (snap.docs.isEmpty) {
+        print(
+            '🟡 [CaisseController] Aucun document dans transactions_commerciales '
+            'pour le site/période.');
+        return false;
+      }
+
+      final txs = snap.docs
+          .map((d) => TransactionCommerciale.fromMap(d.data()))
+          .toList();
+
+      double _caBrut = 0,
+          _creditAttente = 0,
+          _creditRembourse = 0, // non fourni directement, on le laisse à 0
+          _valRestits =
+              0, // non disponible en valeur dans le modèle de transaction
+          _valPertes = 0,
+          _espece = 0,
+          _mobile = 0,
+          _autres = 0;
+
+      // Agrégation financière depuis le résumé de chaque transaction
+      for (final t in txs) {
+        final rfin = t.resumeFinancier;
+        _caBrut += rfin.totalVentes;
+        _creditAttente += rfin.totalCredits;
+        _valPertes += rfin.totalPertes;
+        // Restitutions en valeur non disponibles -> laisser à 0 et journaliser
+        _espece += rfin.espece;
+        _mobile += rfin.mobile;
+        _autres += rfin.autres;
+      }
+
+      final _caNet = _caBrut - _creditAttente;
+      final _cashTheo = _caNet;
+
+      // Affectation KPIs
+      caBrut.value = _caBrut;
+      creditAttente.value = _creditAttente;
+      creditRembourse.value = _creditRembourse;
+      caNet.value = _caNet;
+      valeurRestitutions.value = _valRestits;
+      valeurPertes.value = _valPertes;
+      tauxRestitution.value = _caBrut > 0 ? (_valRestits / _caBrut * 100) : 0;
+      tauxPertes.value = _caBrut > 0 ? (_valPertes / _caBrut * 100) : 0;
+      cashTheorique.value = _cashTheo;
+
+      // Ventilation
+      caEspece.value = _espece;
+      caMobile.value = _mobile;
+      caAutres.value = _autres;
+      if (_caBrut > 0) {
+        pctEspece.value = _espece / _caBrut * 100;
+        pctMobile.value = _mobile / _caBrut * 100;
+        pctAutres.value = _autres / _caBrut * 100;
+      } else {
+        pctEspece.value = pctMobile.value = pctAutres.value = 0;
+      }
+
+      // Top produits (par typeEmballage) et timeline à partir des détails de ventes des transactions
+      _computeTopProduitsFromTransactions(txs);
+      _computeTimelineFromTransactions(txs);
+
+      // Anomalies basées sur les KPIs courants
+      anomalies.assignAll([]);
+      _detectAnomalies(const [], const [], const []);
+
+      // Réconciliation non disponible sans modèles Vente/Restitution/Perte détaillés
+      reconciliationLines.assignAll([]);
+
+      print('✅ [CaisseController] KPIs mis à jour via fallback transactions '
+          '(tx=${txs.length}). Note: valeurRestitutions indisponible → 0.');
+      return true;
+    } catch (e) {
+      print('❌ [CaisseController] Erreur fallback transactions: $e');
+      return false;
     }
+  }
 
-    double _valPertes = 0;
-    int produitsPerdus = 0;
-    for (final p in pertes) {
-      _valPertes += p.valeurTotale;
-      produitsPerdus += p.produits.fold(0, (s, x) => s + x.quantitePerdue);
+  void _computeTopProduitsFromTransactions(List<TransactionCommerciale> txs) {
+    final Map<String, _ProduitAgg> agg = {};
+    for (final t in txs) {
+      for (final v in t.ventes) {
+        for (final p in v.produits) {
+          final key = p.typeEmballage;
+          agg.update(key, (old) => old.add(p.quantiteVendue, p.montantTotal),
+              ifAbsent: () => _ProduitAgg(p.quantiteVendue, p.montantTotal));
+        }
+      }
     }
+    final sorted = agg.entries.toList()
+      ..sort((a, b) => b.value.montant.compareTo(a.value.montant));
+    topProduits.assignAll(sorted.take(5));
+  }
 
-    final _caNet = _caBrut - _creditAttente;
-    final _cashTheo = _caNet; // (si politique: pertes déjà exclues des ventes)
-
-    caBrut.value = _caBrut;
-    creditAttente.value = _creditAttente;
-    creditRembourse.value = _creditRembourse;
-    caNet.value = _caNet;
-    valeurRestitutions.value = _valRestits;
-    valeurPertes.value = _valPertes;
-    tauxRestitution.value = _caBrut > 0 ? (_valRestits / _caBrut * 100) : 0;
-    tauxPertes.value = _caBrut > 0 ? (_valPertes / _caBrut * 100) : 0;
-    cashTheorique.value = _cashTheo;
-
-    // Ventilation
-    caEspece.value = _espece;
-    caMobile.value = _mobile;
-    caAutres.value = _autres;
-    if (_caBrut > 0) {
-      pctEspece.value = _espece / _caBrut * 100;
-      pctMobile.value = _mobile / _caBrut * 100;
-      pctAutres.value = _autres / _caBrut * 100;
-    } else {
-      pctEspece.value = pctMobile.value = pctAutres.value = 0;
+  void _computeTimelineFromTransactions(List<TransactionCommerciale> txs) {
+    final r = periode.value;
+    final sameDay = r.start.year == r.end.year &&
+        r.start.month == r.end.month &&
+        r.start.day == r.end.day;
+    final Map<String, double> buckets = {};
+    final fmt = sameDay ? DateFormat('HH') : DateFormat('dd/MM');
+    for (final t in txs) {
+      for (final v in t.ventes) {
+        final key = fmt.format(v.date);
+        buckets.update(key, (old) => old + v.montantTotal,
+            ifAbsent: () => v.montantTotal);
+      }
     }
-
-    // Efficacité simple = produits vendus / (produits vendus + restitués + perdus)
-    final denom = (produitsVendus + produitsRestitues + produitsPerdus);
-    efficacite.value = denom > 0 ? (produitsVendus / denom * 100) : 0;
-
-    _computeTopProduits(ventes);
-    _computeTimeline(ventes);
-    _detectAnomalies(ventes, restits, pertes);
-    _recomputeReconciliation();
+    final points = buckets.entries.map((e) => _PointCA(e.key, e.value)).toList()
+      ..sort((a, b) => a.label.compareTo(b.label));
+    timeline.assignAll(points);
   }
 
   void _recomputeReconciliation() {

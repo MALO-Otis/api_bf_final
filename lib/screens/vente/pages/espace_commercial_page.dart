@@ -1,8 +1,10 @@
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import '../models/commercial_models.dart';
+import '../widgets/gestion_commerciaux_tab.dart';
 import '../../../authentication/user_session.dart';
 import '../controllers/espace_commercial_controller.dart';
+import '../../caisse/services/transaction_commerciale_service.dart';
 import 'package:apisavana_gestion/screens/commercialisation/new_client_quick_form.dart';
 // import '../models/vente_models.dart'; // non utilisé directement ici
 
@@ -201,7 +203,21 @@ class EspaceCommercialPage extends StatelessWidget {
               Text(v.dateVente.toString().split(' ').first),
               if (v.montantRestant > 0)
                 Text('Reste: ${v.montantRestant.toStringAsFixed(0)} FCFA',
-                    style: const TextStyle(fontSize: 10, color: Colors.orange))
+                    style: const TextStyle(fontSize: 10, color: Colors.orange)),
+              const SizedBox(height: 6),
+              if (c.getValidationExpiry(v.id) != null)
+                CountdownBox(
+                    expiry: c.getValidationExpiry(v.id)!,
+                    onCancel: () async {
+                      // call undo on legacy validation
+                      await TransactionCommercialeService.instance
+                          .annulerLegacyValidation(
+                              site: c.effectiveSite,
+                              elementType: 'vente',
+                              elementId: v.id);
+                      // refresh controller lists
+                      c.loadAll();
+                    }),
             ],
           ),
         );
@@ -223,7 +239,23 @@ class EspaceCommercialPage extends StatelessWidget {
           title: Text(r.motif),
           subtitle: Text(
               '${r.produits.length} produits • ${r.valeurTotale.toStringAsFixed(0)} FCFA\nCommercial: $commercial'),
-          trailing: Text(r.dateRestitution.toString().split(' ').first),
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(r.dateRestitution.toString().split(' ').first),
+              if (c.getValidationExpiry(r.id) != null)
+                CountdownBox(
+                    expiry: c.getValidationExpiry(r.id)!,
+                    onCancel: () async {
+                      await TransactionCommercialeService.instance
+                          .annulerLegacyValidation(
+                              site: c.effectiveSite,
+                              elementType: 'restitution',
+                              elementId: r.id);
+                      c.loadAll();
+                    }),
+            ],
+          ),
         );
       },
     );
@@ -246,7 +278,23 @@ class EspaceCommercialPage extends StatelessWidget {
           title: Text(p.motif),
           subtitle: Text(
               '${p.produits.length} produits • ${p.valeurTotale.toStringAsFixed(0)} FCFA\nCommercial: $commercial${validateur != null ? '\nValidé par: $validateur' : ''}'),
-          trailing: Text(p.datePerte.toString().split(' ').first),
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(p.datePerte.toString().split(' ').first),
+              if (c.getValidationExpiry(p.id) != null)
+                CountdownBox(
+                    expiry: c.getValidationExpiry(p.id)!,
+                    onCancel: () async {
+                      await TransactionCommercialeService.instance
+                          .annulerLegacyValidation(
+                              site: c.effectiveSite,
+                              elementType: 'perte',
+                              elementId: p.id);
+                      c.loadAll();
+                    }),
+            ],
+          ),
         );
       },
     );

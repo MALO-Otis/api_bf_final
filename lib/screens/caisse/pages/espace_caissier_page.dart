@@ -1,11 +1,13 @@
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import '../utils/bon_caisse_pdf.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/caisse_cloture.dart';
 import '../../vente/models/vente_models.dart';
 import '../controllers/caisse_controller.dart';
 import '../../vente/services/vente_service.dart';
+import '../../../utils/pdf_download_helper.dart';
 import '../../../authentication/user_session.dart';
 import '../../vente/controllers/espace_commercial_controller.dart';
 
@@ -78,11 +80,6 @@ class _EspaceCaissierPageState extends State<EspaceCaissierPage> {
               onPressed: () => Get.back(),
             ),
             actions: [
-              IconButton(
-                icon: const Icon(Icons.file_download, color: Colors.white),
-                tooltip: 'Exporter CSV',
-                onPressed: _exportCsv,
-              ),
               IconButton(
                 icon: const Icon(Icons.date_range, color: Colors.white),
                 tooltip: 'Changer période',
@@ -482,21 +479,30 @@ class _EspaceCaissierPageState extends State<EspaceCaissierPage> {
   }
 
   Future<void> _exportBonCaisse() async {
-    // Construction simple CSV à partir des lignes
-    final buf = StringBuffer();
-    buf.writeln(
-        'Commercial;CABrut;Credit;CreditRembourse;CashTheo;CashRecu;Ecart');
-    for (final l in caisseCtrl.reconciliationLines) {
-      buf.writeln(
-          '${l.commercialNom};${l.caBrut.toStringAsFixed(0)};${l.credit.toStringAsFixed(0)};${l.creditRembourse.toStringAsFixed(0)};${l.cashTheorique.toStringAsFixed(0)};${l.cashRecu.toStringAsFixed(0)};${l.ecart.toStringAsFixed(0)}');
-    }
-    final totalEcart =
-        caisseCtrl.reconciliationLines.fold<double>(0, (s, l) => s + l.ecart);
-    buf.writeln('TOTAL;;;;; ;${totalEcart.toStringAsFixed(0)}');
-    await Clipboard.setData(ClipboardData(text: buf.toString()));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Bon de caisse copié dans le presse-papiers')));
+    try {
+      final lignes = caisseCtrl.reconciliationLines;
+      if (lignes.isEmpty) {
+        Get.snackbar('Vide', 'Aucune ligne de réconciliation à exporter.');
+        return;
+      }
+
+      final periode = caisseCtrl.periode.value;
+      final bytes = await BonCaissePdf.buildBonCaissePdf(
+        lignes,
+        periodeStart: periode.start,
+        periodeEnd: periode.end,
+      );
+
+      final fileName =
+          'Bon_de_Caisse_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      final saved = await savePdfBytes(bytes, fileName);
+
+      if (mounted) {
+        Get.snackbar('PDF généré', 'Bon de caisse généré: $saved');
+      }
+    } catch (e, st) {
+      print('Erreur génération Bon de Caisse: $e\n$st');
+      Get.snackbar('Erreur', 'Impossible de générer le Bon de Caisse: $e');
     }
   }
 
@@ -1001,14 +1007,7 @@ class _EspaceCaissierPageState extends State<EspaceCaissierPage> {
     return f.format(v);
   }
 
-  void _exportCsv() {
-    final csv = caisseCtrl.exportCsv();
-    // Utilisation de Clipboard pour copie rapide
-    Clipboard.setData(ClipboardData(text: csv));
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Export CSV copié dans le presse-papiers'),
-        duration: Duration(seconds: 2)));
-  }
+  // _exportCsv removed: CSV export button was removed from the UI as requested.
 }
 
 class _SparklinePainter extends CustomPainter {

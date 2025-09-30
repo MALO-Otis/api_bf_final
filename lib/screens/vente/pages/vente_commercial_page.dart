@@ -13,6 +13,7 @@ import '../models/commercial_models.dart';
 import '../../../utils/smart_appbar.dart';
 import '../../../authentication/user_session.dart';
 import '../../../utils/platform_download_helper.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../vente/controllers/espace_commercial_controller.dart';
 // import 'dart:html' as html; // Retiré: non supporté desktop
 // ignore: avoid_web_libraries_in_flutter
@@ -2024,16 +2025,38 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
 
                 final stockEpuise = quantiteRestante <= 0;
 
+                // Determine lock status from the lock doc if present
+                bool locked = false;
+                final lockDoc = _espaceCtrl.attributionsLocks[attribution.id];
+                if (lockDoc != null) {
+                  final enAttente =
+                      (lockDoc['enAttenteValidation'] ?? false) as bool;
+                  final dateValidationTs =
+                      lockDoc['dateValidation'] as Timestamp?;
+                  if (dateValidationTs != null) {
+                    final dateValidation = dateValidationTs.toDate();
+                    // Hide after 24 hours: consider it not locked (cleared) if older than 24h
+                    final expired =
+                        DateTime.now().difference(dateValidation).inHours >= 24;
+                    locked = enAttente && !expired;
+                  } else {
+                    locked = enAttente;
+                  }
+                } else {
+                  locked = attribution.enAttenteValidation;
+                }
+
                 return Row(
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: stockEpuise
+                        onPressed: (stockEpuise || locked)
                             ? null
                             : () => _showVenteDialog(attribution),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              stockEpuise ? Colors.grey : Colors.green,
+                          backgroundColor: (stockEpuise || locked)
+                              ? Colors.grey
+                              : Colors.green,
                           foregroundColor: Colors.white,
                           padding: EdgeInsets.symmetric(
                             vertical: isMobile ? 12 : 16,
@@ -2045,15 +2068,20 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
                         icon: Icon(
                           Icons.point_of_sale,
                           size: 18,
-                          color:
-                              stockEpuise ? Colors.grey.shade600 : Colors.white,
+                          color: (stockEpuise || locked)
+                              ? Colors.grey.shade600
+                              : Colors.white,
                         ),
                         label: Text(
-                          stockEpuise ? 'Stock épuisé' : 'Vendre',
+                          stockEpuise
+                              ? 'Stock épuisé'
+                              : locked
+                                  ? 'En attente'
+                                  : 'Vendre',
                           style: TextStyle(
                             fontSize: isMobile ? 12 : 14,
                             fontWeight: FontWeight.w600,
-                            color: stockEpuise
+                            color: (stockEpuise || locked)
                                 ? Colors.grey.shade600
                                 : Colors.white,
                           ),
@@ -2063,12 +2091,13 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
                     const SizedBox(width: 8),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: stockEpuise
+                        onPressed: (stockEpuise || locked)
                             ? null
                             : () => _showRestitutionDialog(attribution),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              stockEpuise ? Colors.grey : Colors.orange,
+                          backgroundColor: (stockEpuise || locked)
+                              ? Colors.grey
+                              : Colors.orange,
                           foregroundColor: Colors.white,
                           padding: EdgeInsets.symmetric(
                             vertical: isMobile ? 12 : 16,
@@ -2080,15 +2109,16 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
                         icon: Icon(
                           Icons.undo,
                           size: 18,
-                          color:
-                              stockEpuise ? Colors.grey.shade600 : Colors.white,
+                          color: (stockEpuise || locked)
+                              ? Colors.grey.shade600
+                              : Colors.white,
                         ),
                         label: Text(
-                          'Restituer',
+                          locked ? 'En attente' : 'Restituer',
                           style: TextStyle(
                             fontSize: isMobile ? 12 : 14,
                             fontWeight: FontWeight.w600,
-                            color: stockEpuise
+                            color: (stockEpuise || locked)
                                 ? Colors.grey.shade600
                                 : Colors.white,
                           ),
@@ -2098,12 +2128,13 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
                     const SizedBox(width: 8),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: stockEpuise
+                        onPressed: (stockEpuise || locked)
                             ? null
                             : () => _showPerteDialog(attribution),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              stockEpuise ? Colors.grey : Colors.red,
+                          backgroundColor: (stockEpuise || locked)
+                              ? Colors.grey
+                              : Colors.red,
                           foregroundColor: Colors.white,
                           padding: EdgeInsets.symmetric(
                             vertical: isMobile ? 12 : 16,
@@ -2115,15 +2146,16 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
                         icon: Icon(
                           Icons.warning,
                           size: 18,
-                          color:
-                              stockEpuise ? Colors.grey.shade600 : Colors.white,
+                          color: (stockEpuise || locked)
+                              ? Colors.grey.shade600
+                              : Colors.white,
                         ),
                         label: Text(
-                          'Perte',
+                          locked ? 'En attente' : 'Perte',
                           style: TextStyle(
                             fontSize: isMobile ? 12 : 14,
                             fontWeight: FontWeight.w600,
-                            color: stockEpuise
+                            color: (stockEpuise || locked)
                                 ? Colors.grey.shade600
                                 : Colors.white,
                           ),
@@ -2133,9 +2165,11 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
                     const SizedBox(width: 8),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () => _terminerCloture(attribution),
+                        onPressed:
+                            locked ? null : () => _terminerCloture(attribution),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0EA5E9),
+                          backgroundColor:
+                              locked ? Colors.grey : const Color(0xFF0EA5E9),
                           foregroundColor: Colors.white,
                           padding: EdgeInsets.symmetric(
                             vertical: isMobile ? 12 : 16,
@@ -2146,7 +2180,7 @@ class _VenteCommercialPageState extends State<VenteCommercialPage>
                         ),
                         icon: const Icon(Icons.flag_circle, size: 18),
                         label: Text(
-                          'Terminer',
+                          locked ? 'En attente' : 'Terminer',
                           style: TextStyle(
                             fontSize: isMobile ? 12 : 14,
                             fontWeight: FontWeight.w600,

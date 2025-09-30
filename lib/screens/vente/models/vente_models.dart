@@ -110,6 +110,8 @@ class Prelevement {
   final StatutPrelevement statut;
   final String? observations;
   final DateTime? dateRetour;
+  final bool
+      enAttenteValidation; // true when commercial clicked "Terminer" and waiting caisse
 
   const Prelevement({
     required this.id,
@@ -123,6 +125,7 @@ class Prelevement {
     required this.statut,
     this.observations,
     this.dateRetour,
+    this.enAttenteValidation = false,
   });
 
   factory Prelevement.fromMap(Map<String, dynamic> map) {
@@ -145,6 +148,7 @@ class Prelevement {
       ),
       observations: map['observations'],
       dateRetour: (map['dateRetour'] as Timestamp?)?.toDate(),
+      enAttenteValidation: map['enAttenteValidation'] ?? false,
     );
   }
 
@@ -161,6 +165,7 @@ class Prelevement {
       'statut': statut.name,
       'observations': observations,
       'dateRetour': dateRetour != null ? Timestamp.fromDate(dateRetour!) : null,
+      'enAttenteValidation': enAttenteValidation,
     };
   }
 }

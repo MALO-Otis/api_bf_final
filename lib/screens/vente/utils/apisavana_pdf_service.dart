@@ -43,21 +43,15 @@ class ApiSavanaPdfService {
   }
 
   /// Retourne un widget image PDF si un logo a été défini, sinon null.
+  /// Returns a plain image widget for the cached logo (no rounded corners or border).
+  /// Use `size` to control the width (height will keep image aspect ratio).
   static pw.Widget? _buildLogoWidget({double size = 60}) {
     if (_cachedLogoBytes == null) return null;
     return pw.Container(
       width: size,
-      height: size,
-      decoration: pw.BoxDecoration(
-        borderRadius: pw.BorderRadius.circular(8),
-        border: pw.Border.all(color: primaryColor, width: 1),
-      ),
-      child: pw.ClipRRect(
-        horizontalRadius: 8,
-        verticalRadius: 8,
-        child:
-            pw.Image(pw.MemoryImage(_cachedLogoBytes!), fit: pw.BoxFit.cover),
-      ),
+      // Keep height flexible and let the image preserve aspect ratio
+      child:
+          pw.Image(pw.MemoryImage(_cachedLogoBytes!), fit: pw.BoxFit.contain),
     );
   }
 
@@ -79,22 +73,21 @@ class ApiSavanaPdfService {
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
-          // Logo et nom de l'entreprise
+          // Logo at top-left and company name centered
           pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.center,
-            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               if (showLogo && _buildLogoWidget() != null) ...[
-                _buildLogoWidget()!,
-                pw.SizedBox(width: 15),
+                // Place the raw logo at the left without any masking
+                _buildLogoWidget(size: 72)!,
+                pw.SizedBox(width: 12),
               ] else ...[
-                // Fallback placeholder si pas de logo défini
+                // Fallback placeholder if no logo defined
                 pw.Container(
-                  width: 60,
-                  height: 60,
+                  width: 72,
+                  height: 48,
                   decoration: pw.BoxDecoration(
                     color: primaryColor,
-                    borderRadius: pw.BorderRadius.circular(8),
                   ),
                   child: pw.Center(
                     child: pw.Text(
@@ -108,7 +101,7 @@ class ApiSavanaPdfService {
                     ),
                   ),
                 ),
-                pw.SizedBox(width: 15),
+                pw.SizedBox(width: 12),
               ],
               pw.Expanded(
                 child: pw.Column(

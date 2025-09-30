@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 /// 🏪 MODÈLES POUR LA GESTION COMMERCIALE OPTIMISÉE
 ///
 /// Gestion des lots, attributions avec calculs ultra-rapides et cache intelligent
-
 
 // ============================================================================
 // 👤 GESTION DES RÔLES ET PERMISSIONS ADMINISTRATEUR
@@ -314,6 +314,8 @@ class AttributionPartielle {
   final String typeEmballage;
   final String? observations;
   final DateTime lastUpdate;
+  // Indique si l'attribution a été terminée par le commercial et est en attente de validation caisse
+  final bool enAttenteValidation;
 
   const AttributionPartielle({
     required this.id,
@@ -341,6 +343,7 @@ class AttributionPartielle {
     required this.typeEmballage,
     this.observations,
     required this.lastUpdate,
+    this.enAttenteValidation = false,
   });
 
   factory AttributionPartielle.fromMap(Map<String, dynamic> map) {
@@ -374,6 +377,7 @@ class AttributionPartielle {
       typeEmballage: map['typeEmballage'] ?? '',
       observations: map['observations'],
       lastUpdate: (map['lastUpdate'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      enAttenteValidation: map['enAttenteValidation'] ?? false,
     );
   }
 
@@ -406,6 +410,7 @@ class AttributionPartielle {
       'typeEmballage': typeEmballage,
       'observations': observations,
       'lastUpdate': Timestamp.fromDate(lastUpdate),
+      'enAttenteValidation': enAttenteValidation,
     };
   }
 }

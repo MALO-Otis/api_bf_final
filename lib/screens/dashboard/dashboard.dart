@@ -25,6 +25,7 @@ import 'package:apisavana_gestion/screens/conditionnement/pages/stock_conditionn
 import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
 import 'package:apisavana_gestion/screens/controle_de_donnes/historique_attribution_page.dart';
 import 'package:apisavana_gestion/screens/vente/controllers/espace_commercial_controller.dart';
+import 'package:apisavana_gestion/screens/dashboard/controllers/dashboard_stats_controller.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nouvelle_collecte_individuelle.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_mielleurie/nouvelle_collecte_miellerie.dart';
@@ -749,6 +750,7 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
   late UserSession _userSession;
   final NumberFormat _money = NumberFormat('#,##0', 'fr_FR');
   late final ChartDataController _chartData;
+  late final DashboardStatsController _stats;
 
   bool get _isWideScopeRole {
     final r = (_userSession.role ?? '').toLowerCase();
@@ -796,6 +798,11 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
         ? Get.find<ChartDataController>()
         : Get.put(ChartDataController(), permanent: true);
 
+    // KPIs Collecte & Contrôle (DB-driven)
+    _stats = Get.isRegistered<DashboardStatsController>()
+        ? Get.find<DashboardStatsController>()
+        : Get.put(DashboardStatsController(), permanent: true);
+
     // Si l'utilisateur est un commercial (hors large scope), filtrer ses KPIs à son activité
     final role = (_userSession.role ?? '').toLowerCase();
     if (!_isWideScopeRole && role == 'commercial' && _caisseCtrl != null) {
@@ -842,6 +849,62 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
                 ],
               ),
               SizedBox(height: 12),
+              // Sélecteur de période pour les KPIs (30j / 90j / 6m / 12m)
+              if (_caisseCtrl != null)
+                Obx(() {
+                  final now = DateTime.now();
+                  final p = _caisseCtrl!.periode.value;
+                  bool _isNow(DateTime d) =>
+                      now.difference(d).inHours.abs() < 24;
+                  int days = now.difference(p.start).inDays;
+                  final is30 = days >= 28 && days <= 32 && _isNow(p.end);
+                  final is90 = days >= 85 && days <= 95 && _isNow(p.end);
+                  final is180 = days >= 175 && days <= 185 && _isNow(p.end);
+                  final is365 = days >= 360 && days <= 370 && _isNow(p.end);
+
+                  Widget btn(String label, bool selected, int rangeDays) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6.0),
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor:
+                              selected ? kHighlightColor : Colors.white,
+                          side: BorderSide(color: kHighlightColor),
+                          minimumSize: Size(0, 28),
+                          padding: EdgeInsets.symmetric(
+                              horizontal: widget.isMobile ? 8 : 10,
+                              vertical: 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () {
+                          final end = DateTime.now();
+                          final start = end.subtract(Duration(days: rangeDays));
+                          _caisseCtrl!.setPeriode(
+                              DateTimeRange(start: start, end: end));
+                        },
+                        child: Text(label,
+                            style: TextStyle(
+                                fontSize: widget.isMobile ? 10 : 12,
+                                color:
+                                    selected ? Colors.white : kHighlightColor,
+                                fontWeight: FontWeight.w600)),
+                      ),
+                    );
+                  }
+
+                  return Container(
+                    height: 36,
+                    margin: EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        btn('30j', is30, 30),
+                        btn('90j', is90, 90),
+                        btn('6m', is180, 180),
+                        btn('12m', is365, 365),
+                      ],
+                    ),
+                  );
+                }),
               Container(
                 height: widget.isMobile ? 110 : 135,
                 child: Obx(() {
@@ -945,6 +1008,45 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
                         isPositive: true,
                         isMobile: widget.isMobile,
                       )),
+                      // Collecte & Contrôle (DB)
+                      _kpiWrap(KPICard(
+                        title: 'Poids collecté',
+                        value:
+                            '${_stats.collecteTotalPoids.value.toStringAsFixed(1)} kg',
+                        icon: Icons.scale,
+                        color: Colors.green,
+                        trend: 0,
+                        isPositive: true,
+                        isMobile: widget.isMobile,
+                      )),
+                      _kpiWrap(KPICard(
+                        title: 'Nombre de collectes',
+                        value: '${_stats.collecteCount.value}',
+                        icon: Icons.inventory_2,
+                        color: Colors.lightGreen,
+                        trend: 0,
+                        isPositive: true,
+                        isMobile: widget.isMobile,
+                      )),
+                      _kpiWrap(KPICard(
+                        title: 'Contrôles qualité',
+                        value: '${_stats.controlesTotal.value}',
+                        icon: Icons.fact_check,
+                        color: Colors.deepPurple,
+                        trend: 0,
+                        isPositive: true,
+                        isMobile: widget.isMobile,
+                      )),
+                      _kpiWrap(KPICard(
+                        title: 'Taux conformité',
+                        value:
+                            '${_stats.tauxConformite.value.toStringAsFixed(1)} %',
+                        icon: Icons.check_circle,
+                        color: Colors.purple,
+                        trend: 0,
+                        isPositive: true,
+                        isMobile: widget.isMobile,
+                      )),
                     ]);
                   } else {
                     // Caissier / Gestionnaire: focus dettes/transactions
@@ -986,6 +1088,45 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
                           isPositive: true,
                           isMobile: widget.isMobile,
                         )),
+                        // Collecte & Contrôle (DB)
+                        _kpiWrap(KPICard(
+                          title: 'Poids collecté',
+                          value:
+                              '${_stats.collecteTotalPoids.value.toStringAsFixed(1)} kg',
+                          icon: Icons.scale,
+                          color: Colors.green,
+                          trend: 0,
+                          isPositive: true,
+                          isMobile: widget.isMobile,
+                        )),
+                        _kpiWrap(KPICard(
+                          title: 'Nombre de collectes',
+                          value: '${_stats.collecteCount.value}',
+                          icon: Icons.inventory_2,
+                          color: Colors.lightGreen,
+                          trend: 0,
+                          isPositive: true,
+                          isMobile: widget.isMobile,
+                        )),
+                        _kpiWrap(KPICard(
+                          title: 'Contrôles qualité',
+                          value: '${_stats.controlesTotal.value}',
+                          icon: Icons.fact_check,
+                          color: Colors.deepPurple,
+                          trend: 0,
+                          isPositive: true,
+                          isMobile: widget.isMobile,
+                        )),
+                        _kpiWrap(KPICard(
+                          title: 'Taux conformité',
+                          value:
+                              '${_stats.tauxConformite.value.toStringAsFixed(1)} %',
+                          icon: Icons.check_circle,
+                          color: Colors.purple,
+                          trend: 0,
+                          isPositive: true,
+                          isMobile: widget.isMobile,
+                        )),
                       ]);
                     } else {
                       // Commercial: ses propres chiffres
@@ -1022,6 +1163,45 @@ class _MainDashboardContentState extends State<MainDashboardContent> {
                           value: _fmtMoney(caisse.caMobile.value),
                           icon: Icons.phone_iphone,
                           color: Colors.blue,
+                          trend: 0,
+                          isPositive: true,
+                          isMobile: widget.isMobile,
+                        )),
+                        // Collecte & Contrôle (DB) — visibilité globale
+                        _kpiWrap(KPICard(
+                          title: 'Poids collecté (site)',
+                          value:
+                              '${_stats.collecteTotalPoids.value.toStringAsFixed(1)} kg',
+                          icon: Icons.scale,
+                          color: Colors.green,
+                          trend: 0,
+                          isPositive: true,
+                          isMobile: widget.isMobile,
+                        )),
+                        _kpiWrap(KPICard(
+                          title: 'Collectes (site)',
+                          value: '${_stats.collecteCount.value}',
+                          icon: Icons.inventory_2,
+                          color: Colors.lightGreen,
+                          trend: 0,
+                          isPositive: true,
+                          isMobile: widget.isMobile,
+                        )),
+                        _kpiWrap(KPICard(
+                          title: 'Contrôles (site)',
+                          value: '${_stats.controlesTotal.value}',
+                          icon: Icons.fact_check,
+                          color: Colors.deepPurple,
+                          trend: 0,
+                          isPositive: true,
+                          isMobile: widget.isMobile,
+                        )),
+                        _kpiWrap(KPICard(
+                          title: 'Conformité (site)',
+                          value:
+                              '${_stats.tauxConformite.value.toStringAsFixed(1)} %',
+                          icon: Icons.check_circle,
+                          color: Colors.purple,
                           trend: 0,
                           isPositive: true,
                           isMobile: widget.isMobile,

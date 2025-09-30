@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/caisse/pages/espace_caissier_page.dart';
 import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
+import 'screens/caisse/integration/transaction_commerciale_module.dart';
 import 'screens/conditionnement/services/conditionnement_db_service.dart';
 import 'package:apisavana_gestion/screens/extraction_page/extraction.dart';
 import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
@@ -51,6 +52,9 @@ void main() async {
   // Initialiser les services
   Get.put(UserSession());
   Get.put(ConditionnementDbService());
+
+  // Register transaction commerciale module (registers its GetX service)
+  TransactionCommercialeModule.initialiser();
 
   // Init push notifications (FCM)
   await PushNotificationsService.instance.init();

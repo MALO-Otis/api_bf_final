@@ -386,7 +386,10 @@ class TransactionCommercialeModule {
   static void initialiser() {
     // Enregistrement du service GetX
     if (!Get.isRegistered<TransactionCommercialeService>()) {
-      Get.put(TransactionCommercialeService.instance);
+      // Create and register the service directly to avoid calling the
+      // `TransactionCommercialeService.instance` getter which uses Get.find()
+      // and will throw if the service isn't already registered.
+      Get.put(TransactionCommercialeService());
     }
   }
 }

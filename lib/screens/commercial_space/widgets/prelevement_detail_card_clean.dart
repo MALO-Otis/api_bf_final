@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../vente/models/vente_models.dart';
 
-
 /// Widget propre reconstruit: affiche un prélèvement avec statut dynamique,
 /// produits restants (facultatif) et barre de progression.
 class PrelevementDetailCardClean extends StatelessWidget {
@@ -24,6 +23,7 @@ class PrelevementDetailCardClean extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statutEffectif = statutDynamique ?? prelevement.statut;
+    final locked = (prelevement.enAttenteValidation == true);
     final statusColor = _statusColor(statutEffectif, progression);
     final statusLabel = _statusLabel(statutEffectif, progression);
 
@@ -74,12 +74,33 @@ class PrelevementDetailCardClean extends StatelessWidget {
                     ],
                   ),
                 ),
-                PopupMenuButton<String>(
-                  onSelected: (v) => onAction(prelevement, v),
-                  itemBuilder: (c) => const [
-                    PopupMenuItem(value: 'vendre', child: Text('Vendre')),
-                    PopupMenuItem(value: 'restituer', child: Text('Restituer')),
-                    PopupMenuItem(value: 'perte', child: Text('Perte')),
+                Column(
+                  children: [
+                    if (locked)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border:
+                              Border.all(color: Colors.orange.withOpacity(.25)),
+                        ),
+                        child: const Text('En attente',
+                            style: TextStyle(
+                                color: Colors.orange,
+                                fontWeight: FontWeight.w600)),
+                      )
+                    else
+                      PopupMenuButton<String>(
+                        onSelected: (v) => onAction(prelevement, v),
+                        itemBuilder: (c) => const [
+                          PopupMenuItem(value: 'vendre', child: Text('Vendre')),
+                          PopupMenuItem(
+                              value: 'restituer', child: Text('Restituer')),
+                          PopupMenuItem(value: 'perte', child: Text('Perte')),
+                        ],
+                      ),
                   ],
                 ),
               ],

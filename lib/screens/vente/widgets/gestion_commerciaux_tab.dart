@@ -1,10 +1,15 @@
 import 'dart:async';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import '../models/vente_models.dart';
 import 'package:flutter/material.dart';
 import '../models/commercial_models.dart';
 import '../services/commercial_service.dart';
+import '../../../authentication/user_session.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../data/personnel/personnel_apisavana.dart';
+import '../../caisse/models/transaction_commerciale.dart';
+import '../../caisse/services/transaction_commerciale_service.dart';
 
 /// 👥 ONGLET GESTION DES COMMERCIAUX
 ///
@@ -26,6 +31,80 @@ class GestionCommerciauxTab extends StatefulWidget {
   State<GestionCommerciauxTab> createState() => _GestionCommerciauxTabState();
 }
 
+/// Small widget that shows a countdown and cancels its timer on dispose.
+class CountdownBox extends StatefulWidget {
+  final DateTime expiry;
+  final VoidCallback onCancel;
+
+  const CountdownBox({Key? key, required this.expiry, required this.onCancel})
+      : super(key: key);
+
+  @override
+  State<CountdownBox> createState() => _CountdownBoxState();
+}
+
+class _CountdownBoxState extends State<CountdownBox> {
+  Timer? _ticker;
+  late Duration _left;
+
+  String format(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    return '${h.toString().padLeft(2, '0')}h ${m.toString().padLeft(2, '0')}m';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _computeLeft();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        _computeLeft();
+      });
+      if (_left.isNegative || _left == Duration.zero) {
+        _ticker?.cancel();
+      }
+    });
+  }
+
+  void _computeLeft() {
+    final left = widget.expiry.difference(DateTime.now());
+    _left = left.isNegative ? Duration.zero : left;
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.yellow[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.hourglass_bottom, size: 16, color: Colors.orange),
+          const SizedBox(width: 6),
+          Text(format(_left), style: TextStyle(color: Colors.orange[800])),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: widget.onCancel,
+            child: const Text('Annuler', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
     with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
   @override
@@ -45,6 +124,17 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
 
   // État des cards dépliables
   final RxMap<String, bool> _expandedCards = <String, bool>{}.obs;
+  // Track running validation operations (single or complete) by commercial name or element id
+  final RxMap<String, bool> _validationRunning = <String, bool>{}.obs;
+
+  // Track active countdowns: map a key (commercial or element id) -> DateTime when validation expires
+  final RxMap<String, DateTime> _validationExpiry = <String, DateTime>{}.obs;
+
+  // Periodic refresh timer (cancel in dispose)
+  Timer? _refreshTimer;
+
+  // Duration before a validated card is hidden (5 hours as requested)
+  final Duration _hideDelay = const Duration(hours: 5);
 
   @override
   void initState() {
@@ -54,15 +144,19 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
 
     // 🔧 CORRECTION : Écouter les changements du service commercial
     // Utiliser un Timer pour rafraîchir périodiquement
-    Timer.periodic(const Duration(seconds: 5), (timer) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       if (mounted && widget.commercialService.attributions.isNotEmpty) {
         _attributions.value = widget.commercialService.attributions;
       }
     });
   }
 
+  /// Small countdown box showing time left until expiry and a cancel button
+
   @override
   void dispose() {
+    // Cancel timers and controllers to avoid callbacks after dispose
+    _refreshTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -126,23 +220,149 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
 
   Future<void> _loadVentes() async {
     try {
-      // TODO: Implémenter la récupération des ventes depuis Firestore
-      // Pour l'instant, générer depuis les attributions
-      _ventes.value = _attributions
-          .map((attr) => {
-                'id': 'VENTE_${attr.id}',
-                'commercial': attr.commercialNom,
-                'client': 'Client à définir', // TODO: Lier aux vraies ventes
-                'produit': '${attr.typeEmballage} - ${attr.numeroLot}',
-                'quantite': attr.quantiteAttribuee,
-                'montant': attr.valeurTotale,
-                'date': attr.dateAttribution,
-                'statut': 'En cours',
-              })
-          .toList();
+      final site = Get.find<UserSession>().site ?? '';
+      if (site.isEmpty) {
+        _ventes.value = [];
+        return;
+      }
 
+      final snap = await FirebaseFirestore.instance
+          .collection('transactions_commerciales')
+          .where('site', isEqualTo: site)
+          .get();
+
+      // Diagnostic logs for ventes loader
       debugPrint(
-          '💰 [GestionCommerciauxTab] ${_ventes.length} ventes simulées depuis attributions');
+          '🔎 [GestionCommerciauxTab] _loadVentes site="$site" snap.docs.length=${snap.docs.length}');
+      if (snap.docs.isNotEmpty) {
+        try {
+          final first = snap.docs.first.data();
+          debugPrint(
+              '🔎 [GestionCommerciauxTab] _loadVentes first doc keys: ${first.keys.toList()}');
+          final ventesRaw = first['ventes'];
+          debugPrint(
+              '🔎 [GestionCommerciauxTab] _loadVentes first.ventes type=${ventesRaw.runtimeType} valuePreview=${ventesRaw is List ? ventesRaw.length : ventesRaw}');
+        } catch (e) {
+          debugPrint(
+              '🔎 [GestionCommerciauxTab] _loadVentes error reading first doc: $e');
+        }
+      }
+
+      // If no docs found for this site, sample a few documents without the site filter to help diagnose
+      if (snap.docs.isEmpty) {
+        try {
+          final sample = await FirebaseFirestore.instance
+              .collection('transactions_commerciales')
+              .limit(5)
+              .get();
+          debugPrint(
+              '🔍 [GestionCommerciauxTab] Sample docs (no site filter) count=${sample.docs.length}');
+          for (final d in sample.docs) {
+            final m = d.data();
+            debugPrint(
+                '🔍 [GestionCommerciauxTab] sample doc id=${d.id} site=${m["site"]} keys=${m.keys.toList()}');
+          }
+        } catch (e) {
+          debugPrint(
+              '🔍 [GestionCommerciauxTab] error sampling transactions_commerciales: $e');
+        }
+      }
+
+      final List<Map<String, dynamic>> ventesLoaded = [];
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final tx = TransactionCommerciale.fromMap(data);
+        for (final v in tx.ventes) {
+          final produitDesc = v.produits.isNotEmpty
+              ? '${v.produits.first.typeEmballage} - ${v.produits.first.numeroLot}'
+              : '';
+          // Ensure UI keys exist and are numeric to avoid passing null to NumberFormat
+          final double prixUnitaire =
+              v.produits.isNotEmpty ? v.produits.first.prixUnitaire : 0.0;
+          final double totalMontant = v.montantTotal;
+          final expiry = v.toMap()['validationExpiry'];
+          DateTime? expiryDt;
+          if (expiry is Timestamp) expiryDt = expiry.toDate();
+          ventesLoaded.add({
+            'id': v.id,
+            'transactionId': tx.id,
+            'commercial': tx.commercialNom,
+            'client': v.clientNom,
+            'produit': produitDesc,
+            'quantite': v.produits.fold<int>(0, (s, p) => s + p.quantiteVendue),
+            'prixUnitaire': prixUnitaire,
+            'total': totalMontant,
+            'montant': totalMontant,
+            'date': v.date,
+            'statut': v.valideAdmin ||
+                    tx.statut == StatutTransactionCommerciale.valideeAdmin
+                ? 'Validé'
+                : 'En attente',
+            'validationExpiry': expiryDt,
+          });
+        }
+      }
+
+      // Fallback: if transactions_commerciales has no docs for this site,
+      // try reading the legacy per-site collections under Vente/{site}/ventes
+      if (ventesLoaded.isEmpty) {
+        try {
+          debugPrint(
+              '🔁 [GestionCommerciauxTab] Fallback: lecture de Vente/$site/ventes');
+          final ventesSnap = await FirebaseFirestore.instance
+              .collection('Vente')
+              .doc(site)
+              .collection('ventes')
+              .get();
+          for (final d in ventesSnap.docs) {
+            final m = d.data();
+            // Map Vente -> same map shape used above
+            final vModel = Vente.fromMap(m);
+            final produitDesc = vModel.produits.isNotEmpty
+                ? '${vModel.produits.first.typeEmballage} - ${vModel.produits.first.numeroLot}'
+                : '';
+            final double prixUnitaireFallback = vModel.produits.isNotEmpty
+                ? vModel.produits.first.prixUnitaire
+                : 0.0;
+            final double totalFallback = vModel.montantTotal;
+            DateTime? expiryDt;
+            final rawExpiry = m['validationExpiry'];
+            if (rawExpiry is Timestamp) expiryDt = rawExpiry.toDate();
+            ventesLoaded.add({
+              'id': vModel.id,
+              'transactionId': m['transactionId'] ?? '',
+              'commercial': vModel.commercialNom,
+              'client': vModel.clientNom,
+              'produit': produitDesc,
+              'quantite':
+                  vModel.produits.fold<int>(0, (s, p) => s + p.quantiteVendue),
+              'prixUnitaire': prixUnitaireFallback,
+              'total': totalFallback,
+              'montant': totalFallback,
+              'date': vModel.dateVente,
+              'statut': vModel.statut.name,
+              'validationExpiry': expiryDt,
+            });
+          }
+          debugPrint(
+              '🔁 [GestionCommerciauxTab] Fallback ventes count=${ventesLoaded.length}');
+        } catch (e) {
+          debugPrint('🔁 [GestionCommerciauxTab] Erreur fallback ventes: $e');
+        }
+      }
+
+      _ventes.value = ventesLoaded;
+      // Populate _validationExpiry map from loaded ventes
+      for (final v in ventesLoaded) {
+        final key = v['commercial'] as String? ?? '';
+        final expiry = v['validationExpiry'] as DateTime?;
+        if (expiry != null && expiry.isAfter(DateTime.now())) {
+          // Use commercial name as key so complete-validation hides the commercial
+          _validationExpiry[key] = expiry;
+        }
+      }
+      debugPrint(
+          '💰 [GestionCommerciauxTab] ${_ventes.length} ventes chargées depuis Firestore');
     } catch (e) {
       debugPrint('❌ [GestionCommerciauxTab] Erreur chargement ventes: $e');
       _ventes.value = [];
@@ -151,10 +371,129 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
 
   Future<void> _loadRestitutions() async {
     try {
-      // TODO: Implémenter la récupération des restitutions depuis Firestore
-      _restitutions.value = [];
+      final site = Get.find<UserSession>().site ?? '';
+      if (site.isEmpty) {
+        _restitutions.value = [];
+        return;
+      }
+
+      final snap = await FirebaseFirestore.instance
+          .collection('transactions_commerciales')
+          .where('site', isEqualTo: site)
+          .get();
+
+      // Diagnostic logs for restitutions loader
       debugPrint(
-          '🔄 [GestionCommerciauxTab] Restitutions: pas encore implémentées');
+          '🔎 [GestionCommerciauxTab] _loadRestitutions site="$site" snap.docs.length=${snap.docs.length}');
+      if (snap.docs.isNotEmpty) {
+        try {
+          final first = snap.docs.first.data();
+          debugPrint(
+              '🔎 [GestionCommerciauxTab] _loadRestitutions first doc keys: ${first.keys.toList()}');
+          final restRaw = first['restitutions'];
+          debugPrint(
+              '🔎 [GestionCommerciauxTab] _loadRestitutions first.restitutions type=${restRaw.runtimeType} valuePreview=${restRaw is List ? restRaw.length : restRaw}');
+        } catch (e) {
+          debugPrint(
+              '🔎 [GestionCommerciauxTab] _loadRestitutions error reading first doc: $e');
+        }
+      }
+
+      if (snap.docs.isEmpty) {
+        try {
+          final sample = await FirebaseFirestore.instance
+              .collection('transactions_commerciales')
+              .limit(5)
+              .get();
+          debugPrint(
+              '🔍 [GestionCommerciauxTab] Sample docs (no site filter) count=${sample.docs.length}');
+          for (final d in sample.docs) {
+            final m = d.data();
+            debugPrint(
+                '🔍 [GestionCommerciauxTab] sample doc id=${d.id} site=${m["site"]} keys=${m.keys.toList()}');
+          }
+        } catch (e) {
+          debugPrint(
+              '🔍 [GestionCommerciauxTab] error sampling transactions_commerciales: $e');
+        }
+      }
+
+      final List<Map<String, dynamic>> restLoaded = [];
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final tx = TransactionCommerciale.fromMap(data);
+        for (final r in tx.restitutions) {
+          DateTime? expiryDt;
+          final rawExpiry = r.toMap()['validationExpiry'];
+          if (rawExpiry is Timestamp) expiryDt = rawExpiry.toDate();
+          restLoaded.add({
+            'id': r.id,
+            'transactionId': tx.id,
+            'commercial': tx.commercialNom,
+            'produit': r.numeroLot,
+            'quantite': r.quantiteRestituee,
+            'raison': r.motif,
+            'date': r.date,
+            'statut': r.valideAdmin ||
+                    tx.statut == StatutTransactionCommerciale.valideeAdmin
+                ? 'Acceptée'
+                : 'En attente',
+            'validationExpiry': expiryDt,
+          });
+        }
+      }
+
+      _restitutions.value = restLoaded;
+      // Populate _validationExpiry from restitutions
+      for (final r in restLoaded) {
+        final key = r['commercial'] as String? ?? '';
+        final expiry = r['validationExpiry'] as DateTime?;
+        if (expiry != null && expiry.isAfter(DateTime.now())) {
+          _validationExpiry[key] = expiry;
+        }
+      }
+      debugPrint(
+          '🔄 [GestionCommerciauxTab] ${_restitutions.length} restitutions chargées');
+      // Fallback to Vente/{site}/restitutions if none found in transactions_commerciales
+      if (restLoaded.isEmpty) {
+        try {
+          debugPrint(
+              '🔁 [GestionCommerciauxTab] Fallback: lecture de Vente/$site/restitutions');
+          final restSnap = await FirebaseFirestore.instance
+              .collection('Vente')
+              .doc(site)
+              .collection('restitutions')
+              .get();
+          for (final d in restSnap.docs) {
+            final m = d.data();
+            final rModel = Restitution.fromMap(m);
+            DateTime? expiryDt;
+            final rawExpiry = m['validationExpiry'];
+            if (rawExpiry is Timestamp) expiryDt = rawExpiry.toDate();
+            restLoaded.add({
+              'id': rModel.id,
+              'transactionId': m['transactionId'] ?? '',
+              'commercial': rModel.commercialNom,
+              'produit': rModel.produits.isNotEmpty
+                  ? rModel.produits.first.numeroLot
+                  : '',
+              'quantite': rModel.produits.isNotEmpty
+                  ? rModel.produits.first.quantiteRestituee
+                  : 0,
+              'raison': rModel.motif,
+              'date': rModel.dateRestitution,
+              'statut': rModel.type.name,
+              'validationExpiry': expiryDt,
+            });
+          }
+          _restitutions.value = restLoaded;
+          debugPrint(
+              '🔁 [GestionCommerciauxTab] Fallback restitutions count=${restLoaded.length}');
+        } catch (e) {
+          debugPrint(
+              '🔁 [GestionCommerciauxTab] Erreur fallback restitutions: $e');
+        }
+      }
     } catch (e) {
       debugPrint(
           '❌ [GestionCommerciauxTab] Erreur chargement restitutions: $e');
@@ -164,9 +503,112 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
 
   Future<void> _loadPertes() async {
     try {
-      // TODO: Implémenter la récupération des pertes depuis Firestore
-      _pertes.value = [];
-      debugPrint('📉 [GestionCommerciauxTab] Pertes: pas encore implémentées');
+      final site = Get.find<UserSession>().site ?? '';
+      if (site.isEmpty) {
+        _pertes.value = [];
+        return;
+      }
+
+      final snap = await FirebaseFirestore.instance
+          .collection('transactions_commerciales')
+          .where('site', isEqualTo: site)
+          .get();
+
+      // Diagnostic logs for pertes loader
+      debugPrint(
+          '🔎 [GestionCommerciauxTab] _loadPertes site="$site" snap.docs.length=${snap.docs.length}');
+      if (snap.docs.isNotEmpty) {
+        try {
+          final first = snap.docs.first.data();
+          debugPrint(
+              '🔎 [GestionCommerciauxTab] _loadPertes first doc keys: ${first.keys.toList()}');
+          final pertesRaw = first['pertes'];
+          debugPrint(
+              '🔎 [GestionCommerciauxTab] _loadPertes first.pertes type=${pertesRaw.runtimeType} valuePreview=${pertesRaw is List ? pertesRaw.length : pertesRaw}');
+        } catch (e) {
+          debugPrint(
+              '🔎 [GestionCommerciauxTab] _loadPertes error reading first doc: $e');
+        }
+      }
+
+      if (snap.docs.isEmpty) {
+        try {
+          final sample = await FirebaseFirestore.instance
+              .collection('transactions_commerciales')
+              .limit(5)
+              .get();
+          debugPrint(
+              '🔍 [GestionCommerciauxTab] Sample docs (no site filter) count=${sample.docs.length}');
+          for (final d in sample.docs) {
+            final m = d.data();
+            debugPrint(
+                '🔍 [GestionCommerciauxTab] sample doc id=${d.id} site=${m["site"]} keys=${m.keys.toList()}');
+          }
+        } catch (e) {
+          debugPrint(
+              '🔍 [GestionCommerciauxTab] error sampling transactions_commerciales: $e');
+        }
+      }
+
+      final List<Map<String, dynamic>> pertesLoaded = [];
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final tx = TransactionCommerciale.fromMap(data);
+        for (final p in tx.pertes) {
+          pertesLoaded.add({
+            'id': p.id,
+            'transactionId': tx.id,
+            'commercial': tx.commercialNom,
+            'produit': p.numeroLot,
+            'quantite': p.quantitePerdue,
+            'raison': p.motif,
+            'date': p.date,
+            'statut': p.valideAdmin ||
+                    tx.statut == StatutTransactionCommerciale.valideeAdmin
+                ? 'Validée'
+                : 'En attente',
+          });
+        }
+      }
+
+      _pertes.value = pertesLoaded;
+      debugPrint(
+          '📉 [GestionCommerciauxTab] ${_pertes.length} pertes chargées');
+      // Fallback to Vente/{site}/pertes if none found in transactions_commerciales
+      if (pertesLoaded.isEmpty) {
+        try {
+          debugPrint(
+              '🔁 [GestionCommerciauxTab] Fallback: lecture de Vente/$site/pertes');
+          final pertesSnap = await FirebaseFirestore.instance
+              .collection('Vente')
+              .doc(site)
+              .collection('pertes')
+              .get();
+          for (final d in pertesSnap.docs) {
+            final m = d.data();
+            final pModel = Perte.fromMap(m);
+            pertesLoaded.add({
+              'id': pModel.id,
+              'transactionId': m['transactionId'] ?? '',
+              'commercial': pModel.commercialNom,
+              'produit': pModel.produits.isNotEmpty
+                  ? pModel.produits.first.numeroLot
+                  : '',
+              'quantite': pModel.produits.isNotEmpty
+                  ? pModel.produits.first.quantitePerdue
+                  : 0,
+              'raison': pModel.motif,
+              'date': pModel.datePerte,
+              'statut': pModel.motif,
+            });
+          }
+          _pertes.value = pertesLoaded;
+          debugPrint(
+              '🔁 [GestionCommerciauxTab] Fallback pertes count=${pertesLoaded.length}');
+        } catch (e) {
+          debugPrint('🔁 [GestionCommerciauxTab] Erreur fallback pertes: $e');
+        }
+      }
     } catch (e) {
       debugPrint('❌ [GestionCommerciauxTab] Erreur chargement pertes: $e');
       _pertes.value = [];
@@ -454,16 +896,24 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
       // Obtenir la liste unique des commerciaux depuis les attributions
       final commerciaux = _getUniqueCommerciaux();
 
-      if (commerciaux.isEmpty) {
+      // Filter out commercials whose expiry has passed (hide after expiry)
+      final filtered = commerciaux.where((c) {
+        if (!_validationExpiry.containsKey(c)) return true;
+        final expiry = _validationExpiry[c]!;
+        // if expiry is in the past, hide the commercial
+        return DateTime.now().isBefore(expiry);
+      }).toList();
+
+      if (filtered.isEmpty) {
         return _buildEmptyState('Aucun commercial trouvé', Icons.people);
       }
 
       return ListView.builder(
         primary: false,
         padding: const EdgeInsets.all(16),
-        itemCount: commerciaux.length,
+        itemCount: filtered.length,
         itemBuilder: (context, index) {
-          final commercial = commerciaux[index];
+          final commercial = filtered[index];
           return _buildExpandableCommercialCard(commercial);
         },
       );
@@ -697,6 +1147,82 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
 
           const SizedBox(height: 16),
 
+          // If this commercial has an active expiry, show countdown and cancel
+          if (_validationExpiry.containsKey(commercialNom))
+            _buildCountdownBox(
+              expiry: _validationExpiry[commercialNom]!,
+              onCancel: () async {
+                try {
+                  // cancel all validated legacy items for this commercial by scanning legacy collections
+                  final site = Get.find<UserSession>().site ?? '';
+                  if (site.isNotEmpty) {
+                    final venteSnap = await FirebaseFirestore.instance
+                        .collection('Vente')
+                        .doc(site)
+                        .collection('ventes')
+                        .where('commercialNom', isEqualTo: commercialNom)
+                        .get();
+                    for (final d in venteSnap.docs) {
+                      final m = d.data();
+                      final vid = d.id;
+                      final tid = (m['transactionId'] ?? '') as String;
+                      if (tid.trim().isEmpty) {
+                        await TransactionCommercialeService.instance
+                            .annulerLegacyValidation(
+                                site: site,
+                                elementType: 'vente',
+                                elementId: vid);
+                      }
+                    }
+                    // likewise restitutions and pertes
+                    final restSnap = await FirebaseFirestore.instance
+                        .collection('Vente')
+                        .doc(site)
+                        .collection('restitutions')
+                        .where('commercialNom', isEqualTo: commercialNom)
+                        .get();
+                    for (final d in restSnap.docs) {
+                      final m = d.data();
+                      final rid = d.id;
+                      final tid = (m['transactionId'] ?? '') as String;
+                      if (tid.trim().isEmpty) {
+                        await TransactionCommercialeService.instance
+                            .annulerLegacyValidation(
+                                site: site,
+                                elementType: 'restitution',
+                                elementId: rid);
+                      }
+                    }
+                    final perteSnap = await FirebaseFirestore.instance
+                        .collection('Vente')
+                        .doc(site)
+                        .collection('pertes')
+                        .where('commercialNom', isEqualTo: commercialNom)
+                        .get();
+                    for (final d in perteSnap.docs) {
+                      final m = d.data();
+                      final pid = d.id;
+                      final tid = (m['transactionId'] ?? '') as String;
+                      if (tid.trim().isEmpty) {
+                        await TransactionCommercialeService.instance
+                            .annulerLegacyValidation(
+                                site: site,
+                                elementType: 'perte',
+                                elementId: pid);
+                      }
+                    }
+                  }
+                } catch (e) {
+                  debugPrint('❌ cancel complete validation failed: $e');
+                } finally {
+                  _validationExpiry.remove(commercialNom);
+                  _ventes.refresh();
+                  _restitutions.refresh();
+                  _pertes.refresh();
+                }
+              },
+            ),
+
           // Sections détaillées
           if (ventes.isNotEmpty) ...[
             _buildSectionHeader(
@@ -710,6 +1236,8 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
                   status: vente['statut'] as String,
                   onValidate: () =>
                       _validateActivity('vente', vente['id'], commercialNom),
+                  elementId: vente['id'],
+                  elementType: 'vente',
                 )),
             const SizedBox(height: 16),
           ],
@@ -726,6 +1254,8 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
                   status: restitution['statut'] as String,
                   onValidate: () => _validateActivity(
                       'restitution', restitution['id'], commercialNom),
+                  elementId: restitution['id'],
+                  elementType: 'restitution',
                 )),
             const SizedBox(height: 16),
           ],
@@ -741,6 +1271,8 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
                   status: perte['statut'] as String,
                   onValidate: () =>
                       _validateActivity('perte', perte['id'], commercialNom),
+                  elementId: perte['id'],
+                  elementType: 'perte',
                 )),
             const SizedBox(height: 16),
           ],
@@ -750,50 +1282,93 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => _validateCompleteActivity(commercialNom),
-              icon: const Icon(Icons.check_circle, color: Colors.white),
-              label: const Text(
-                'Valider l\'Activité Complète',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+            child: Obx(() {
+              final running = _validationRunning[commercialNom] == true;
+              final hasExpiry = _validationExpiry.containsKey(commercialNom);
+              // If validation is running, show spinner and prevent action.
+              if (running) {
+                return ElevatedButton.icon(
+                  onPressed: null,
+                  icon: const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      )),
+                  label: const Text('Validation en cours...',
+                      style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4CAF50),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                );
+              }
+
+              // If there's an active expiry (validated recently), lock the button
+              if (hasExpiry) {
+                return ElevatedButton.icon(
+                  onPressed: null,
+                  icon: const Icon(Icons.lock, color: Colors.white),
+                  label: const Text('Validation verrouillée',
+                      style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                );
+              }
+
+              // Default: allow validation
+              return ElevatedButton.icon(
+                onPressed: () => _validateCompleteActivity(commercialNom),
+                icon: const Icon(Icons.check_circle, color: Colors.white),
+                label: const Text(
+                  'Valider l\'Activité Complète',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF4CAF50),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4CAF50),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
-              ),
-            ),
+              );
+            }),
           ),
         ],
       ),
     );
   }
 
+  Widget _buildCountdownBox({
+    required DateTime expiry,
+    required VoidCallback onCancel,
+  }) {
+    return CountdownBox(expiry: expiry, onCancel: onCancel);
+  }
+
   Widget _buildAttributionsTab() {
     return Obx(() {
-      List<AttributionPartielle> attributionsFiltrees = _attributions;
-
-      if (_selectedCommercial.value != 'tous') {
-        attributionsFiltrees = _attributions
-            .where((attr) => attr.commercialNom == _selectedCommercial.value)
-            .toList();
-      }
-
-      if (attributionsFiltrees.isEmpty) {
+      if (_attributions.isEmpty) {
         return _buildEmptyState(
             'Aucune attribution trouvée', Icons.assignment_turned_in);
       }
-
       return ListView.builder(
         padding: const EdgeInsets.all(16),
-        itemCount: attributionsFiltrees.length,
+        itemCount: _attributions.length,
         itemBuilder: (context, index) {
-          final attribution = attributionsFiltrees[index];
+          final attribution = _attributions[index];
           return _buildAttributionCard(attribution);
         },
       );
@@ -803,18 +1378,14 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
   Widget _buildVentesTab() {
     return Obx(() {
       List<Map<String, dynamic>> ventesFiltrees = _ventes;
-
       if (_selectedCommercial.value != 'tous') {
         ventesFiltrees = _ventes
-            .where((vente) => vente['commercial'] == _selectedCommercial.value)
+            .where((v) => v['commercial'] == _selectedCommercial.value)
             .toList();
       }
-
       if (ventesFiltrees.isEmpty) {
-        return _buildEmptyState(
-            'Aucune vente enregistrée', Icons.shopping_cart);
+        return _buildEmptyState('Aucune vente trouvée', Icons.shopping_cart);
       }
-
       return ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: ventesFiltrees.length,
@@ -1212,8 +1783,14 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
     required DateTime date,
     required String status,
     required VoidCallback onValidate,
+    String? elementId,
+    String? elementType,
   }) {
     final isValidated = status == 'Validé';
+    final keyId = elementId ?? title + '|' + subtitle + date.toIso8601String();
+    final isRunning = _validationRunning[keyId] ?? false;
+    final expiry =
+        _validationExpiry[keyId] ?? _validationExpiry[elementId ?? ''];
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -1267,17 +1844,35 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
             ),
           ),
 
-          // Bouton de validation
+          // Bouton de validation or spinner
           if (!isValidated)
-            TextButton.icon(
-              onPressed: onValidate,
-              icon: const Icon(Icons.check, size: 16),
-              label: const Text('Valider'),
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.green,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              ),
-            )
+            isRunning
+                ? const SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : TextButton.icon(
+                    onPressed: () async {
+                      try {
+                        if (elementId != null)
+                          _validationRunning[elementId] = true;
+                        _validationRunning.refresh();
+                        onValidate();
+                      } finally {
+                        if (elementId != null) {
+                          _validationRunning.remove(elementId);
+                          _validationRunning.refresh();
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.check, size: 16),
+                    label: const Text('Valider'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.green,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                    ),
+                  )
           else
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1292,6 +1887,38 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
                 ),
+              ),
+            ),
+
+          // Per-element countdown + cancel if expiry exists
+          if (expiry != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 8.0),
+              child: _buildCountdownBox(
+                expiry: expiry,
+                onCancel: () async {
+                  try {
+                    final site = Get.find<UserSession>().site ?? '';
+                    if (site.isNotEmpty &&
+                        elementId != null &&
+                        elementType != null) {
+                      await TransactionCommercialeService.instance
+                          .annulerLegacyValidation(
+                              site: site,
+                              elementType: elementType,
+                              elementId: elementId);
+                    }
+                  } catch (e) {
+                    debugPrint('❌ cancel validation failed: $e');
+                    Get.snackbar(
+                        'Erreur', 'Impossible d\'annuler la validation');
+                  } finally {
+                    if (elementId != null) _validationExpiry.remove(elementId);
+                    _ventes.refresh();
+                    _restitutions.refresh();
+                    _pertes.refresh();
+                  }
+                },
               ),
             ),
         ],
@@ -1396,12 +2023,31 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
           ),
           ElevatedButton(
             onPressed: () {
+              // Prevent double click
+              if (_validationRunning[commercialNom] == true) return;
               Get.back();
               _performCompleteValidation(commercialNom);
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text('Valider Tout',
-                style: TextStyle(color: Colors.white)),
+            child: Obx(() => _validationRunning[commercialNom] == true
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Text('Validation...',
+                          style: TextStyle(color: Colors.white))
+                    ],
+                  )
+                : const Text('Valider Tout',
+                    style: TextStyle(color: Colors.white))),
           ),
         ],
       ),
@@ -1410,110 +2056,520 @@ class _GestionCommerciauxTabState extends State<GestionCommerciauxTab>
 
   /// Effectuer la validation d'une activité
   void _performValidation(String type, String id, String commercialNom) {
-    try {
-      // Mettre à jour le statut selon le type
-      switch (type) {
-        case 'vente':
-          final index = _ventes.indexWhere((v) => v['id'] == id);
-          if (index != -1) {
-            _ventes[index]['statut'] = 'Validé';
-            _ventes.refresh();
+    // Use TransactionCommercialeService to validate an element (mirrors caissier flow)
+    () async {
+      debugPrint(
+          '🔔 [_performValidation] start type=$type id=$id commercial=$commercialNom');
+      try {
+        final svc = TransactionCommercialeService.instance;
+        String? transactionId;
+
+        switch (type) {
+          case 'vente':
+            final index = _ventes.indexWhere((v) => v['id'] == id);
+            if (index != -1) {
+              transactionId = _ventes[index]['transactionId'] as String?;
+            }
+            break;
+          case 'restitution':
+            final index = _restitutions.indexWhere((r) => r['id'] == id);
+            if (index != -1) {
+              transactionId = _restitutions[index]['transactionId'] as String?;
+            }
+            break;
+          case 'perte':
+            final index = _pertes.indexWhere((p) => p['id'] == id);
+            if (index != -1) {
+              transactionId = _pertes[index]['transactionId'] as String?;
+            }
+            break;
+        }
+
+        if (transactionId != null && transactionId.isNotEmpty) {
+          debugPrint(
+              '➡️ [_performValidation] found transactionId=$transactionId for element $id');
+          await svc.validerElement(
+            transactionId: transactionId,
+            elementType: type,
+            elementId: id,
+          );
+          debugPrint(
+              '✅ [_performValidation] svc.validerElement completed for transactionId=$transactionId elementId=$id');
+
+          // Update local UI state
+          switch (type) {
+            case 'vente':
+              final i = _ventes.indexWhere((v) => v['id'] == id);
+              if (i != -1) {
+                _ventes[i]['statut'] = 'Validé';
+                _ventes.refresh();
+              }
+              break;
+            case 'restitution':
+              final i = _restitutions.indexWhere((r) => r['id'] == id);
+              if (i != -1) {
+                _restitutions[i]['statut'] = 'Acceptée';
+                _restitutions.refresh();
+              }
+              break;
+            case 'perte':
+              final i = _pertes.indexWhere((p) => p['id'] == id);
+              if (i != -1) {
+                _pertes[i]['statut'] = 'Validée';
+                _pertes.refresh();
+              }
+              break;
           }
-          break;
-        case 'restitution':
-          final index = _restitutions.indexWhere((r) => r['id'] == id);
-          if (index != -1) {
-            _restitutions[index]['statut'] = 'Validé';
-            _restitutions.refresh();
+
+          Get.snackbar(
+            '✅ Validation effectuée',
+            '${type.toUpperCase()} validée pour ${commercialNom}',
+            backgroundColor: Colors.green,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 2),
+          );
+
+          // Refresh from server to ensure UI matches Firestore state
+          unawaited(_loadActivitesCommerciaux());
+        } else {
+          // Fallback: try to validate the legacy element directly (authoritative write)
+          debugPrint(
+              '⚠️ [_performValidation] Transaction ID introuvable pour element $id (commercial=$commercialNom) - attempting legacy validation');
+          try {
+            final site = Get.find<UserSession>().site ?? '';
+            if (site.isNotEmpty) {
+              await svc.validerLegacyElement(
+                site: site,
+                elementType: type,
+                elementId: id,
+                validePar: Get.find<UserSession>().nom ??
+                    Get.find<UserSession>().email,
+              );
+              // Update local UI state
+              switch (type) {
+                case 'vente':
+                  final index = _ventes.indexWhere((v) => v['id'] == id);
+                  if (index != -1) {
+                    _ventes[index]['statut'] = 'Validé';
+                    _ventes.refresh();
+                  }
+                  break;
+                case 'restitution':
+                  final index = _restitutions.indexWhere((r) => r['id'] == id);
+                  if (index != -1) {
+                    _restitutions[index]['statut'] = 'Acceptée';
+                    _restitutions.refresh();
+                  }
+                  break;
+                case 'perte':
+                  final index = _pertes.indexWhere((p) => p['id'] == id);
+                  if (index != -1) {
+                    _pertes[index]['statut'] = 'Validée';
+                    _pertes.refresh();
+                  }
+                  break;
+              }
+
+              Get.snackbar(
+                '✅ Validation effectuée',
+                '${type.toUpperCase()} validée pour ${commercialNom}',
+                backgroundColor: Colors.green,
+                colorText: Colors.white,
+                duration: const Duration(seconds: 2),
+              );
+              // Refresh from server
+              unawaited(_loadActivitesCommerciaux());
+            } else {
+              // No site -> fallback to local update
+              Get.snackbar('⚠️',
+                  'Transaction introuvable — validation locale appliquée');
+              switch (type) {
+                case 'vente':
+                  final index = _ventes.indexWhere((v) => v['id'] == id);
+                  if (index != -1) {
+                    _ventes[index]['statut'] = 'Validé';
+                    _ventes.refresh();
+                  }
+                  break;
+                case 'restitution':
+                  final index = _restitutions.indexWhere((r) => r['id'] == id);
+                  if (index != -1) {
+                    _restitutions[index]['statut'] = 'Acceptée';
+                    _restitutions.refresh();
+                  }
+                  break;
+                case 'perte':
+                  final index = _pertes.indexWhere((p) => p['id'] == id);
+                  if (index != -1) {
+                    _pertes[index]['statut'] = 'Validée';
+                    _pertes.refresh();
+                  }
+                  break;
+              }
+            }
+          } catch (e) {
+            debugPrint('❌ [_performValidation] validerLegacyElement error: $e');
+            Get.snackbar('❌', 'Impossible de valider la transaction');
           }
-          break;
-        case 'perte':
-          final index = _pertes.indexWhere((p) => p['id'] == id);
-          if (index != -1) {
-            _pertes[index]['statut'] = 'Validé';
-            _pertes.refresh();
-          }
-          break;
+        }
+      } catch (e) {
+        debugPrint('❌ Erreur validation $type: $e');
+        Get.snackbar('❌ Erreur', 'Impossible de valider la $type');
       }
-
-      Get.snackbar(
-        '✅ Validation effectuée',
-        '${type.toUpperCase()} validée pour ${commercialNom}',
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 2),
-      );
-
-      // TODO: Sauvegarder en base de données
-      debugPrint('✅ ${type.toUpperCase()} validée: $id pour $commercialNom');
-    } catch (e) {
-      Get.snackbar(
-        '❌ Erreur',
-        'Impossible de valider la ${type}',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-      debugPrint('❌ Erreur validation ${type}: $e');
-    }
+    }();
   }
 
   /// Effectuer la validation complète
   void _performCompleteValidation(String commercialNom) {
-    try {
-      int validatedCount = 0;
+    // Validate all pending activities for a commercial by validating their transactions
+    () async {
+      // mark running for this commercial
+      _validationRunning[commercialNom] = true;
+      _validationRunning.refresh();
+      try {
+        final svc = TransactionCommercialeService.instance;
+        final user = Get.find<UserSession>();
 
-      // Valider toutes les ventes du commercial
-      for (int i = 0; i < _ventes.length; i++) {
-        if (_ventes[i]['commercial'] == commercialNom &&
-            _ventes[i]['statut'] != 'Validé') {
-          _ventes[i]['statut'] = 'Validé';
-          validatedCount++;
+        // Collect unique transaction IDs for this commercial
+        final Set<String> txIds = {};
+        for (final v in _ventes) {
+          final tid = v['transactionId'] as String?;
+          if (v['commercial'] == commercialNom &&
+              tid != null &&
+              tid.trim().isNotEmpty) {
+            txIds.add(tid);
+          }
         }
-      }
-
-      // Valider toutes les restitutions du commercial
-      for (int i = 0; i < _restitutions.length; i++) {
-        if (_restitutions[i]['commercial'] == commercialNom &&
-            _restitutions[i]['statut'] != 'Validé') {
-          _restitutions[i]['statut'] = 'Validé';
-          validatedCount++;
+        for (final r in _restitutions) {
+          final tid = r['transactionId'] as String?;
+          if (r['commercial'] == commercialNom &&
+              tid != null &&
+              tid.trim().isNotEmpty) {
+            txIds.add(tid);
+          }
         }
-      }
-
-      // Valider toutes les pertes du commercial
-      for (int i = 0; i < _pertes.length; i++) {
-        if (_pertes[i]['commercial'] == commercialNom &&
-            _pertes[i]['statut'] != 'Validé') {
-          _pertes[i]['statut'] = 'Validé';
-          validatedCount++;
+        for (final p in _pertes) {
+          final tid = p['transactionId'] as String?;
+          if (p['commercial'] == commercialNom &&
+              tid != null &&
+              tid.trim().isNotEmpty) {
+            txIds.add(tid);
+          }
         }
+
+        int validatedCount = 0;
+        // Debug: show what we collected
+        debugPrint(
+            '🔍 [_performCompleteValidation] initial collected txIds: ${txIds.toList()}');
+
+        // If no transaction IDs were collected from local items, try a series
+        // of fallback searches to locate canonical transaction docs or
+        // transactionId fields stored in legacy per-site collections.
+        if (txIds.isEmpty) {
+          final site = Get.find<UserSession>().site ?? '';
+          debugPrint(
+              '🔍 [_performCompleteValidation] txIds empty, attempting broadened fallbacks for site="$site" commercial="$commercialNom"');
+
+          if (site.isNotEmpty) {
+            // 1) Try to derive commercialId from attributions cache and query by it
+            try {
+              String commercialId = '';
+              try {
+                final match = _attributions.firstWhere(
+                    (a) => a.commercialNom == commercialNom,
+                    orElse: () => AttributionPartielle(
+                        id: '',
+                        lotId: '',
+                        commercialId: '',
+                        commercialNom: '',
+                        quantiteAttribuee: 0,
+                        valeurUnitaire: 0,
+                        valeurTotale: 0,
+                        dateAttribution: DateTime.now(),
+                        gestionnaire: '',
+                        contenanceKg: 0,
+                        dateConditionnement: DateTime.now(),
+                        numeroLot: '',
+                        predominanceFlorale: '',
+                        prixUnitaire: 0,
+                        quantiteInitiale: 0,
+                        quantiteRestante: 0,
+                        searchableText: '',
+                        siteOrigine: '',
+                        statut: '',
+                        typeEmballage: '',
+                        lastUpdate: DateTime.now()));
+                commercialId = match.commercialId;
+              } catch (_) {}
+
+              if (commercialId.isNotEmpty) {
+                debugPrint(
+                    '🔎 [_performCompleteValidation] found commercialId="$commercialId" from attributions, querying transactions_commerciales by commercialId');
+                final snapById = await FirebaseFirestore.instance
+                    .collection('transactions_commerciales')
+                    .where('site', isEqualTo: site)
+                    .where('commercialId', isEqualTo: commercialId)
+                    .get();
+                debugPrint(
+                    '🔍 [_performCompleteValidation] query by commercialId returned ${snapById.docs.length} docs');
+                for (final d in snapById.docs) {
+                  final id = d.id;
+                  debugPrint(
+                      '   - found tx doc id=${id} keys=${d.data().keys.toList()}');
+                  if (id.trim().isNotEmpty) txIds.add(id);
+                }
+              }
+            } catch (e) {
+              debugPrint(
+                  '⚠️ [_performCompleteValidation] error querying by commercialId: $e');
+            }
+
+            // 2) Try query by commercialNom (existing fallback)
+            if (txIds.isEmpty) {
+              try {
+                debugPrint(
+                    '🔍 [_performCompleteValidation] querying transactions_commerciales by commercialNom');
+                final snapByName = await FirebaseFirestore.instance
+                    .collection('transactions_commerciales')
+                    .where('site', isEqualTo: site)
+                    .where('commercialNom', isEqualTo: commercialNom)
+                    .get();
+                debugPrint(
+                    '🔍 [_performCompleteValidation] query by commercialNom returned ${snapByName.docs.length} docs');
+                for (final d in snapByName.docs) {
+                  final id = d.id;
+                  debugPrint(
+                      '   - found tx doc id=${id} keys=${d.data().keys.toList()}');
+                  if (id.trim().isNotEmpty) txIds.add(id);
+                }
+              } catch (e) {
+                debugPrint(
+                    '⚠️ [_performCompleteValidation] error querying by commercialNom: $e');
+              }
+            }
+
+            // 3) If still empty, scan legacy per-site collections for transactionId fields
+            if (txIds.isEmpty) {
+              try {
+                debugPrint(
+                    '🔎 [_performCompleteValidation] scanning legacy Vente/$site collections for transactionId fields');
+
+                final venteSnap = await FirebaseFirestore.instance
+                    .collection('Vente')
+                    .doc(site)
+                    .collection('ventes')
+                    .where('commercialNom', isEqualTo: commercialNom)
+                    .get();
+                debugPrint(
+                    '🔍 [_performCompleteValidation] Vente/$site/ventes matched ${venteSnap.docs.length} docs');
+                for (final d in venteSnap.docs) {
+                  final m = d.data();
+                  final tid = (m['transactionId'] ?? '') as String;
+                  debugPrint('   - vente doc id=${d.id} transactionId=${tid}');
+                  if (tid.trim().isNotEmpty) txIds.add(tid);
+                }
+
+                final restSnap = await FirebaseFirestore.instance
+                    .collection('Vente')
+                    .doc(site)
+                    .collection('restitutions')
+                    .where('commercialNom', isEqualTo: commercialNom)
+                    .get();
+                debugPrint(
+                    '🔍 [_performCompleteValidation] Vente/$site/restitutions matched ${restSnap.docs.length} docs');
+                for (final d in restSnap.docs) {
+                  final m = d.data();
+                  final tid = (m['transactionId'] ?? '') as String;
+                  debugPrint(
+                      '   - restitution doc id=${d.id} transactionId=${tid}');
+                  if (tid.trim().isNotEmpty) txIds.add(tid);
+                }
+
+                final pertesSnap = await FirebaseFirestore.instance
+                    .collection('Vente')
+                    .doc(site)
+                    .collection('pertes')
+                    .where('commercialNom', isEqualTo: commercialNom)
+                    .get();
+                debugPrint(
+                    '🔍 [_performCompleteValidation] Vente/$site/pertes matched ${pertesSnap.docs.length} docs');
+                for (final d in pertesSnap.docs) {
+                  final m = d.data();
+                  final tid = (m['transactionId'] ?? '') as String;
+                  debugPrint('   - perte doc id=${d.id} transactionId=${tid}');
+                  if (tid.trim().isNotEmpty) txIds.add(tid);
+                }
+              } catch (e) {
+                debugPrint(
+                    '⚠️ [_performCompleteValidation] error scanning legacy collections: $e');
+              }
+
+              // If still no canonical txIds, validate legacy docs directly
+              if (txIds.isEmpty) {
+                try {
+                  debugPrint(
+                      '🔁 [_performCompleteValidation] No txIds found, will validate legacy documents directly for commercial=$commercialNom');
+
+                  final venteSnap2 = await FirebaseFirestore.instance
+                      .collection('Vente')
+                      .doc(site)
+                      .collection('ventes')
+                      .where('commercialNom', isEqualTo: commercialNom)
+                      .get();
+                  for (final d in venteSnap2.docs) {
+                    final m = d.data();
+                    final vid = d.id;
+                    // If this legacy doc has a transactionId, skip (it will be handled above)
+                    final tid = (m['transactionId'] ?? '') as String;
+                    if (tid.trim().isEmpty) {
+                      await svc.validerLegacyElement(
+                        site: site,
+                        elementType: 'vente',
+                        elementId: vid,
+                        validePar: Get.find<UserSession>().nom ??
+                            Get.find<UserSession>().email,
+                      );
+                      validatedCount++;
+                      // register expiry for this commercial (5h)
+                      _validationExpiry[commercialNom] =
+                          DateTime.now().add(_hideDelay);
+                      _validationExpiry.refresh();
+                    }
+                  }
+
+                  final restSnap2 = await FirebaseFirestore.instance
+                      .collection('Vente')
+                      .doc(site)
+                      .collection('restitutions')
+                      .where('commercialNom', isEqualTo: commercialNom)
+                      .get();
+                  for (final d in restSnap2.docs) {
+                    final m = d.data();
+                    final rid = d.id;
+                    final tid = (m['transactionId'] ?? '') as String;
+                    if (tid.trim().isEmpty) {
+                      await svc.validerLegacyElement(
+                        site: site,
+                        elementType: 'restitution',
+                        elementId: rid,
+                        validePar: Get.find<UserSession>().nom ??
+                            Get.find<UserSession>().email,
+                      );
+                      validatedCount++;
+                      _validationExpiry[commercialNom] =
+                          DateTime.now().add(_hideDelay);
+                      _validationExpiry.refresh();
+                    }
+                  }
+
+                  final perteSnap2 = await FirebaseFirestore.instance
+                      .collection('Vente')
+                      .doc(site)
+                      .collection('pertes')
+                      .where('commercialNom', isEqualTo: commercialNom)
+                      .get();
+                  for (final d in perteSnap2.docs) {
+                    final m = d.data();
+                    final pid = d.id;
+                    final tid = (m['transactionId'] ?? '') as String;
+                    if (tid.trim().isEmpty) {
+                      await svc.validerLegacyElement(
+                        site: site,
+                        elementType: 'perte',
+                        elementId: pid,
+                        validePar: Get.find<UserSession>().nom ??
+                            Get.find<UserSession>().email,
+                      );
+                      validatedCount++;
+                      _validationExpiry[commercialNom] =
+                          DateTime.now().add(_hideDelay);
+                      _validationExpiry.refresh();
+                    }
+                  }
+                } catch (e) {
+                  debugPrint(
+                      '⚠️ [_performCompleteValidation] error validating legacy docs directly: $e');
+                }
+              }
+            }
+          } // end if site.isNotEmpty
+        }
+
+        debugPrint(
+            '🔁 [_performCompleteValidation] final txIds to validate: ${txIds.toList()}');
+        for (final txId in txIds) {
+          try {
+            debugPrint(
+                '➡️ [_performCompleteValidation] validating txId=$txId by ${user.nom ?? user.email}');
+            await svc.validerTransaction(
+                txId, user.nom ?? user.email ?? 'Gestionnaire');
+            validatedCount++;
+            // register expiry for this commercial (5h) when canonical tx validated
+            _validationExpiry[commercialNom] = DateTime.now().add(_hideDelay);
+            _validationExpiry.refresh();
+            debugPrint('✅ [_performCompleteValidation] validated txId=$txId');
+          } catch (e) {
+            debugPrint(
+                '⚠️ [_performCompleteValidation] Echec validation transaction $txId: $e');
+          }
+        }
+
+        // Update local UI statuses optimistically
+        for (int i = 0; i < _ventes.length; i++) {
+          if (_ventes[i]['commercial'] == commercialNom)
+            _ventes[i]['statut'] = 'Validé';
+        }
+        for (int i = 0; i < _restitutions.length; i++) {
+          if (_restitutions[i]['commercial'] == commercialNom)
+            _restitutions[i]['statut'] = 'Acceptée';
+        }
+        for (int i = 0; i < _pertes.length; i++) {
+          if (_pertes[i]['commercial'] == commercialNom)
+            _pertes[i]['statut'] = 'Validée';
+        }
+        _ventes.refresh();
+        _restitutions.refresh();
+        _pertes.refresh();
+
+        Get.snackbar(
+          '🎉 Validation complète effectuée',
+          '$validatedCount transactions validées pour $commercialNom',
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 3),
+          icon: const Icon(Icons.verified, color: Colors.white),
+        );
+
+        // Start a timer to hide the commercial card after expiry if set
+        if (_validationExpiry.containsKey(commercialNom)) {
+          final expiry = _validationExpiry[commercialNom]!;
+          // schedule a delayed task to remove the commercial from view after expiry
+          Future.delayed(expiry.difference(DateTime.now()), () {
+            try {
+              // Remove expiry entry and force a refresh; the card building logic should hide cards with expired validations
+              _validationExpiry.remove(commercialNom);
+              _ventes.refresh();
+              _restitutions.refresh();
+              _pertes.refresh();
+            } catch (_) {}
+          });
+        }
+
+        // mark not running
+        _validationRunning[commercialNom] = false;
+        _validationRunning.refresh();
+
+        // Refresh full activities from Firestore to reflect authoritative state
+        unawaited(_loadActivitesCommerciaux());
+      } catch (e) {
+        Get.snackbar(
+          '❌ Erreur',
+          'Impossible de valider l\'activité complète',
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+        debugPrint('❌ Erreur validation complète: $e');
       }
-
-      // Rafraîchir les listes
-      _ventes.refresh();
-      _restitutions.refresh();
-      _pertes.refresh();
-
-      Get.snackbar(
-        '🎉 Validation complète effectuée',
-        '$validatedCount activités validées pour $commercialNom',
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 3),
-        icon: const Icon(Icons.verified, color: Colors.white),
-      );
-
-      // TODO: Sauvegarder en base de données
-      debugPrint(
-          '🎉 Validation complète effectuée pour $commercialNom: $validatedCount activités');
-    } catch (e) {
-      Get.snackbar(
-        '❌ Erreur',
-        'Impossible de valider l\'activité complète',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-      debugPrint('❌ Erreur validation complète: $e');
-    }
+    }();
   }
 }
