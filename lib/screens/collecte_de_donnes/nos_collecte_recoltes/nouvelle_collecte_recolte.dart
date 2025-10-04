@@ -1,18 +1,42 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'dart:async';
+import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:dropdown_search/dropdown_search.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../../utils/clean_geolocation.dart';
+import '../../../utils/simple_geolocation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:get/get.dart';
-import 'package:apisavana_gestion/data/geographe/geographie.dart';
-import 'package:apisavana_gestion/data/personnel/personnel_apisavana.dart';
-import 'package:apisavana_gestion/authentication/user_session.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:dropdown_search/dropdown_search.dart';
 import 'package:apisavana_gestion/utils/smart_appbar.dart';
-import 'package:apisavana_gestion/data/services/stats_recoltes_service.dart';
+import '../../../services/universal_container_id_service.dart';
+import '../../../data/services/localite_codification_service.dart';
+import 'package:apisavana_gestion/authentication/user_session.dart';
 import '../../controle_de_donnes/services/global_refresh_service.dart';
 import '../../controle_de_donnes/services/quality_control_service.dart';
-import '../../../services/universal_container_id_service.dart';
-import 'dart:async';
+import 'package:apisavana_gestion/data/services/stats_recoltes_service.dart';
+import 'package:apisavana_gestion/screens/administration/services/metier_settings_service.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/core/collecte_reference_service.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/core/collecte_geographie_service.dart';
+
+// Classe locale pour compatibilité avec l'ancien code
+class TechnicienInfo {
+  final String nom;
+  final String prenom;
+  final String site;
+  final String telephone;
+  String get nomComplet => '$prenom $nom';
+
+  const TechnicienInfo({
+    required this.nom,
+    required this.prenom,
+    required this.site,
+    required this.telephone,
+  });
+
+  @override
+  String toString() => nomComplet;
+}
 
 // Modèle pour un contenant de récolte
 class HarvestContainer {
@@ -71,6 +95,14 @@ class _NouvelleCollecteRecoltePageState
   Map<String, dynamic>? currentUserData;
   bool isLoadingUserData = true;
 
+  // Service de géographie depuis Firestore (remplace GeographieData)
+  late final CollecteGeographieService _geographieService;
+  late final CollecteReferenceService _referenceService;
+  late final MetierSettingsService _metierService;
+
+  // Prix par contenant depuis Firestore
+  Map<String, double> containerPrices = {};
+
   // Liste dynamique des contenants
   List<HarvestContainer> containers = [];
 
@@ -81,6 +113,14 @@ class _NouvelleCollecteRecoltePageState
   double? weight;
   double? unitPrice;
   String? editingId;
+
+  // Variables pour le choix de prix
+  bool isCustomPrice = false;
+  double? customPriceValue;
+
+  // Variables pour la géolocalisation
+  Map<String, dynamic>? _geolocationData;
+  bool _isGettingLocation = false;
 
   // Feedback utilisateur
   String? statusMessage;
@@ -99,8 +139,6 @@ class _NouvelleCollecteRecoltePageState
   // Filtres pour l'historique Firestore
   String? filterSite;
   String? filterTechnician;
-  List<String> availableSites = [];
-  List<String> availableTechnicians = [];
 
   // Palette couleurs
   static const Color kHighlightColor = Color(0xFFF49101);
@@ -122,14 +160,23 @@ class _NouvelleCollecteRecoltePageState
   String? selectedTechnician;
   List<String> selectedFlorales = [];
 
+  // Variables pour les données Firestore
+  List<String> availableSites = [];
+  List<TechnicianSummary> availableTechnicians = [];
+
+  // Variables pour les filtres de l'historique
+  List<String> filterTechnicianNames = [];
+
   // Variables pour les techniciens filtrés par site
   List<TechnicienInfo> availableTechniciensForSite = [];
 
-  // Getters pour le nouveau système GeographieData
+  // Getters pour le nouveau système de géographie Firestore
   List<Map<String, dynamic>> get _provinces {
     if (selectedRegion?.isEmpty ?? true) return [];
-    final regionCode = GeographieData.getRegionCodeByName(selectedRegion!);
-    return GeographieData.getProvincesForRegion(regionCode);
+    final regionCode = _geographieService.getRegionCodeByName(selectedRegion!);
+    return regionCode != null
+        ? _geographieService.getProvincesForRegion(regionCode)
+        : [];
   }
 
   List<Map<String, dynamic>> get _communes {
@@ -137,10 +184,14 @@ class _NouvelleCollecteRecoltePageState
         selectedRegion!.isEmpty ||
         selectedProvince == null ||
         selectedProvince!.isEmpty) return [];
-    final regionCode = GeographieData.getRegionCodeByName(selectedRegion!);
-    final provinceCode =
-        GeographieData.getProvinceCodeByName(regionCode, selectedProvince!);
-    return GeographieData.getCommunesForProvince(regionCode, provinceCode);
+    final regionCode = _geographieService.getRegionCodeByName(selectedRegion!);
+    final provinceCode = regionCode != null
+        ? _geographieService.getProvinceCodeByName(
+            regionCode, selectedProvince!)
+        : null;
+    return (regionCode != null && provinceCode != null)
+        ? _geographieService.getCommunesForProvince(regionCode, provinceCode)
+        : [];
   }
 
   List<Map<String, dynamic>> get _villages {
@@ -150,13 +201,19 @@ class _NouvelleCollecteRecoltePageState
         selectedProvince!.isEmpty ||
         selectedCommune == null ||
         selectedCommune!.isEmpty) return [];
-    final regionCode = GeographieData.getRegionCodeByName(selectedRegion!);
-    final provinceCode =
-        GeographieData.getProvinceCodeByName(regionCode, selectedProvince!);
-    final communeCode = GeographieData.getCommuneCodeByName(
-        regionCode, provinceCode, selectedCommune!);
-    return GeographieData.getVillagesForCommune(
-        regionCode, provinceCode, communeCode);
+    final regionCode = _geographieService.getRegionCodeByName(selectedRegion!);
+    final provinceCode = regionCode != null
+        ? _geographieService.getProvinceCodeByName(
+            regionCode, selectedProvince!)
+        : null;
+    final communeCode = (regionCode != null && provinceCode != null)
+        ? _geographieService.getCommuneCodeByName(
+            regionCode, provinceCode, selectedCommune!)
+        : null;
+    return (regionCode != null && provinceCode != null && communeCode != null)
+        ? _geographieService.getVillagesForCommune(
+            regionCode, provinceCode, communeCode)
+        : [];
   }
 
   // Contrôleurs pour mise à jour automatique
@@ -165,7 +222,12 @@ class _NouvelleCollecteRecoltePageState
   @override
   void initState() {
     super.initState();
+    _geographieService = Get.find<CollecteGeographieService>();
+    _referenceService = Get.find<CollecteReferenceService>();
+    _metierService = Get.find<MetierSettingsService>();
     _initializeUserData();
+    _loadReferenceData(); // Charger les données de référence
+    _loadContainerPrices(); // Charger les prix par contenant
     _setupGlobalRefreshListener();
   }
 
@@ -200,7 +262,9 @@ class _NouvelleCollecteRecoltePageState
 
       // Initialiser les valeurs par défaut depuis les données utilisateur
       selectedSite = currentUserData!['site'] ?? userSession?.site;
-      selectedTechnician =
+
+      // Utiliser le service de référence pour obtenir le nom du technicien
+      selectedTechnician = _referenceService.currentTechnicianName ??
           '${currentUserData!['prenom'] ?? ''} ${currentUserData!['nom'] ?? ''}'
               .trim();
 
@@ -208,6 +272,9 @@ class _NouvelleCollecteRecoltePageState
       if (selectedSite != null) {
         _loadTechniciansForSite(selectedSite);
       }
+
+      // Charger les sites disponibles depuis Firestore
+      await _loadReferenceData();
 
       // Charger l'historique Firestore
       await fetchFirestoreHistory();
@@ -221,6 +288,99 @@ class _NouvelleCollecteRecoltePageState
       print(
           '🔥 DEBUG: _initializeUserData terminée, isLoadingUserData = false');
       setState(() => isLoadingUserData = false);
+    }
+  }
+
+  /// Charge les données de référence depuis Firestore
+  Future<void> _loadReferenceData() async {
+    try {
+      // Charger les sites disponibles
+      availableSites = await _referenceService.availableSites;
+      print('✅ Sites chargés: ${availableSites.length}');
+
+      // Charger tous les techniciens
+      availableTechnicians = await _referenceService.fetchTechnicians();
+      print('✅ Techniciens chargés: ${availableTechnicians.length}');
+
+      // Extraire les noms pour les filtres
+      filterTechnicianNames =
+          availableTechnicians.map((t) => t.fullName).toList()..sort();
+
+      setState(() {}); // Rafraîchir l'interface
+    } catch (e) {
+      print('❌ Erreur lors du chargement des données de référence: $e');
+    }
+  }
+
+  /// Rafraîchit toutes les données depuis Firestore
+  Future<void> _refreshFirestoreData() async {
+    print('🔄 Rafraîchissement manuel des données Firestore...');
+
+    // Afficher un indicateur de chargement
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 16),
+            Text('Rafraîchissement des données...'),
+          ],
+        ),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    try {
+      // Rafraîchir le service de référence
+      await _referenceService.refreshAllData();
+
+      // Recharger les données locales
+      await _loadReferenceData();
+
+      // Rafraîchir le service de géographie si nécessaire
+      // await _geographieService.refreshData();
+
+      print('✅ Rafraîchissement terminé avec succès');
+
+      // Afficher un message de succès
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 16),
+                Text('Données rafraîchies avec succès !'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Erreur lors du rafraîchissement: $e');
+
+      // Afficher un message d'erreur
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 16),
+                Text('Erreur: $e'),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -250,18 +410,54 @@ class _NouvelleCollecteRecoltePageState
     print('✅ COLLECTE: Écoute des notifications globales configurée');
   }
 
-  void _loadTechniciansForSite(String? site) {
-    // CORRECTION: Charger TOUS les techniciens, pas seulement ceux du site
-    availableTechniciensForSite = techniciensApisavana;
+  /// Charge les prix par contenant depuis Firestore
+  Future<void> _loadContainerPrices() async {
+    try {
+      await _metierService.loadMetierSettings();
+      final prices = _metierService.containerPrices;
 
-    // Pas besoin de reset le technicien sélectionné car tous les techniciens sont disponibles
-    // Garder le technicien actuel s'il existe dans la liste complète
-    if (selectedTechnician != null) {
-      final techExists = availableTechniciensForSite
-          .any((t) => t.nomComplet == selectedTechnician);
-      if (!techExists) {
-        selectedTechnician = null;
-      }
+      setState(() {
+        containerPrices = {
+          'Fût': prices['fut']?.pricePerKg ?? 2000.0,
+          'Seau': prices['seau']?.pricePerKg ?? 2000.0,
+        };
+      });
+
+      print('✅ Prix par contenant chargés: $containerPrices');
+    } catch (e) {
+      print('❌ Erreur lors du chargement des prix: $e');
+      // Prix par défaut en cas d'erreur
+      setState(() {
+        containerPrices = {
+          'Fût': 2000.0,
+          'Seau': 2000.0,
+        };
+      });
+    }
+  }
+
+  void _loadTechniciansForSite(String? site) async {
+    try {
+      // Charger les techniciens pour le site spécifique depuis Firestore
+      final technicians = await _referenceService.fetchTechnicians(site: site);
+      setState(() {
+        // Convertir TechnicianSummary vers le format attendu
+        availableTechniciensForSite = technicians
+            .map((t) => TechnicienInfo(
+                  nom: t.fullName.split(' ').last,
+                  prenom: t.fullName.split(' ').first,
+                  site: t.site ?? '',
+                  telephone: t.phone ?? '',
+                ))
+            .toList();
+      });
+
+      print('✅ Techniciens chargés pour site "$site": ${technicians.length}');
+    } catch (e) {
+      print('❌ Erreur lors du chargement des techniciens: $e');
+      setState(() {
+        availableTechniciensForSite = [];
+      });
     }
   }
 
@@ -363,7 +559,7 @@ class _NouvelleCollecteRecoltePageState
           if ((h['technicien_nom'] ?? '').isNotEmpty)
             allTechs.add(h['technicien_nom']);
         }
-        availableTechnicians = allTechs.toList()..sort();
+        filterTechnicianNames = allTechs.toList()..sort();
         availableSites = [selectedSite!]; // Seul le site de l'utilisateur
       } else {
         // Fallback : charger depuis l'ancienne collection globale
@@ -406,7 +602,7 @@ class _NouvelleCollecteRecoltePageState
             allTechs.add(h['technicien_nom']);
         }
         availableSites = allSites.toList()..sort();
-        availableTechnicians = allTechs.toList()..sort();
+        filterTechnicianNames = allTechs.toList()..sort();
       }
     } catch (e) {
       // Gestion d'erreur silencieuse pour éviter les blocages
@@ -442,13 +638,10 @@ class _NouvelleCollecteRecoltePageState
         return;
       }
 
-      // Prix unitaire facultatif - peut être null ou 0
-      if (unitPrice != null && unitPrice! < 0) {
-        setState(() {
-          statusMessage = 'Le prix unitaire ne peut pas être négatif.';
-        });
-        return;
-      }
+      // Prix unitaire : automatique ou personnalisé
+      final finalUnitPrice = isCustomPrice
+          ? (customPriceValue ?? 0.0)
+          : (containerPrices[containerType] ?? 2000.0);
 
       setState(() {
         if (editingId != null) {
@@ -460,7 +653,8 @@ class _NouvelleCollecteRecoltePageState
               hiveType: hiveType!,
               containerType: containerType!,
               weight: weight!,
-              unitPrice: unitPrice ?? 0.0, // Valeur par défaut si null
+              unitPrice:
+                  finalUnitPrice, // Prix sélectionné (auto ou personnalisé)
             );
           }
           editingId = null;
@@ -471,7 +665,8 @@ class _NouvelleCollecteRecoltePageState
             hiveType: hiveType!,
             containerType: containerType!,
             weight: weight!,
-            unitPrice: unitPrice ?? 0.0, // Valeur par défaut si null
+            unitPrice:
+                finalUnitPrice, // Prix sélectionné (auto ou personnalisé)
           ));
         }
         // Reset champs
@@ -479,6 +674,8 @@ class _NouvelleCollecteRecoltePageState
         containerType = null;
         weight = null;
         unitPrice = null;
+        isCustomPrice = false;
+        customPriceValue = null;
         statusMessage = null; // Effacer le message d'erreur
 
         // 🔄 Force le recalcul et la mise à jour de l'interface
@@ -524,12 +721,60 @@ class _NouvelleCollecteRecoltePageState
       hiveType = c.hiveType;
       containerType = c.containerType;
       weight = c.weight;
-      unitPrice = c.unitPrice;
+
+      // Déterminer si le prix était personnalisé ou automatique
+      final expectedAutoPrice = containerPrices[c.containerType] ?? 2000.0;
+      final actualPrice = c.unitPrice;
+
+      if (actualPrice == expectedAutoPrice) {
+        // Prix automatique
+        isCustomPrice = false;
+        customPriceValue = null;
+      } else {
+        // Prix personnalisé
+        isCustomPrice = true;
+        customPriceValue = actualPrice;
+      }
 
       // 🔄 Log pour le debug
       print(
-          '✏️ Édition du contenant: ${c.hiveType} - ${c.containerType} | ${c.weight} kg | ${c.unitPrice} FCFA');
+          '✏️ Édition du contenant: ${c.hiveType} - ${c.containerType} | ${c.weight} kg | Prix: ${actualPrice} FCFA (${isCustomPrice ? "personnalisé" : "automatique"})');
     });
+  }
+
+  // Fonction de géolocalisation ULTRA-PRÉCISE pour récolte (<10m STRICT)
+  Future<void> _getCurrentLocation() async {
+    if (_isGettingLocation) return;
+
+    setState(() {
+      _isGettingLocation = true;
+    });
+
+    try {
+      // Utiliser notre fonction de géolocalisation propre sans caractères UTF-8 corrompus
+      final Map<String, dynamic>? locationData =
+          await CleanGeolocation.getCurrentLocationClean();
+
+      if (locationData != null) {
+        setState(() {
+          _geolocationData = locationData;
+        });
+      }
+    } catch (e) {
+      print('RECOLTE - Erreur geolocalisation: $e');
+      Get.snackbar(
+        'Erreur geolocalisation recolte',
+        'Impossible obtenir position ultra-precise: $e',
+        backgroundColor: Colors.red.shade100,
+        colorText: Colors.red.shade800,
+        icon: const Icon(Icons.error, color: Colors.red),
+        duration: const Duration(seconds: 5),
+      );
+    } finally {
+      setState(() {
+        _isGettingLocation = false;
+      });
+    }
   }
 
   // Validation stricte et soumission avec enregistrement Firestore
@@ -606,6 +851,14 @@ class _NouvelleCollecteRecoltePageState
       }
       print('✅ DEBUG: Utilisateur connecté: ${user.uid}');
 
+      // Génération automatique du Code_Collecte basé sur la localité
+      final codeCollecte = LocaliteCodificationService.generateCodeLocalite(
+        regionNom: selectedRegion!,
+        provinceNom: selectedProvince!,
+        communeNom: selectedCommune!,
+      );
+      print('🏷️ DEBUG: Code_Collecte généré: $codeCollecte');
+
       // Données de la collecte
       final collecteData = {
         'site': selectedSite!,
@@ -615,6 +868,7 @@ class _NouvelleCollecteRecoltePageState
         'village': villagePersonnaliseActive
             ? villagePersonnaliseController.text.trim()
             : selectedVillage!,
+        'code_collecte': codeCollecte, // NOUVEAU: Code de collecte automatique
         'technicien_nom': selectedTechnician!,
         'technicien_uid': user.uid,
         'utilisateur_nom':
@@ -628,6 +882,16 @@ class _NouvelleCollecteRecoltePageState
         'status': 'en_attente',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
+        // Données de géolocalisation
+        'geolocation': _geolocationData != null
+            ? {
+                'latitude': _geolocationData!['latitude'],
+                'longitude': _geolocationData!['longitude'],
+                'accuracy': _geolocationData!['accuracy'],
+                'timestamp': _geolocationData!['timestamp'],
+                'address': _geolocationData!['address'],
+              }
+            : null,
       };
 
       // Enregistrement avec service de statistiques avancées
@@ -705,6 +969,8 @@ class _NouvelleCollecteRecoltePageState
       weight = null;
       unitPrice = null;
       editingId = null;
+      isCustomPrice = false;
+      customPriceValue = null;
 
       // Réinitialiser les prédominances florales
       selectedFlorales.clear();
@@ -738,7 +1004,7 @@ class _NouvelleCollecteRecoltePageState
     final tech = availableTechniciensForSite.firstWhere(
         (t) => t.nomComplet == nomComplet,
         orElse: () =>
-            TechnicienInfo(nom: '', prenom: '', site: '', telephone: ''));
+            const TechnicienInfo(nom: '', prenom: '', site: '', telephone: ''));
     if (tech.nom.isEmpty) return null;
     return '${tech.nomComplet} - ${tech.telephone}';
   }
@@ -770,15 +1036,23 @@ class _NouvelleCollecteRecoltePageState
       appBar: buildSmartAppBar(
         title: 'Nouvelle collecte récolte',
         onBackPressed: _handleBackNavigation,
-        actions: widget.showBackToHistory
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.history),
-                  tooltip: 'Retour à l\'historique',
-                  onPressed: widget.onBackToHistory,
-                ),
-              ]
-            : null,
+        actions: [
+          // Bouton de rafraîchissement des données Firestore
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Rafraîchir les données',
+            onPressed: _refreshFirestoreData,
+          ),
+          ...widget.showBackToHistory
+              ? [
+                  IconButton(
+                    icon: const Icon(Icons.history),
+                    tooltip: 'Retour à l\'historique',
+                    onPressed: widget.onBackToHistory,
+                  ),
+                ]
+              : [],
+        ],
       ),
       drawer: Drawer(
         backgroundColor: Colors.white,
@@ -846,6 +1120,146 @@ class _NouvelleCollecteRecoltePageState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // --- Section Géolocalisation ---
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.green, width: 1.5),
+                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.green.withOpacity(0.07),
+                ),
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.location_on,
+                            color: Colors.green.shade700, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Géolocalisation',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(color: Colors.green.shade700),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_geolocationData == null) ...[
+                      Text(
+                        'Obtenez votre position GPS actuelle pour la collecte',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed:
+                              _isGettingLocation ? null : _getCurrentLocation,
+                          icon: _isGettingLocation
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white),
+                                  ),
+                                )
+                              : const Icon(Icons.my_location),
+                          label: Text(
+                            _isGettingLocation
+                                ? 'Obtention de la position...'
+                                : 'Obtenir ma position GPS',
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green.shade600,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      // Affichage des données de géolocalisation
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.green.shade200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.check_circle,
+                                    color: Colors.green.shade600, size: 20),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Position GPS obtenue',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Latitude: ${_geolocationData!['latitude']?.toStringAsFixed(6)}',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            Text(
+                              'Longitude: ${_geolocationData!['longitude']?.toStringAsFixed(6)}',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            Text(
+                              'Précision: ${_geolocationData!['accuracy']?.toStringAsFixed(1)} m',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _isGettingLocation
+                                    ? null
+                                    : _getCurrentLocation,
+                                icon: _isGettingLocation
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.refresh),
+                                label: Text(
+                                  _isGettingLocation
+                                      ? 'Mise à jour...'
+                                      : 'Actualiser la position',
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.green.shade600,
+                                  side:
+                                      BorderSide(color: Colors.green.shade600),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
               // --- Section Localité ---
               Container(
                 decoration: BoxDecoration(
@@ -865,9 +1279,8 @@ class _NouvelleCollecteRecoltePageState
                             ?.copyWith(color: kHighlightColor)),
                     const SizedBox(height: 8),
                     DropdownSearch<String>(
-                      items: GeographieData.regionsBurkina
-                          .map((r) => r['nom'].toString())
-                          .toList(),
+                      items:
+                          _geographieService.regions.map((r) => r.nom).toList(),
                       selectedItem: selectedRegion,
                       onChanged: (v) {
                         setState(() {
@@ -1024,6 +1437,7 @@ class _NouvelleCollecteRecoltePageState
                   ],
                 ),
               ),
+
               // --- Section Site ---
               Container(
                 decoration: BoxDecoration(
@@ -1043,7 +1457,7 @@ class _NouvelleCollecteRecoltePageState
                             ?.copyWith(color: Colors.blue)),
                     const SizedBox(height: 8),
                     DropdownSearch<String>(
-                      items: sitesApisavana,
+                      items: availableSites,
                       selectedItem: selectedSite,
                       onChanged: (v) {
                         setState(() {
@@ -1080,7 +1494,52 @@ class _NouvelleCollecteRecoltePageState
                             .titleMedium
                             ?.copyWith(color: kValidationColor)),
                     const SizedBox(height: 8),
-                    if (availableTechniciensForSite.isEmpty)
+                    // Afficher le technicien connecté si disponible, sinon le dropdown
+                    if (selectedTechnician != null &&
+                        selectedTechnician!.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: kValidationColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                              color: kValidationColor.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.person,
+                                color: kValidationColor, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                selectedTechnician!,
+                                style: TextStyle(
+                                  color: kValidationColor,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                            // Bouton pour changer de technicien si nécessaire
+                            if (availableTechniciensForSite.isNotEmpty)
+                              IconButton(
+                                icon: Icon(Icons.edit,
+                                    size: 16, color: kValidationColor),
+                                onPressed: () {
+                                  setState(() {
+                                    selectedTechnician =
+                                        null; // Permet de choisir un autre technicien
+                                  });
+                                },
+                                tooltip: 'Changer de technicien',
+                              ),
+                          ],
+                        ),
+                      ),
+                    // Dropdown pour choisir un technicien si aucun n'est sélectionné
+                    if ((selectedTechnician == null ||
+                            selectedTechnician!.isEmpty) &&
+                        availableTechniciensForSite.isEmpty)
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
@@ -1105,7 +1564,10 @@ class _NouvelleCollecteRecoltePageState
                           ],
                         ),
                       ),
-                    if (availableTechniciensForSite.isNotEmpty)
+                    // Dropdown pour choisir parmi les techniciens disponibles
+                    if ((selectedTechnician == null ||
+                            selectedTechnician!.isEmpty) &&
+                        availableTechniciensForSite.isNotEmpty)
                       DropdownSearch<String>(
                         items: availableTechniciensForSite
                             .map((t) => '${t.nomComplet} - ${t.telephone}')
@@ -1153,7 +1615,8 @@ class _NouvelleCollecteRecoltePageState
                         child: Wrap(
                           spacing: 8,
                           runSpacing: 4,
-                          children: predominancesFlorales.map((florale) {
+                          children: _referenceService.floralPredominenceNames
+                              .map((florale) {
                             final selected = selectedFlorales.contains(florale);
                             return FilterChip(
                               label: Text(
@@ -1269,7 +1732,7 @@ class _NouvelleCollecteRecoltePageState
                               : selectedVillage;
 
                           final localisationAvecCode =
-                              GeographieData.formatLocationCode(
+                              _geographieService.formatLocationCode(
                             regionName: selectedRegion,
                             provinceName: selectedProvince,
                             communeName: selectedCommune,
@@ -1379,10 +1842,6 @@ class _NouvelleCollecteRecoltePageState
                       DropdownMenuItem(
                           value: 'Fût',
                           child: Text('Fût', overflow: TextOverflow.ellipsis)),
-                      DropdownMenuItem(
-                          value: 'Bidon',
-                          child:
-                              Text('Bidon', overflow: TextOverflow.ellipsis)),
                     ],
                     onChanged: (v) => setState(() => containerType = v),
                     validator: (v) =>
@@ -1415,27 +1874,115 @@ class _NouvelleCollecteRecoltePageState
                   )),
                   const SizedBox(width: 16),
                   Expanded(
-                      child: TextFormField(
-                    initialValue: unitPrice?.toString(),
-                    decoration: const InputDecoration(
-                        labelText: 'Prix unitaire (FCFA)'),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))
-                    ],
-                    onSaved: (v) => unitPrice = double.tryParse(v ?? ''),
-                    validator: (v) {
-                      // Prix unitaire facultatif
-                      if (v != null && v.isNotEmpty) {
-                        final val = double.tryParse(v);
-                        if (val == null || val < 0)
-                          return 'Prix invalide (doit être ≥ 0)';
-                      }
-                      return null;
-                    },
-                    maxLines: 1,
-                    style: const TextStyle(overflow: TextOverflow.ellipsis),
-                  )),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 12, horizontal: 16),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Prix unitaire (FCFA)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (containerType != null) ...[
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: RadioListTile<bool>(
+                                    title: Text(
+                                      'Prix configuré: ${containerPrices[containerType]?.toStringAsFixed(0) ?? "0"} FCFA/kg',
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                    value: false,
+                                    groupValue: isCustomPrice,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        isCustomPrice = value!;
+                                        if (!isCustomPrice) {
+                                          customPriceValue = null;
+                                        }
+                                      });
+                                    },
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: RadioListTile<bool>(
+                                    title: const Text(
+                                      'Prix personnalisé (0F ou autre)',
+                                      style: TextStyle(fontSize: 13),
+                                    ),
+                                    value: true,
+                                    groupValue: isCustomPrice,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        isCustomPrice = value!;
+                                        if (isCustomPrice) {
+                                          customPriceValue = 0.0;
+                                        }
+                                      });
+                                    },
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (isCustomPrice) ...[
+                              const SizedBox(height: 8),
+                              TextFormField(
+                                initialValue:
+                                    customPriceValue?.toString() ?? '0',
+                                decoration: const InputDecoration(
+                                  labelText: 'Prix personnalisé (FCFA)',
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 8),
+                                ),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                      RegExp(r'^\d*\.?\d*'))
+                                ],
+                                onChanged: (value) {
+                                  customPriceValue =
+                                      double.tryParse(value) ?? 0.0;
+                                },
+                                validator: (v) {
+                                  if (isCustomPrice) {
+                                    final val = double.tryParse(v ?? '');
+                                    if (val == null || val < 0) {
+                                      return 'Prix invalide (doit être ≥ 0)';
+                                    }
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ],
+                          ] else ...[
+                            Text(
+                              'Sélectionner un contenant d\'abord',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade500,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -1460,6 +2007,8 @@ class _NouvelleCollecteRecoltePageState
                         containerType = null;
                         weight = null;
                         unitPrice = null;
+                        isCustomPrice = false;
+                        customPriceValue = null;
                       }),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: kValidationColor,
@@ -1788,8 +2337,8 @@ class _NouvelleCollecteRecoltePageState
                     'village': h['village']?.toString() ?? '',
                   };
 
-                  final localisationAvecCode =
-                      GeographieData.formatLocationCodeFromMap(localisation);
+                  final localisationAvecCode = _geographieService
+                      .formatLocationCodeFromMap(localisation);
 
                   return ListTile(
                     leading: const Icon(Icons.history),
@@ -1941,7 +2490,7 @@ class _NouvelleCollecteRecoltePageState
                           value: '',
                           child: Text('Tous les techniciens'),
                         ),
-                        ...availableTechnicians
+                        ...filterTechnicianNames
                             .map((t) => DropdownMenuItem<String>(
                                   value: t,
                                   child:
@@ -2066,9 +2615,8 @@ class _NouvelleCollecteRecoltePageState
                                 'village': h['village']?.toString() ?? '',
                               };
 
-                              final localisationAvecCode =
-                                  GeographieData.formatLocationCodeFromMap(
-                                      localisation);
+                              final localisationAvecCode = _geographieService
+                                  .formatLocationCodeFromMap(localisation);
 
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 12),

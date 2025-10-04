@@ -1,7 +1,8 @@
-/// Widget moderne pour l'affichage des codes de localisation
+import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../data/geographe/geographie.dart';
+import '../core/collecte_geographie_service.dart';
+/// Widget moderne pour l'affichage des codes de localisation
 
 class LocalisationCodeWidget extends StatelessWidget {
   final Map<String, String> localisation;
@@ -23,9 +24,10 @@ class LocalisationCodeWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final accent = accentColor ?? theme.colorScheme.primary;
+    final geographieService = Get.find<CollecteGeographieService>();
 
     final localisationAvecCode =
-        GeographieData.formatLocationCodeFromMap(localisation);
+        geographieService.formatLocationCodeFromMap(localisation);
 
     final localisationComplete = [
       localisation['region'],
@@ -317,8 +319,9 @@ class LocalisationCodeCompact extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final geographieService = Get.find<CollecteGeographieService>();
     final localisationAvecCode =
-        GeographieData.formatLocationCodeFromMap(localisation);
+        geographieService.formatLocationCodeFromMap(localisation);
 
     if (localisationAvecCode.isEmpty) {
       return Text(

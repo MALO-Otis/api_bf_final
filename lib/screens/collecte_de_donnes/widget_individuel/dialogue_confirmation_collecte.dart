@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
-import '../../../data/models/collecte_models.dart';
+import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import '../../../data/geographe/geographie.dart';
+import 'package:flutter/material.dart';
+import '../core/collecte_geographie_service.dart';
+import '../../../data/models/collecte_models.dart';
 
 /// Widget custom pour le dialogue de confirmation de collecte - VERSION PROFESSIONNELLE
 class DialogueConfirmationCollecte extends StatelessWidget {
@@ -1328,9 +1329,10 @@ class DialogueConfirmationCollecte extends StatelessWidget {
 
   Widget _buildLocalisationRow(
       Map<String, String> localisation, bool isSmallScreen) {
-    // Utilisation du formatage avec codes
+    // Utilisation du formatage avec codes depuis Firestore
+    final geographieService = Get.find<CollecteGeographieService>();
     final localisationAvecCode =
-        GeographieData.formatLocationCodeFromMap(localisation);
+        geographieService.formatLocationCodeFromMap(localisation);
 
     final localisationComplete = [
       localisation['region'],

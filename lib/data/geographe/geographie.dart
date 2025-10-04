@@ -1,110 +1,130 @@
-// Données géographiques complètes du Burkina Faso
+// Données géographiques complètes du Burkina Faso (mise à jour décret 2025)
 // Structure hiérarchique avec système de codification : régions, provinces, communes, villages
-// Toutes les régions incluses et classées par ordre alphabétique
+// Mise à jour : noms officiels + anciens noms entre parenthèses (2025)
 
 class GeographieData {
-  /// Liste complète des régions du Burkina Faso (classées par ordre alphabétique)
+  /// Liste complète des régions du Burkina Faso (classées par ordre alphabétique, décret 2025)
   static const List<Map<String, dynamic>> regionsBurkina = [
-    {'code': '01', 'nom': 'BOUCLE DU MOUHOUN'},
-    {'code': '02', 'nom': 'CASCADES'},
-    {'code': '03', 'nom': 'CENTRE'},
-    {'code': '04', 'nom': 'CENTRE-EST'},
-    {'code': '05', 'nom': 'CENTRE-NORD'},
-    {'code': '06', 'nom': 'CENTRE-OUEST'},
-    {'code': '07', 'nom': 'CENTRE-SUD'},
-    {'code': '08', 'nom': 'EST'},
-    {'code': '09', 'nom': 'HAUTS-BASSINS'},
-    {'code': '10', 'nom': 'NORD'},
-    {'code': '11', 'nom': 'PLATEAU-CENTRAL'},
-    {'code': '12', 'nom': 'SAHEL'},
-    {'code': '13', 'nom': 'SUD-OUEST'},
+    {'code': '01', 'nom': 'Bankui (BOUCLE DU MOUHOUN)'},
+    {'code': '02', 'nom': 'Tannounyan (CASCADES)'},
+    {'code': '03', 'nom': 'Kadiogo (CENTRE)'},
+    {'code': '04', 'nom': 'Nakambé (CENTRE-EST)'},
+    {'code': '05', 'nom': 'Kuilsé (CENTRE-NORD)'},
+    {'code': '06', 'nom': 'Nando (CENTRE-OUEST)'},
+    {'code': '07', 'nom': 'Nazinon (CENTRE-SUD)'},
+    {'code': '08', 'nom': 'Goulmou (EST)'},
+    {'code': '09', 'nom': 'Guiriko (HAUTS-BASSINS)'},
+    {'code': '10', 'nom': 'Yaadga (NORD)'},
+    {'code': '11', 'nom': 'Oubri (PLATEAU-CENTRAL)'},
+    {'code': '12', 'nom': 'Liptako (SAHEL)'},
+    {'code': '13', 'nom': 'Djôrô (SUD-OUEST)'},
+    {'code': '14', 'nom': 'Sirba (BOGANDE - Nouvelle région)'},
+    {'code': '15', 'nom': 'Soum (DJIBO - Nouvelle région)'},
+    {'code': '16', 'nom': 'Tapoa (DIAPAGA - Nouvelle région)'},
+    {'code': '17', 'nom': 'Sourou (TOUGAN - Nouvelle région)'},
   ];
 
-  /// Provinces par région (codifiées et classées alphabétiquement)
+  /// Provinces par région (codifiées et classées alphabétiquement, décret 2025)
   static const Map<String, List<Map<String, dynamic>>> provincesParRegion = {
     '01': [
-      // BOUCLE DU MOUHOUN (classées alphabétiquement)
-      {'code': '01', 'nom': 'BALE'},
-      {'code': '02', 'nom': 'BANWA'},
-      {'code': '03', 'nom': 'KOSSI'},
-      {'code': '04', 'nom': 'MOUHOUN'},
-      {'code': '05', 'nom': 'NAYALA'},
-      {'code': '06', 'nom': 'SOUROU'},
+      // Bankui (BOUCLE DU MOUHOUN)
+      {'code': '01', 'nom': 'Balé'},
+      {'code': '02', 'nom': 'Banwa'},
+      {'code': '03', 'nom': 'Kossin (KOSSI)'},
+      {'code': '04', 'nom': 'Mouhoun'},
+      {'code': '05', 'nom': 'Nayala'},
     ],
     '02': [
-      // CASCADES (classées alphabétiquement)
-      {'code': '01', 'nom': 'COMOE'},
-      {'code': '02', 'nom': 'LERABA'},
+      // Tannounyan (CASCADES)
+      {'code': '01', 'nom': 'Comoé'},
+      {'code': '02', 'nom': 'Léraba'},
     ],
     '03': [
-      // CENTRE
-      {'code': '01', 'nom': 'KADIOGO'},
+      // Kadiogo (CENTRE)
+      {'code': '01', 'nom': 'Kadiogo'},
     ],
     '04': [
-      // CENTRE-EST (classées alphabétiquement)
-      {'code': '01', 'nom': 'BOULGOU'},
-      {'code': '02', 'nom': 'KOULPELOGO'},
-      {'code': '03', 'nom': 'KOURITENGA'},
+      // Nakambé (CENTRE-EST)
+      {'code': '01', 'nom': 'Boulgou'},
+      {'code': '02', 'nom': 'Koulpélogo'},
+      {'code': '03', 'nom': 'Kouritenga'},
     ],
     '05': [
-      // CENTRE-NORD (classées alphabétiquement)
-      {'code': '01', 'nom': 'BAM'},
-      {'code': '02', 'nom': 'NAMENTENGA'},
-      {'code': '03', 'nom': 'SANMATENGA'},
+      // Kuilsé (CENTRE-NORD)
+      {'code': '01', 'nom': 'Bam'},
+      {'code': '02', 'nom': 'Namentenga'},
+      {'code': '03', 'nom': 'Sandbondtenga (SANMATENGA)'},
     ],
     '06': [
-      // CENTRE-OUEST (classées alphabétiquement)
-      {'code': '01', 'nom': 'BOULKIEMDE'},
-      {'code': '02', 'nom': 'SANGUIE'},
-      {'code': '03', 'nom': 'SISSILI'},
-      {'code': '04', 'nom': 'ZIRO'},
+      // Nando (CENTRE-OUEST)
+      {'code': '01', 'nom': 'Boulkiemdé'},
+      {'code': '02', 'nom': 'Sanguié'},
+      {'code': '03', 'nom': 'Sissili'},
+      {'code': '04', 'nom': 'Ziro'},
     ],
     '07': [
-      // CENTRE-SUD (classées alphabétiquement)
-      {'code': '01', 'nom': 'BAZEGA'},
-      {'code': '02', 'nom': 'NAHOURI'},
-      {'code': '03', 'nom': 'ZOUNDWEOGO'},
+      // Nazinon (CENTRE-SUD)
+      {'code': '01', 'nom': 'Bazèga'},
+      {'code': '02', 'nom': 'Nahouri'},
+      {'code': '03', 'nom': 'Zoundwéogo'},
     ],
     '08': [
-      // EST (classées alphabétiquement)
-      {'code': '01', 'nom': 'GNAGNA'},
-      {'code': '02', 'nom': 'GOURMA'},
-      {'code': '03', 'nom': 'KOMANDJOARI'},
-      {'code': '04', 'nom': 'KOMPIENGA'},
-      {'code': '05', 'nom': 'TAPOA'},
+      // Goulmou (EST)
+      {'code': '01', 'nom': 'Gnagna'},
+      {'code': '02', 'nom': 'Gourma'},
+      {'code': '03', 'nom': 'Komondjari'},
+      {'code': '04', 'nom': 'Kompienga'},
+      {'code': '05', 'nom': 'Dyamongou (nouvelle province)'},
     ],
     '09': [
-      // HAUTS-BASSINS (classées alphabétiquement)
-      {'code': '01', 'nom': 'HOUET'},
-      {'code': '02', 'nom': 'KENEDOUGOU'},
-      {'code': '03', 'nom': 'TUY'},
+      // Guiriko (HAUTS-BASSINS)
+      {'code': '01', 'nom': 'Houet'},
+      {'code': '02', 'nom': 'Kénédougou'},
+      {'code': '03', 'nom': 'Tuy'},
     ],
     '10': [
-      // NORD (classées alphabétiquement)
-      {'code': '01', 'nom': 'LOROUM'},
-      {'code': '02', 'nom': 'PASSORE'},
-      {'code': '03', 'nom': 'YATENGA'},
-      {'code': '04', 'nom': 'ZONDOMA'},
+      // Yaadga (NORD)
+      {'code': '01', 'nom': 'Loroum'},
+      {'code': '02', 'nom': 'Passoré'},
+      {'code': '03', 'nom': 'Yatenga'},
+      {'code': '04', 'nom': 'Zondoma'},
     ],
     '11': [
-      // PLATEAU-CENTRAL (classées alphabétiquement)
-      {'code': '01', 'nom': 'GANZOURGOU'},
-      {'code': '02', 'nom': 'KOURWEOGO'},
-      {'code': '03', 'nom': 'OUBRITENGA'},
+      // Oubri (PLATEAU-CENTRAL)
+      {'code': '01', 'nom': 'Ganzourgou'},
+      {'code': '02', 'nom': 'Kourwéogo'},
+      {'code': '03', 'nom': 'Bassitenga (OUBRITENGA)'},
     ],
     '12': [
-      // SAHEL (classées alphabétiquement)
-      {'code': '01', 'nom': 'OUDALAN'},
-      {'code': '02', 'nom': 'SENO'},
-      {'code': '03', 'nom': 'SOUM'},
-      {'code': '04', 'nom': 'YAGHA'},
+      // Liptako (SAHEL)
+      {'code': '01', 'nom': 'Oudalan'},
+      {'code': '02', 'nom': 'Séno'},
+      {'code': '03', 'nom': 'Djelgodji (SOUM)'},
+      {'code': '04', 'nom': 'Yagha'},
+      {'code': '05', 'nom': 'Karo-Peli (nouvelle province)'},
     ],
     '13': [
-      // SUD-OUEST (classées alphabétiquement)
-      {'code': '01', 'nom': 'BOUGOURIBA'},
-      {'code': '02', 'nom': 'IOBA'},
-      {'code': '03', 'nom': 'NOUMBIEL'},
-      {'code': '04', 'nom': 'PONI'},
+      // Djôrô (SUD-OUEST)
+      {'code': '01', 'nom': 'Bougouriba'},
+      {'code': '02', 'nom': 'Ioba'},
+      {'code': '03', 'nom': 'Noumbiel'},
+      {'code': '04', 'nom': 'Poni'},
+    ],
+    '14': [
+      // Sirba (BOGANDE - Nouvelle région)
+      {'code': '01', 'nom': 'Tapoa'},
+    ],
+    '15': [
+      // Soum (DJIBO - Nouvelle région)
+      {'code': '01', 'nom': 'Soum'},
+    ],
+    '16': [
+      // Tapoa (DIAPAGA - Nouvelle région)
+      {'code': '01', 'nom': 'Tapoa'},
+    ],
+    '17': [
+      // Sourou (TOUGAN - Nouvelle région)
+      {'code': '01', 'nom': 'Sourou'},
     ],
   };
 

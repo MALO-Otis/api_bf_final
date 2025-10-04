@@ -28,7 +28,7 @@ class AttributionPdfGenerator {
             content: pw.Container(
               padding: const pw.EdgeInsets.all(12),
               decoration: pw.BoxDecoration(
-                border: pw.Border.all(color: PdfColors.grey300),
+                border: pw.Border.all(color: PdfColors.black),
                 borderRadius: pw.BorderRadius.circular(6),
               ),
               child: pw.Column(
@@ -44,8 +44,8 @@ class AttributionPdfGenerator {
                       ),
                       pw.Text(
                         'ID: ${attribution.commercialId}',
-                        style: pw.TextStyle(
-                            fontSize: 10, color: PdfColors.grey600),
+                        style:
+                            pw.TextStyle(fontSize: 10, color: PdfColors.black),
                       ),
                     ],
                   ),
@@ -69,7 +69,7 @@ class AttributionPdfGenerator {
             content: pw.Container(
               padding: const pw.EdgeInsets.all(12),
               decoration: pw.BoxDecoration(
-                border: pw.Border.all(color: PdfColors.grey300),
+                border: pw.Border.all(color: PdfColors.black),
                 borderRadius: pw.BorderRadius.circular(6),
               ),
               child: pw.Column(
@@ -122,10 +122,7 @@ class AttributionPdfGenerator {
                               style: pw.TextStyle(
                                 fontSize: 11,
                                 fontWeight: pw.FontWeight.bold,
-                                color:
-                                    attribution.statut.toLowerCase() == 'actif'
-                                        ? PdfColors.green
-                                        : PdfColors.orange,
+                                color: PdfColors.black,
                               ),
                             ),
                           ],
@@ -177,8 +174,8 @@ class AttributionPdfGenerator {
             content: pw.Container(
               padding: const pw.EdgeInsets.all(12),
               decoration: pw.BoxDecoration(
-                color: PdfColor.fromInt(0xFFF8F9FA),
-                border: pw.Border.all(color: PdfColors.grey300),
+                color: PdfColors.white,
+                border: pw.Border.all(color: PdfColors.black),
                 borderRadius: pw.BorderRadius.circular(6),
               ),
               child: pw.Column(
@@ -187,11 +184,11 @@ class AttributionPdfGenerator {
                     mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
                     children: [
                       _buildQuantityCard('Quantité initiale',
-                          attribution.quantiteInitiale, PdfColors.blue),
+                          attribution.quantiteInitiale, PdfColors.black),
                       _buildQuantityCard('Quantité attribuée',
-                          attribution.quantiteAttribuee, PdfColors.orange),
+                          attribution.quantiteAttribuee, PdfColors.black),
                       _buildQuantityCard('Quantité restante',
-                          attribution.quantiteRestante, PdfColors.green),
+                          attribution.quantiteRestante, PdfColors.black),
                     ],
                   ),
                   pw.SizedBox(height: 12),
@@ -201,14 +198,14 @@ class AttributionPdfGenerator {
                                 attribution.quantiteRestante) /
                             attribution.quantiteInitiale
                         : 0,
-                    backgroundColor: PdfColors.grey300,
-                    valueColor: ApiSavanaPdfService.primaryColor,
+                    backgroundColor: PdfColors.white,
+                    valueColor: PdfColors.black,
                     minHeight: 8,
                   ),
                   pw.SizedBox(height: 4),
                   pw.Text(
                     'Progression: ${attribution.quantiteInitiale > 0 ? ((attribution.quantiteInitiale - attribution.quantiteRestante) / attribution.quantiteInitiale * 100).toStringAsFixed(1) : "0"}% attribué',
-                    style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
+                    style: pw.TextStyle(fontSize: 10, color: PdfColors.black),
                   ),
                 ],
               ),
@@ -243,8 +240,8 @@ class AttributionPdfGenerator {
               content: pw.Container(
                 padding: const pw.EdgeInsets.all(12),
                 decoration: pw.BoxDecoration(
-                  color: PdfColor.fromInt(0xFFE3F2FD),
-                  border: pw.Border.all(color: PdfColors.blue300),
+                  color: PdfColors.white,
+                  border: pw.Border.all(color: PdfColors.black),
                   borderRadius: pw.BorderRadius.circular(6),
                 ),
                 child: pw.Column(

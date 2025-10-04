@@ -315,7 +315,7 @@ class VenteService {
     try {
       final buildStart = DateTime.now();
       _log(
-          '� [VenteService] Construction liste produits (force=$forceRefresh, filtre=${siteFilter ?? 'Tous'})');
+          '[VenteService] Construction liste produits (force=$forceRefresh, filtre=${siteFilter ?? 'Tous'})');
 
       // Rafraîchir la source (conditionnements) uniquement en force refresh ou si aucune donnée
       if (forceRefresh || conditionnementService.conditionnements.isEmpty) {

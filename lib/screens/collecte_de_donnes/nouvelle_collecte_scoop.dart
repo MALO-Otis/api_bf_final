@@ -1,8 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
+import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import '../../data/geographe/geographie.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../data/services/localite_codification_service.dart';
 import 'package:apisavana_gestion/authentication/user_session.dart';
 
 class NouvelleCollecteScoopPage extends StatefulWidget {
@@ -36,6 +38,12 @@ class _NouvelleCollecteScoopPageState extends State<NouvelleCollecteScoopPage> {
   String? selectedTechnician;
   String? selectedQualite = 'Standard';
   List<Map<String, dynamic>> produits = [];
+
+  // Variables géographiques pour code_collecte
+  String? selectedRegion;
+  String? selectedProvince;
+  String? selectedCommune;
+  String? selectedVillage;
 
   // Listes
   final List<String> qualites = [
@@ -187,10 +195,61 @@ class _NouvelleCollecteScoopPageState extends State<NouvelleCollecteScoopPage> {
       _notesController.clear();
       selectedDate = DateTime.now();
       selectedQualite = 'Standard';
+      selectedRegion = null;
+      selectedProvince = null;
+      selectedCommune = null;
+      selectedVillage = null;
       produits.clear();
       _geolocationData = null;
       _addNewProduit();
     });
+  }
+
+  // Méthodes pour obtenir les données géographiques
+  List<String> _getRegions() {
+    return GeographieData.regionsBurkina
+        .map((region) => region['nom'] as String)
+        .toList();
+  }
+
+  List<String> _getProvinces(String? regionNom) {
+    if (regionNom == null) return [];
+
+    // Trouver le code de la région
+    final region = GeographieData.regionsBurkina
+        .firstWhere((r) => r['nom'] == regionNom, orElse: () => {});
+
+    if (region.isEmpty) return [];
+
+    final regionCode = region['code'];
+    final provinces = GeographieData.provincesParRegion[regionCode] ?? [];
+
+    return provinces.map((province) => province['nom'] as String).toList();
+  }
+
+  List<String> _getCommunes(String? regionNom, String? provinceNom) {
+    if (regionNom == null || provinceNom == null) return [];
+
+    // Trouver le code de la région
+    final region = GeographieData.regionsBurkina
+        .firstWhere((r) => r['nom'] == regionNom, orElse: () => {});
+
+    if (region.isEmpty) return [];
+
+    final regionCode = region['code'];
+
+    // Trouver le code de la province
+    final provinces = GeographieData.provincesParRegion[regionCode] ?? [];
+    final province =
+        provinces.firstWhere((p) => p['nom'] == provinceNom, orElse: () => {});
+
+    if (province.isEmpty) return [];
+
+    final provinceCode = province['code'];
+    final communes =
+        GeographieData.communesParProvince['$regionCode-$provinceCode'] ?? [];
+
+    return communes.map((commune) => commune['nom'] as String).toList();
   }
 
   // Obtenir la géolocalisation GPS
@@ -318,11 +377,34 @@ class _NouvelleCollecteScoopPageState extends State<NouvelleCollecteScoopPage> {
       print("🟡 _saveCollecte - Date: $selectedDate");
       print("🟡 _saveCollecte - Qualité: $selectedQualite");
 
+      // Génération automatique du Code_Collecte basé sur la localité de la SCOOP
+      String? codeCollecte;
+      if (selectedRegion != null &&
+          selectedProvince != null &&
+          selectedCommune != null) {
+        codeCollecte = LocaliteCodificationService.generateCodeLocalite(
+          regionNom: selectedRegion!,
+          provinceNom: selectedProvince!,
+          communeNom: selectedCommune!,
+        );
+        print('🏷️ DEBUG: Code_Collecte généré pour SCOOP: $codeCollecte');
+      } else {
+        print(
+            '⚠️ DEBUG: Localisation SCOOP incomplète - code_collecte sera null');
+      }
+
       final collecteData = {
         'type': 'Achat SCOOP',
         'scoop_name': _scoopNameController.text.trim(),
         'localisation': _locationController.text.trim(),
         'site': userSite,
+        // Informations géographiques structurées
+        'region': selectedRegion,
+        'province': selectedProvince,
+        'commune': selectedCommune,
+        'village': selectedVillage,
+        // NOUVEAU: Code_Collecte basé sur la localité de la SCOOP
+        'code_collecte': codeCollecte,
         'technicien_nom': selectedTechnician ?? '',
         'technicien_uid': user.uid,
         'date_collecte': Timestamp.fromDate(selectedDate!),
@@ -474,6 +556,88 @@ class _NouvelleCollecteScoopPageState extends State<NouvelleCollecteScoopPage> {
                     ),
                   ],
                 ),
+              ],
+            ),
+
+            const SizedBox(height: 20),
+
+            // Section géographique pour Code_Collecte
+            _buildSectionCard(
+              title: 'Localisation géographique (Code collecte)',
+              icon: Icons.map,
+              children: [
+                _buildDropdownField<String>(
+                  value: selectedRegion,
+                  label: 'Région',
+                  icon: Icons.public,
+                  items: _getRegions(),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedRegion = value;
+                      selectedProvince = null; // Reset province
+                      selectedCommune = null; // Reset commune
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                _buildDropdownField<String>(
+                  value: selectedProvince,
+                  label: 'Province',
+                  icon: Icons.location_city,
+                  items: _getProvinces(selectedRegion),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedProvince = value;
+                      selectedCommune = null; // Reset commune
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                _buildDropdownField<String>(
+                  value: selectedCommune,
+                  label: 'Commune',
+                  icon: Icons.location_on,
+                  items: _getCommunes(selectedRegion, selectedProvince),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedCommune = value;
+                    });
+                  },
+                ),
+                if (selectedRegion != null &&
+                    selectedProvince != null &&
+                    selectedCommune != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: kPrimaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border:
+                            Border.all(color: kPrimaryColor.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.qr_code, color: kPrimaryColor),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Code collecte : ${LocaliteCodificationService.generateCodeLocalite(
+                                    regionNom: selectedRegion!,
+                                    provinceNom: selectedProvince!,
+                                    communeNom: selectedCommune!,
+                                  ) ?? 'Non disponible'}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: kPrimaryColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
               ],
             ),
 

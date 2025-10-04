@@ -1,10 +1,36 @@
-// Modèles de données pour le contrôle qualité du miel
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../quality_control/models/quality_vocab.dart';
+// Modèles de données pour le contrôle qualité du miel
 
 enum HoneyNature { brut, prefilitre, cire }
 
 enum ConformityStatus { conforme, nonConforme }
+
+/// Nouveaux enums pour le contrôle qualité avancé
+enum ContainerQualityApproval {
+  approuver('Approuver'),
+  nonApprouver('Non Approuver');
+
+  const ContainerQualityApproval(this.label);
+  final String label;
+}
+
+enum OdorApproval {
+  approuver('Approuver'),
+  nonApprouver('Non Approuver');
+
+  const OdorApproval(this.label);
+  final String label;
+}
+
+enum SandDepositPresence {
+  oui('Oui'),
+  non('Non');
+
+  const SandDepositPresence(this.label);
+  final String label;
+}
 
 /// Types de contenants disponibles pour le contrôle qualité
 enum ContainerType {
@@ -35,6 +61,11 @@ class QualityControlData {
   final double honeyWeight; // poids du miel seul
   final String quality;
   final double? waterContent; // teneur en eau en %
+  final double? manualWaterContent; // mesure manuelle éventuelle
+  final QualityOdorProfile odorProfile;
+  final QualityDepositLevel depositLevel;
+  final double? pollenLostKg; // pollen perdu sur l'étape
+  final double? residuePercent; // % de résidus post traitement
   final String floralPredominance;
   final ConformityStatus conformityStatus;
   final String? nonConformityCause;
@@ -46,6 +77,13 @@ class QualityControlData {
   final String?
       typeAttribution; // Type d'attribution (extraction, filtrage, cire)
   final DateTime? dateAttribution; // Date d'attribution
+
+  // 🆕 Nouveaux champs pour le contrôle qualité avancé
+  final ContainerQualityApproval containerQualityApproval;
+  final OdorApproval odorApproval;
+  final SandDepositPresence sandDepositPresence;
+  final String trackingCode; // Code de suivi
+  final String? collectionPeriod; // Période de collecte (auto-rempli)
 
   const QualityControlData({
     this.documentId, // 🆕 ID du document Firestore
@@ -64,6 +102,11 @@ class QualityControlData {
     required this.honeyWeight,
     required this.quality,
     this.waterContent,
+    this.manualWaterContent,
+    this.odorProfile = QualityOdorProfile.neutre,
+    this.depositLevel = QualityDepositLevel.aucun,
+    this.pollenLostKg,
+    this.residuePercent,
     required this.floralPredominance,
     required this.conformityStatus,
     this.nonConformityCause,
@@ -74,6 +117,12 @@ class QualityControlData {
     this.attributionId,
     this.typeAttribution,
     this.dateAttribution,
+    // 🆕 Nouveaux champs pour le contrôle qualité avancé
+    this.containerQualityApproval = ContainerQualityApproval.approuver,
+    this.odorApproval = OdorApproval.approuver,
+    this.sandDepositPresence = SandDepositPresence.non,
+    this.trackingCode = '',
+    this.collectionPeriod,
   });
 
   QualityControlData copyWith({
@@ -93,6 +142,11 @@ class QualityControlData {
     double? honeyWeight,
     String? quality,
     double? waterContent,
+    double? manualWaterContent,
+    QualityOdorProfile? odorProfile,
+    QualityDepositLevel? depositLevel,
+    double? pollenLostKg,
+    double? residuePercent,
     String? floralPredominance,
     ConformityStatus? conformityStatus,
     String? nonConformityCause,
@@ -103,6 +157,12 @@ class QualityControlData {
     String? attributionId,
     String? typeAttribution,
     DateTime? dateAttribution,
+    // 🆕 Nouveaux paramètres
+    ContainerQualityApproval? containerQualityApproval,
+    OdorApproval? odorApproval,
+    SandDepositPresence? sandDepositPresence,
+    String? trackingCode,
+    String? collectionPeriod,
   }) {
     return QualityControlData(
       documentId: documentId ?? this.documentId, // 🆕 ID du document Firestore
@@ -121,6 +181,11 @@ class QualityControlData {
       honeyWeight: honeyWeight ?? this.honeyWeight,
       quality: quality ?? this.quality,
       waterContent: waterContent ?? this.waterContent,
+      manualWaterContent: manualWaterContent ?? this.manualWaterContent,
+      odorProfile: odorProfile ?? this.odorProfile,
+      depositLevel: depositLevel ?? this.depositLevel,
+      pollenLostKg: pollenLostKg ?? this.pollenLostKg,
+      residuePercent: residuePercent ?? this.residuePercent,
       floralPredominance: floralPredominance ?? this.floralPredominance,
       conformityStatus: conformityStatus ?? this.conformityStatus,
       nonConformityCause: nonConformityCause ?? this.nonConformityCause,
@@ -131,6 +196,13 @@ class QualityControlData {
       attributionId: attributionId ?? this.attributionId,
       typeAttribution: typeAttribution ?? this.typeAttribution,
       dateAttribution: dateAttribution ?? this.dateAttribution,
+      // 🆕 Nouveaux champs
+      containerQualityApproval:
+          containerQualityApproval ?? this.containerQualityApproval,
+      odorApproval: odorApproval ?? this.odorApproval,
+      sandDepositPresence: sandDepositPresence ?? this.sandDepositPresence,
+      trackingCode: trackingCode ?? this.trackingCode,
+      collectionPeriod: collectionPeriod ?? this.collectionPeriod,
     );
   }
 
@@ -151,6 +223,11 @@ class QualityControlData {
       'honeyWeight': honeyWeight,
       'quality': quality,
       'waterContent': waterContent,
+      'manualWaterContent': manualWaterContent,
+      'odorProfile': odorProfile.name,
+      'depositLevel': depositLevel.name,
+      'pollenLostKg': pollenLostKg,
+      'residuePercent': residuePercent,
       'floralPredominance': floralPredominance,
       'conformityStatus': conformityStatus.name,
       'nonConformityCause': nonConformityCause,
@@ -161,6 +238,12 @@ class QualityControlData {
       'attributionId': attributionId,
       'typeAttribution': typeAttribution,
       'dateAttribution': dateAttribution?.toIso8601String(),
+      // 🆕 Nouveaux champs
+      'containerQualityApproval': containerQualityApproval.name,
+      'odorApproval': odorApproval.name,
+      'sandDepositPresence': sandDepositPresence.name,
+      'trackingCode': trackingCode,
+      'collectionPeriod': collectionPeriod,
     };
   }
 
@@ -199,6 +282,11 @@ class QualityControlData {
       honeyWeight: (data['honeyWeight'] ?? 0.0).toDouble(),
       quality: data['quality'] ?? '',
       waterContent: data['waterContent']?.toDouble(),
+      manualWaterContent: data['manualWaterContent']?.toDouble(),
+      odorProfile: _parseOdorProfile(data['odorProfile']),
+      depositLevel: _parseDepositLevel(data['depositLevel']),
+      pollenLostKg: data['pollenLostKg']?.toDouble(),
+      residuePercent: data['residuePercent']?.toDouble(),
       floralPredominance: data['floralPredominance'] ?? '',
       conformityStatus: ConformityStatus.values.firstWhere(
         (e) => e.name == data['conformityStatus'],
@@ -219,6 +307,21 @@ class QualityControlData {
               ? (data['dateAttribution'] as Timestamp).toDate()
               : DateTime.parse(data['dateAttribution']))
           : null,
+      // 🆕 Nouveaux champs
+      containerQualityApproval: ContainerQualityApproval.values.firstWhere(
+        (e) => e.name == data['containerQualityApproval'],
+        orElse: () => ContainerQualityApproval.approuver,
+      ),
+      odorApproval: OdorApproval.values.firstWhere(
+        (e) => e.name == data['odorApproval'],
+        orElse: () => OdorApproval.approuver,
+      ),
+      sandDepositPresence: SandDepositPresence.values.firstWhere(
+        (e) => e.name == data['sandDepositPresence'],
+        orElse: () => SandDepositPresence.non,
+      ),
+      trackingCode: data['trackingCode'] ?? '',
+      collectionPeriod: data['collectionPeriod'],
     );
   }
 
@@ -248,6 +351,11 @@ class QualityControlData {
       honeyWeight: (json['honeyWeight'] ?? 0).toDouble(),
       quality: json['quality'] ?? '',
       waterContent: json['waterContent']?.toDouble(),
+      manualWaterContent: json['manualWaterContent']?.toDouble(),
+      odorProfile: _parseOdorProfile(json['odorProfile']),
+      depositLevel: _parseDepositLevel(json['depositLevel']),
+      pollenLostKg: json['pollenLostKg']?.toDouble(),
+      residuePercent: json['residuePercent']?.toDouble(),
       floralPredominance: json['floralPredominance'] ?? '',
       conformityStatus: ConformityStatus.values.firstWhere(
         (e) => e.name == json['conformityStatus'],
@@ -263,8 +371,43 @@ class QualityControlData {
       dateAttribution: json['dateAttribution'] != null
           ? DateTime.parse(json['dateAttribution'])
           : null,
+      // 🆕 Nouveaux champs
+      containerQualityApproval: ContainerQualityApproval.values.firstWhere(
+        (e) => e.name == json['containerQualityApproval'],
+        orElse: () => ContainerQualityApproval.approuver,
+      ),
+      odorApproval: OdorApproval.values.firstWhere(
+        (e) => e.name == json['odorApproval'],
+        orElse: () => OdorApproval.approuver,
+      ),
+      sandDepositPresence: SandDepositPresence.values.firstWhere(
+        (e) => e.name == json['sandDepositPresence'],
+        orElse: () => SandDepositPresence.non,
+      ),
+      trackingCode: json['trackingCode'] ?? '',
+      collectionPeriod: json['collectionPeriod'],
     );
   }
+}
+
+QualityOdorProfile _parseOdorProfile(dynamic value) {
+  if (value is String) {
+    return QualityOdorProfile.values.firstWhere(
+      (element) => element.name == value,
+      orElse: () => QualityOdorProfile.neutre,
+    );
+  }
+  return QualityOdorProfile.neutre;
+}
+
+QualityDepositLevel _parseDepositLevel(dynamic value) {
+  if (value is String) {
+    return QualityDepositLevel.values.firstWhere(
+      (element) => element.name == value,
+      orElse: () => QualityDepositLevel.aucun,
+    );
+  }
+  return QualityDepositLevel.aucun;
 }
 
 /// Utilitaires pour le contrôle qualité

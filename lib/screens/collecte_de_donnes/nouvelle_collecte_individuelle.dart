@@ -17,6 +17,7 @@ import 'widget_individuel/section_champs_manquants.dart';
 import '../../services/universal_container_id_service.dart';
 import 'widget_individuel/section_progression_formulaire.dart';
 import 'widget_individuel/dialogue_confirmation_collecte.dart';
+import '../../../data/services/localite_codification_service.dart';
 import 'package:apisavana_gestion/authentication/user_session.dart';
 import 'widget_individuel/modal_selection_producteur_reactive.dart';
 
@@ -862,6 +863,14 @@ class _NouvelleCollecteIndividuellePageState
           "IND_${dateStr}_${timeStr}_${collecteurId}_$randomSuffix";
       print("🟡 ID collecte ULTRA-SÉCURISÉ généré: $idCollecte");
 
+      // Génération automatique du Code_Collecte basé sur la localité du producteur
+      final codeCollecte = LocaliteCodificationService.generateCodeLocalite(
+        regionNom: _producteurSelectionne!.localisation['region'] ?? '',
+        provinceNom: _producteurSelectionne!.localisation['province'] ?? '',
+        communeNom: _producteurSelectionne!.localisation['commune'] ?? '',
+      );
+      print('🏷️ DEBUG: Code_Collecte généré pour individuelle: $codeCollecte');
+
       // Création du modèle de collecte
       print("🟡 Création du modèle avec:");
       print("   - ID: $idCollecte");
@@ -904,6 +913,8 @@ class _NouvelleCollecteIndividuellePageState
         collecteurNom: _userSession.nom ?? '',
         observations: _observationsController.text,
         createdAt: Timestamp.now(),
+        codeCollecte:
+            codeCollecte, // NOUVEAU: Code de collecte basé sur le producteur
         geolocationData: _geolocationData, // Inclure les données GPS
       );
 

@@ -1,14 +1,15 @@
-// Service pour la gestion des données de contrôle qualité
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
-import '../../../authentication/user_session.dart';
-import '../models/quality_control_models.dart';
-import '../models/collecte_models.dart';
 import 'global_refresh_service.dart';
+import '../models/collecte_models.dart';
+import 'package:flutter/foundation.dart';
+import '../models/quality_control_models.dart';
+import '../../../authentication/user_session.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../quality_control/services/quality_computation_service.dart';
 
+// Service pour la gestion des données de contrôle qualité
 /// Résultat d'une mise à jour de collecte
 class CollecteUpdateResult {
   final bool success;
@@ -44,6 +45,10 @@ class QualityControlService {
 
   // Instance Firestore
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // Règles et calculs métier
+  final QualityComputationService _computation =
+      const QualityComputationService();
 
   // Stockage en mémoire pour cache (optionnel)
   final Map<String, QualityControlData> _qualityControlsCache = {};
@@ -85,33 +90,70 @@ class QualityControlService {
           ? '${cleanContainerCode}_${cleanCollecteId}_${data.receptionDate.millisecondsSinceEpoch}'
           : '${cleanContainerCode}_${data.receptionDate.millisecondsSinceEpoch}';
 
+      // Calculs métiers avant sauvegarde
+      final trimmedObservation = data.observations?.trim();
+      final normalizedObservation =
+          (trimmedObservation == null || trimmedObservation.isEmpty)
+              ? null
+              : trimmedObservation;
+
+      final observationError = _computation.validateObservation(
+          data.conformityStatus, normalizedObservation);
+      if (observationError != null) {
+        throw ArgumentError(observationError);
+      }
+
+      final containerTypeEnum = _resolveContainerType(data.containerType);
+      final computedWater = data.waterContent ??
+          _computation.computeWaterContent(
+            containerType: containerTypeEnum,
+            odorProfile: data.odorProfile,
+            depositLevel: data.depositLevel,
+            manualMeasure: data.manualWaterContent,
+          );
+
+      final controllerName = (data.controllerName?.trim().isNotEmpty ?? false)
+          ? data.controllerName!.trim()
+          : (userSession.nom ?? 'Contrôleur');
+
+      final normalizedData = data.copyWith(
+        waterContent: computedWater,
+        controllerName: controllerName,
+        observations: normalizedObservation,
+      );
+
       // Préparer les données pour Firestore
       final firestoreData = {
         'id': docId,
-        'containerCode': data.containerCode,
-        'receptionDate': Timestamp.fromDate(data.receptionDate),
-        'producer': data.producer,
-        'apiaryVillage': data.apiaryVillage,
-        'hiveType': data.hiveType,
-        'collectionStartDate': data.collectionStartDate != null
-            ? Timestamp.fromDate(data.collectionStartDate!)
+        'containerCode': normalizedData.containerCode,
+        'receptionDate': Timestamp.fromDate(normalizedData.receptionDate),
+        'producer': normalizedData.producer,
+        'apiaryVillage': normalizedData.apiaryVillage,
+        'hiveType': normalizedData.hiveType,
+        'collectionStartDate': normalizedData.collectionStartDate != null
+            ? Timestamp.fromDate(normalizedData.collectionStartDate!)
             : null,
-        'collectionEndDate': data.collectionEndDate != null
-            ? Timestamp.fromDate(data.collectionEndDate!)
+        'collectionEndDate': normalizedData.collectionEndDate != null
+            ? Timestamp.fromDate(normalizedData.collectionEndDate!)
             : null,
-        'honeyNature': data.honeyNature.name,
-        'containerType': data.containerType,
-        'containerNumber': data.containerNumber,
-        'totalWeight': data.totalWeight,
-        'honeyWeight': data.honeyWeight,
-        'quality': data.quality,
-        'waterContent': data.waterContent,
-        'floralPredominance': data.floralPredominance,
-        'conformityStatus': data.conformityStatus.name,
-        'nonConformityCause': data.nonConformityCause,
-        'observations': data.observations,
-        'controllerName': data.controllerName,
-        'createdAt': Timestamp.fromDate(data.createdAt),
+        'honeyNature': normalizedData.honeyNature.name,
+        'containerType': normalizedData.containerType,
+        'containerNumber': normalizedData.containerNumber,
+        'totalWeight': normalizedData.totalWeight,
+        'honeyWeight': normalizedData.honeyWeight,
+        'quality': normalizedData.quality,
+        'waterContent': normalizedData.waterContent,
+        'manualWaterContent': normalizedData.manualWaterContent,
+        'odorProfile': normalizedData.odorProfile.name,
+        'depositLevel': normalizedData.depositLevel.name,
+        'pollenLostKg': normalizedData.pollenLostKg,
+        'residuePercent': normalizedData.residuePercent,
+        'floralPredominance': normalizedData.floralPredominance,
+        'conformityStatus': normalizedData.conformityStatus.name,
+        'nonConformityCause': normalizedData.nonConformityCause,
+        'observations': normalizedData.observations,
+        'controllerName': normalizedData.controllerName,
+        'createdAt': Timestamp.fromDate(normalizedData.createdAt),
         'site': siteUtilisateur,
         'dateCreation': FieldValue.serverTimestamp(),
         'derniereMiseAJour': FieldValue.serverTimestamp(),
@@ -130,7 +172,7 @@ class QualityControlService {
           .set(firestoreData);
 
       // Mettre à jour le cache local
-      _qualityControlsCache[docId] = data;
+      _qualityControlsCache[docId] = normalizedData;
 
       if (kDebugMode) {
         print(
@@ -138,17 +180,21 @@ class QualityControlService {
         print('📊 Contenant: ${data.containerCode}');
         print(
             '🆔 CollecteId: $collecteId ${collecteId != null ? "(✅ LIEN ÉTABLI)" : "(❌ MANQUANT)"}');
-        print('👤 Contrôleur: ${data.controllerName}');
-        print('✅ Conformité: ${data.conformityStatus.name}');
-        print('⚖️ Poids total: ${data.totalWeight} kg');
-        print('🍯 Poids miel: ${data.honeyWeight} kg');
+        print('👤 Contrôleur: ${normalizedData.controllerName}');
+        print('✅ Conformité: ${normalizedData.conformityStatus.name}');
+        print('⚖️ Poids total: ${normalizedData.totalWeight} kg');
+        print('🍯 Poids miel: ${normalizedData.honeyWeight} kg');
+        print(
+            '💧 Teneur en eau calculée: ${normalizedData.waterContent?.toStringAsFixed(2) ?? '-'}%');
+        print('🌼 Pollen perdu: ${normalizedData.pollenLostKg ?? 0} kg');
+        print('🧪 Résidus: ${normalizedData.residuePercent ?? 0}%');
       }
 
       // Mettre à jour le cache local
-      _qualityControlsCache[docId] = data;
+      _qualityControlsCache[docId] = normalizedData;
 
       // Mettre à jour le champ de contrôle dans la collecte source
-      await _updateCollecteControlStatus(data);
+      await _updateCollecteControlStatus(normalizedData);
 
       // Notifier les listeners des changements
       _notifyListeners();
@@ -167,8 +213,8 @@ class QualityControlService {
         collecteId: collecteId ?? data.containerCode,
         containerCode: data.containerCode,
         additionalData: {
-          'conformityStatus': data.conformityStatus.name,
-          'controllerName': data.controllerName,
+          'conformityStatus': normalizedData.conformityStatus.name,
+          'controllerName': normalizedData.controllerName,
         },
       );
 
@@ -1024,8 +1070,6 @@ class QualityControlService {
         final List<dynamic> contenants = data['contenants'] ?? [];
 
         for (int i = 0; i < contenants.length; i++) {
-          final contenant = contenants[i];
-
           // Vérifier les deux formats: nouveau (avec suffixe) et ancien (sans suffixe)
           final containerIdOld = 'C${(i + 1).toString().padLeft(3, '0')}';
           final containerIdNew =
@@ -2156,6 +2200,15 @@ class QualityControlService {
     }
 
     return cleaned;
+  }
+
+  ContainerType _resolveContainerType(String rawValue) {
+    final lower = rawValue.toLowerCase();
+    return ContainerType.values.firstWhere(
+      (type) =>
+          type.name.toLowerCase() == lower || type.label.toLowerCase() == lower,
+      orElse: () => ContainerType.bidon,
+    );
   }
 
   /// Nettoie spécifiquement un code de contenant

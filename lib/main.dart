@@ -12,8 +12,11 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/caisse/pages/espace_caissier_page.dart';
 import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
+import 'screens/quality_control/pages/quality_control_home_page.dart';
 import 'screens/caisse/integration/transaction_commerciale_module.dart';
+import 'screens/collecte_de_donnes/core/collecte_reference_service.dart';
 import 'screens/conditionnement/services/conditionnement_db_service.dart';
+import 'screens/collecte_de_donnes/core/collecte_geographie_service.dart';
 import 'package:apisavana_gestion/screens/extraction_page/extraction.dart';
 import 'package:apisavana_gestion/screens/filtrage/filtrage_main_page.dart';
 import 'screens/vente/utils/logo_loader.dart'; // Initialisation du logo PDF
@@ -52,6 +55,12 @@ void main() async {
   // Initialiser les services
   Get.put(UserSession());
   Get.put(ConditionnementDbService());
+
+  // Initialiser le service géographie pour la collecte
+  Get.put(CollecteGeographieService(), permanent: true);
+
+  // Initialiser le service de référence pour la collecte
+  Get.put(CollecteReferenceService(), permanent: true);
 
   // Register transaction commerciale module (registers its GetX service)
   TransactionCommercialeModule.initialiser();
@@ -99,6 +108,9 @@ class ApisavanaApp extends StatelessWidget {
             name: '/gestion_de_ventes',
             page: () => CommercialisationHomePage()),
         GetPage(name: '/caisse', page: () => const EspaceCaissierPage()),
+        GetPage(
+            name: '/controle_qualite',
+            page: () => const QualityControlHomePage()),
       ],
     );
   }

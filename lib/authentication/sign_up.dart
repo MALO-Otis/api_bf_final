@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:apisavana_gestion/services/email_service.dart';
 import 'package:apisavana_gestion/screens/dashboard/dashboard.dart';
 
 class SignupPage extends StatefulWidget {
@@ -13,6 +14,8 @@ class SignupPage extends StatefulWidget {
 }
 
 class _SignupPageState extends State<SignupPage> {
+  static const int _verificationLinkValidityMinutes = 60;
+
   final _formKey = GlobalKey<FormState>();
 
   // --- Controllers pour chaque champ ---
@@ -29,6 +32,17 @@ class _SignupPageState extends State<SignupPage> {
   bool showConfirmPassword = false;
   int passwordStrength = 0;
   bool isLoading = false;
+
+  late final EmailService emailService;
+
+  final ActionCodeSettings _verificationActionCodeSettings = ActionCodeSettings(
+    url: 'https://apisavana-bf-226.firebaseapp.com/email-verified',
+    handleCodeInApp: false,
+    androidPackageName: 'com.example.apisavanaGestion',
+    androidInstallApp: true,
+    androidMinimumVersion: '21',
+    iOSBundleId: 'com.example.apisavanaGestion',
+  );
 
   // --- Validation ---
   Map<String, String?> errors = {};
@@ -96,6 +110,14 @@ class _SignupPageState extends State<SignupPage> {
   };
 
   @override
+  void initState() {
+    super.initState();
+    emailService = Get.isRegistered<EmailService>()
+        ? Get.find<EmailService>()
+        : Get.put(EmailService());
+  }
+
+  @override
   void dispose() {
     firstNameController.dispose();
     lastNameController.dispose();
@@ -140,7 +162,17 @@ class _SignupPageState extends State<SignupPage> {
         return value.length < 2 ? 'Minimum 2 caractères' : null;
       case 'email':
         final emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+');
-        return !emailRegex.hasMatch(value) ? 'Format email invalide' : null;
+        final trimmed = value.trim();
+        if (!emailRegex.hasMatch(trimmed)) {
+          return 'Format email invalide';
+        }
+        final lower = trimmed.toLowerCase();
+        final isValidDomain =
+            lower.endsWith('@apisavana.com') || lower.endsWith('@apisava.com');
+        if (!isValidDomain) {
+          return "Utilisez une adresse email @apisavana.com";
+        }
+        return null;
       case 'phone':
         final phoneRegex = RegExp(r'^(\+226|00226)?[0-9]{8}');
         return !phoneRegex.hasMatch(value.replaceAll(' ', ''))
@@ -220,6 +252,15 @@ class _SignupPageState extends State<SignupPage> {
     return strength;
   }
 
+  String _verificationValidityLabel() {
+    final minutes = _verificationLinkValidityMinutes;
+    if (minutes >= 60 && minutes % 60 == 0) {
+      final hours = minutes ~/ 60;
+      return '$hours heure${hours > 1 ? 's' : ''}';
+    }
+    return '$minutes minute${minutes > 1 ? 's' : ''}';
+  }
+
   Color getPasswordStrengthColor() {
     if (passwordStrength < 50) return Color(0xFFD32F2F); // rouge
     if (passwordStrength < 75) return Color(0xFFF49101); // orange
@@ -247,6 +288,14 @@ class _SignupPageState extends State<SignupPage> {
   }
 
   Future<void> handleSubmit() async {
+    final emailValidation =
+        validateField('email', emailController.text.trim()) ?? '';
+    if (emailValidation.isNotEmpty) {
+      setState(() {
+        errors['email'] = emailValidation;
+        errors['form'] = 'Veuillez corriger les erreurs dans le formulaire';
+      });
+    }
     if (!isFormValid()) {
       setState(() {
         errors['form'] = 'Veuillez corriger les erreurs dans le formulaire';
@@ -254,15 +303,33 @@ class _SignupPageState extends State<SignupPage> {
       return;
     }
     setState(() => isLoading = true);
+    final prenom = firstNameController.text.trim();
+    final nom = lastNameController.text.trim();
+    final email = emailController.text.trim();
+    final telephone = phoneController.text.trim();
+    final displayName = ('$prenom $nom').trim();
+
     try {
       UserCredential userCred =
           await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: emailController.text.trim(),
+        email: email,
         password: passwordController.text.trim(),
       );
 
-      // Envoi de l'email de vérification
-      await userCred.user!.sendEmailVerification();
+      final user = userCred.user;
+      if (user == null) {
+        throw FirebaseAuthException(
+          code: 'user-null',
+          message:
+              "Impossible de finaliser la création du compte. Veuillez réessayer.",
+        );
+      }
+
+      final verificationSent = await _sendVerificationEmail(
+        user: user,
+        email: email,
+        displayName: displayName.isNotEmpty ? displayName : email,
+      );
 
       // Normalisation du site et du rôle avant enregistrement
       String normalizedSite = '';
@@ -270,22 +337,23 @@ class _SignupPageState extends State<SignupPage> {
         normalizedSite = selectedSite![0].toUpperCase() +
             selectedSite!.substring(1).toLowerCase();
       }
-      String normalizedRole = '';
+      final List<String> normalizedRoles = [];
       if ((selectedRole ?? '').isNotEmpty) {
-        normalizedRole =
-            selectedRole![0].toUpperCase() + selectedRole!.substring(1);
+        final rawRole = selectedRole!;
+        final normalizedRole = rawRole[0].toUpperCase() + rawRole.substring(1);
+        normalizedRoles.add(normalizedRole);
       }
       await FirebaseFirestore.instance
           .collection('utilisateurs')
           .doc(userCred.user!.uid)
           .set({
         'uid': userCred.user!.uid,
-        'nom': lastNameController.text.trim(),
-        'prenom': firstNameController.text.trim(),
-        'email': emailController.text.trim(),
-        'telephone': phoneController.text.trim(),
+        'nom': nom,
+        'prenom': prenom,
+        'email': email,
+        'telephone': telephone,
         'site': normalizedSite,
-        'role': normalizedRole,
+        'role': normalizedRoles,
         'emailVerified': false, // Ajout du statut de vérification
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -296,7 +364,11 @@ class _SignupPageState extends State<SignupPage> {
       _clearAllFields();
 
       // Affichage du popup de vérification d'email
-      _showEmailVerificationDialog();
+      _showEmailVerificationDialog(
+        email,
+        displayName: displayName,
+        verificationEmailSent: verificationSent,
+      );
     } on FirebaseAuthException catch (e) {
       setState(() {
         isLoading = false;
@@ -310,191 +382,395 @@ class _SignupPageState extends State<SignupPage> {
     }
   }
 
-  void _showEmailVerificationDialog() {
-    // Sauvegarder l'email pour le renvoi
-    final userEmail = emailController.text.trim();
+  Future<bool> _sendVerificationEmail({
+    required User user,
+    required String email,
+    required String displayName,
+    bool showFeedback = true,
+  }) async {
+    try {
+      await user.sendEmailVerification(_verificationActionCodeSettings);
+      print('✅ [SIGNUP] Email de vérification envoyé à $email');
+    } on FirebaseAuthException catch (e) {
+      print(
+          "❌ [SIGNUP] Erreur Firebase lors de l'envoi de l'email de vérification: ${e.code} - ${e.message}");
+      if (showFeedback) {
+        Get.snackbar(
+          'Envoi impossible',
+          e.message ??
+              "Impossible d'envoyer l'email de vérification pour le moment.",
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.red[100],
+          colorText: Colors.red[900],
+          duration: const Duration(seconds: 5),
+        );
+      }
+      return false;
+    } catch (e) {
+      print('❌ [SIGNUP] Erreur inattendue lors de sendEmailVerification: $e');
+      if (showFeedback) {
+        Get.snackbar(
+          'Envoi impossible',
+          "Erreur inattendue lors de l'envoi de l'email de vérification.",
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.red[100],
+          colorText: Colors.red[900],
+          duration: const Duration(seconds: 5),
+        );
+      }
+      return false;
+    }
 
+    try {
+      await emailService.sendCustomVerificationEmailLocal(
+        userEmail: email,
+        userName: displayName.isNotEmpty ? displayName : email,
+      );
+    } catch (e) {
+      print('⚠️ [SIGNUP] Impossible d\'envoyer l\'email personnalisé: $e');
+    }
+
+    return true;
+  }
+
+  void _showEmailVerificationDialog(
+    String userEmail, {
+    String? displayName,
+    bool verificationEmailSent = true,
+  }) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              Icon(Icons.email, color: Color(0xFFF49101)),
-              SizedBox(width: 8),
-              Text(
-                'Vérification Email',
-                style: TextStyle(
-                  color: Color(0xFF2D0C0D),
-                  fontWeight: FontWeight.bold,
-                ),
+      builder: (dialogContext) {
+        bool isResending = false;
+        String? resendError;
+        String? resendInfo;
+
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Compte créé avec succès !',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.green[700],
-                ),
-              ),
-              SizedBox(height: 12),
-              Text(
-                'Un email de vérification a été envoyé à :',
-                style: TextStyle(fontSize: 14),
-              ),
-              SizedBox(height: 4),
-              Container(
-                padding: EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Color(0xFFF49101).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  emailController.text.trim(),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFFF49101),
+              title: Row(
+                children: const [
+                  Icon(Icons.email, color: Color(0xFFF49101)),
+                  SizedBox(width: 8),
+                  Text(
+                    'Vérification Email',
+                    style: TextStyle(
+                      color: Color(0xFF2D0C0D),
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
+                ],
               ),
-              SizedBox(height: 12),
-              Container(
-                padding: EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayName != null && displayName.trim().isNotEmpty
+                        ? 'Compte créé pour $displayName'
+                        : 'Compte créé avec succès !',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.green[700],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    "Un email de vérification vient d'être envoyé à :",
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color.fromRGBO(244, 145, 1, 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      userEmail,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFF49101),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (!verificationEmailSent)
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.shade200),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.warning_rounded,
+                              color: Color(0xFFF49101), size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Le premier envoi a rencontré un problème. Vous pouvez renvoyer l\'email ci-dessous.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.orange.shade800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (!verificationEmailSent) const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.info_outline,
-                            color: Colors.blue.shade600, size: 18),
-                        SizedBox(width: 6),
-                        Text(
-                          'Vérifiez bien votre adresse email !',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: Colors.blue.shade700,
-                            fontSize: 13,
+                        Icon(Icons.timer_outlined,
+                            color: Colors.orange.shade600, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Le lien est valable pendant ${_verificationValidityLabel()}. Passé ce délai, un nouvel envoi sera nécessaire.',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: Colors.orange.shade800,
+                              height: 1.4,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    SizedBox(height: 6),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.check_circle_outline,
+                                color: Colors.blue.shade600, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Étapes à suivre :',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.blue.shade700,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        _buildInstructionRow(
+                          icon: Icons.mark_email_unread_outlined,
+                          text:
+                              'Ouvrez votre boîte de réception et cherchez l\'email "ApiSavana - Vérification".',
+                        ),
+                        _buildInstructionRow(
+                          icon: Icons.report_gmailerrorred_outlined,
+                          text:
+                              'Regardez dans vos spams ou courriers indésirables si vous ne le voyez pas.',
+                        ),
+                        _buildInstructionRow(
+                          icon: Icons.link,
+                          text:
+                              'Cliquez sur le bouton "Confirmer mon adresse" contenu dans l\'email.',
+                        ),
+                        _buildInstructionRow(
+                          icon: Icons.lock_open_outlined,
+                          text:
+                              'Revenez sur la plateforme et connectez-vous avec vos identifiants.',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '⚠️ Vous devez vérifier votre email avant de pouvoir vous connecter.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.orange[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  if (resendInfo != null) ...[
+                    const SizedBox(height: 10),
                     Text(
-                      '• Assurez-vous que l\'adresse ci-dessus est correcte\n• Vérifiez vos spams/courriers indésirables\n• Le lien de vérification expire dans 24h',
-                      style: TextStyle(
+                      resendInfo!,
+                      style: const TextStyle(
                         fontSize: 12,
-                        color: Colors.blue.shade600,
+                        color: Colors.green,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
+                  if (resendError != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      resendError!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.red,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isResending
+                      ? null
+                      : () {
+                          Navigator.of(dialogContext).pop();
+                        },
+                  child: const Text(
+                    "Modifier l'email",
+                    style: TextStyle(color: Color(0xFFF49101)),
+                  ),
                 ),
-              ),
-              SizedBox(height: 12),
-              Text(
-                '⚠️ Vous devez vérifier votre email avant de pouvoir vous connecter.',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.orange[700],
-                  fontWeight: FontWeight.w500,
+                TextButton(
+                  onPressed: isResending
+                      ? null
+                      : () {
+                          Navigator.of(dialogContext).pop();
+                          Get.back();
+                        },
+                  child: const Text(
+                    'Continuer',
+                    style: TextStyle(color: Color(0xFF2D0C0D)),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                // Permettre de modifier l'email si il y a une erreur
-              },
-              child: Text(
-                'Modifier l\'email',
-                style: TextStyle(color: Colors.orange[700]),
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                // Revenir à la page précédente (gestion des utilisateurs) ou dashboard
-                Get.back();
-              },
-              child: Text(
-                'Continuer',
-                style: TextStyle(color: Color(0xFF2D0C0D)),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                try {
-                  print('🔄 Tentative de renvoi d\'email...');
+                ElevatedButton(
+                  onPressed: isResending
+                      ? null
+                      : () async {
+                          setStateDialog(() {
+                            isResending = true;
+                            resendError = null;
+                            resendInfo = null;
+                          });
 
-                  // Vérifier si un utilisateur est connecté
-                  final currentUser = FirebaseAuth.instance.currentUser;
-                  if (currentUser == null) {
-                    print(
-                        '❌ Aucun utilisateur connecté pour renvoyer l\'email');
-                    Get.snackbar(
-                      'Erreur',
-                      'Aucun utilisateur connecté. Veuillez recréer le compte.',
-                      snackPosition: SnackPosition.TOP,
-                      backgroundColor: Colors.red[100],
-                      colorText: Colors.red[900],
-                    );
-                    Navigator.of(context).pop();
-                    return;
-                  }
+                          final currentUser = FirebaseAuth.instance.currentUser;
+                          if (currentUser == null) {
+                            setStateDialog(() {
+                              isResending = false;
+                              resendError =
+                                  "Aucun utilisateur connecté pour renvoyer l'email.";
+                            });
+                            return;
+                          }
 
-                  print('📧 Renvoi d\'email à: ${currentUser.email}');
-                  await currentUser.sendEmailVerification();
+                          final success = await _sendVerificationEmail(
+                            user: currentUser,
+                            email: userEmail,
+                            displayName: displayName != null &&
+                                    displayName.trim().isNotEmpty
+                                ? displayName
+                                : userEmail,
+                            showFeedback: false,
+                          );
 
-                  Navigator.of(context).pop();
-                  Get.snackbar(
-                    'Email renvoyé',
-                    'Un nouvel email de vérification a été envoyé à ${userEmail}',
-                    snackPosition: SnackPosition.TOP,
-                    backgroundColor: Colors.green[100],
-                    colorText: Colors.green[900],
-                    duration: Duration(seconds: 4),
-                  );
+                          if (!mounted) {
+                            return;
+                          }
 
-                  print('✅ Email de vérification renvoyé avec succès');
-                } catch (e) {
-                  print('❌ Erreur lors du renvoi d\'email: $e');
-                  Navigator.of(context).pop();
-                  Get.snackbar(
-                    'Erreur',
-                    'Impossible de renvoyer l\'email: ${e.toString()}',
-                    snackPosition: SnackPosition.TOP,
-                    backgroundColor: Colors.red[100],
-                    colorText: Colors.red[900],
-                    duration: Duration(seconds: 5),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFFF49101),
-              ),
-              child: Text(
-                'Renvoyer',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
+                          setStateDialog(() {
+                            isResending = false;
+                            if (success) {
+                              resendInfo =
+                                  'Un nouvel email de vérification a été envoyé.';
+                              resendError = null;
+                            } else {
+                              resendError =
+                                  "Impossible de renvoyer l'email pour le moment. Réessayez plus tard.";
+                              resendInfo = null;
+                            }
+                          });
+
+                          if (success) {
+                            Get.snackbar(
+                              'Email renvoyé',
+                              'Un nouvel email de vérification a été envoyé à $userEmail',
+                              snackPosition: SnackPosition.TOP,
+                              backgroundColor: Colors.green[100],
+                              colorText: Colors.green[900],
+                              duration: const Duration(seconds: 4),
+                            );
+                          } else {
+                            Get.snackbar(
+                              'Erreur',
+                              "Le renvoi de l'email a échoué.",
+                              snackPosition: SnackPosition.TOP,
+                              backgroundColor: Colors.red[100],
+                              colorText: Colors.red[900],
+                              duration: const Duration(seconds: 5),
+                            );
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF49101),
+                  ),
+                  child: isResending
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Text(
+                          "Renvoyer l'email",
+                          style: TextStyle(color: Colors.white),
+                        ),
+                ),
+              ],
+            );
+          },
         );
       },
+    );
+  }
+
+  Widget _buildInstructionRow({
+    required IconData icon,
+    required String text,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: Colors.blue.shade600),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: 12, color: Colors.blue.shade600),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -530,8 +806,11 @@ class _SignupPageState extends State<SignupPage> {
                               ),
                             ),
                             child: Center(
-                                child:
-                                    Text('🍯', style: TextStyle(fontSize: 24))),
+                                child: Icon(
+                              Icons.emoji_food_beverage,
+                              size: 24,
+                              color: Colors.white,
+                            )),
                           ),
                           SizedBox(width: 12),
                           Text('ApiSavana',

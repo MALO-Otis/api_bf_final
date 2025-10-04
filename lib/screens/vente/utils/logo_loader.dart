@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'apisavana_pdf_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import '../../../data/services/enhanced_pdf_service.dart';
 
 /// Charge et met en cache le logo pour les PDF ApiSavana.
 /// A appeler une seule fois (ex: dans main() après WidgetsFlutterBinding.ensureInitialized()).
@@ -21,6 +22,7 @@ class ApiSavanaLogoLoader {
 
   /// Charge le logo si ce n'est déjà fait. Fournir un chemin explicite si souhaité.
   /// En mode debug, des logs détaillent chaque tentative.
+  /// Charge le logo dans TOUS les services PDF (ApiSavanaPdfService + EnhancedPdfService).
   static Future<void> ensureLoaded({String? assetPath}) async {
     if (_initialized && _bytes != null) return;
     final List<String> tries = [
@@ -28,22 +30,47 @@ class ApiSavanaLogoLoader {
       ..._candidatePaths,
     ];
     if (kDebugMode)
-      debugPrint('[LogoLoader] Tentatives de chargement: ${tries.join(', ')}');
+      debugPrint(
+          '[LogoLoader] 🔍 Tentatives de chargement APISAVANA: ${tries.join(', ')}');
     for (final path in tries) {
       try {
         final data = await rootBundle.load(path);
         _bytes = data.buffer.asUint8List();
+
+        // Charger dans le service PDF principal
         ApiSavanaPdfService.setLogo(_bytes!);
+
+        // Charger aussi dans le service PDF amélioré
+        try {
+          await EnhancedPdfService.loadLogo();
+          if (kDebugMode)
+            debugPrint(
+                '[LogoLoader] ✅ Logo APISAVANA chargé dans EnhancedPdfService');
+        } catch (enhancedError) {
+          if (kDebugMode)
+            debugPrint(
+                '[LogoLoader] ⚠️ Erreur EnhancedPdfService: $enhancedError');
+        }
+
         _initialized = true;
         if (kDebugMode)
-          debugPrint('[LogoLoader] Logo chargé avec succès: $path');
+          debugPrint('[LogoLoader] ✅ Logo APISAVANA chargé avec succès: $path');
+        print('🎯 Logo APISAVANA initialisé dans tous les services PDF');
         break;
       } catch (e) {
-        if (kDebugMode) debugPrint('[LogoLoader] Échec chargement $path -> $e');
+        if (kDebugMode)
+          debugPrint('[LogoLoader] ❌ Échec chargement $path -> $e');
       }
     }
-    assert(_bytes != null,
-        'Aucun logo n\'a pu être chargé. Vérifiez assets/logo/ et pubspec.yaml.');
+
+    if (_bytes == null) {
+      print('⚠️ Aucun logo APISAVANA trouvé - utilisation des fallbacks');
+      if (kDebugMode) {
+        print('📋 Vérifiez:');
+        print('   - Fichier assets/logo/logo.jpeg existe');
+        print('   - Configuration pubspec.yaml: assets: [assets/logo/]');
+      }
+    }
   }
 
   /// Permet de recharger dynamiquement un nouveau logo (ex: changement via UI admin).

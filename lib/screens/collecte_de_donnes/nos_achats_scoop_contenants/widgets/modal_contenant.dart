@@ -28,6 +28,20 @@ class _ModalContenantState extends State<ModalContenant> {
 
   bool get _isEdit => widget.contenant != null;
 
+  // Données de prix par contenant depuis Firestore
+  final Map<ContenantType, int> _prixParContenant = {
+    ContenantType.bidon: 2000,
+    ContenantType.fut: 2000,
+    ContenantType.sac: 2000,
+    ContenantType.seau: 2500,
+  };
+
+  /// Met à jour le prix unitaire automatiquement selon le type de contenant
+  void _updatePrixAutomatique() {
+    final prixParKg = _prixParContenant[_typeContenant] ?? 2000;
+    _prixController.text = prixParKg.toString();
+  }
+
   // 🔧 Calcul du montant total en temps réel
   double get _montantTotal {
     final poids = double.tryParse(_poidsController.text) ?? 0.0;
@@ -53,9 +67,14 @@ class _ModalContenantState extends State<ModalContenant> {
       _typeContenant = ContenantType.bidon;
     }
 
-    // 🔧 Listeners pour mise à jour en temps réel des totaux
+    // 🔧 Listeners pour mise à jour en temps réel des totaux et prix automatique
     _poidsController.addListener(_updateTotals);
     _prixController.addListener(_updateTotals);
+
+    // Initialiser le prix automatiquement si ce n'est pas en mode édition
+    if (!_isEdit) {
+      _updatePrixAutomatique();
+    }
   }
 
   void _updateTotals() {
@@ -75,6 +94,7 @@ class _ModalContenantState extends State<ModalContenant> {
     // 🔧 Supprimer les listeners avant dispose
     _poidsController.removeListener(_updateTotals);
     _prixController.removeListener(_updateTotals);
+    _poidsController.removeListener(_updatePrixAutomatique);
 
     _poidsController.dispose();
     _prixController.dispose();
@@ -160,14 +180,13 @@ class _ModalContenantState extends State<ModalContenant> {
                               _typeCire = null;
                               _couleurCire = null;
                             }
-                            // Si on passe à Cire, forcer le type de contenant à Sac
-                            if (_typeMiel == MielType.cire) {
-                              _typeContenant = ContenantType.sac;
-                            }
-                            // Si on passe à un autre type que Cire, remettre à Bidon par défaut
-                            else {
-                              _typeContenant = ContenantType.bidon;
-                            }
+                            // Sélectionner automatiquement le type de contenant selon le miel
+                            final availableTypes =
+                                ContenantType.getTypesForMiel(_typeMiel);
+                            _typeContenant = availableTypes
+                                .first; // Prendre le premier disponible
+                            // Recalculer le prix avec le nouveau type de contenant
+                            _updatePrixAutomatique();
                           });
                         },
                       ),
@@ -304,7 +323,11 @@ class _ModalContenantState extends State<ModalContenant> {
                           );
                         }).toList(),
                         onChanged: (value) {
-                          setState(() => _typeContenant = value!);
+                          setState(() {
+                            _typeContenant = value!;
+                            // Recalculer le prix quand on change le type de contenant
+                            _updatePrixAutomatique();
+                          });
                         },
                       ),
                     ],
@@ -387,6 +410,24 @@ class _ModalContenantState extends State<ModalContenant> {
                                 return null;
                               },
                             ),
+                            const SizedBox(height: 8),
+                            // Affichage du prix unitaire selon le type de contenant
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade50,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.blue.shade200),
+                              ),
+                              child: Text(
+                                'Prix ${_typeContenant.label}: ${_prixParContenant[_typeContenant]} CFA/kg',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.blue.shade700,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -400,7 +441,7 @@ class _ModalContenantState extends State<ModalContenant> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Notes (optionnel)',
+                        'Notes *',
                         style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 8),
@@ -415,6 +456,12 @@ class _ModalContenantState extends State<ModalContenant> {
                         ),
                         maxLines: 2,
                         maxLength: 200,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Les notes sont obligatoires';
+                          }
+                          return null;
+                        },
                       ),
                     ],
                   ),

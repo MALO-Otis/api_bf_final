@@ -1,14 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:apisavana_gestion/data/services/localite_codification_service.dart';
 
 class ProducteurModel {
   final String id;
   final String nomPrenom;
   final String numero;
   final String sexe;
-  final String age; // Changé de int à String pour la catégorie d'âge
+  final String age; // Changé de int à String pour plus de flexibilité
   final String appartenance;
   final String cooperative;
-  final Map<String, String> localisation;
+  final Map<String, String> localisation; // {region, province, commune}
+  final String? codeCollecte; // Code de collecte (XX-XX-XX format)
   final int nbRuchesTrad;
   final int nbRuchesMod;
   final int totalRuches;
@@ -29,6 +31,7 @@ class ProducteurModel {
     required this.appartenance,
     required this.cooperative,
     required this.localisation,
+    this.codeCollecte, // Sera généré automatiquement si null
     required this.nbRuchesTrad,
     required this.nbRuchesMod,
     required this.totalRuches,
@@ -63,6 +66,24 @@ class ProducteurModel {
         originesFlorale = List<String>.from(data['originesFlorale'] as List);
       }
 
+      // Génération automatique du code collecte si nécessaire
+      String? codeCollecte = data['code_collecte']?.toString();
+      if (codeCollecte == null || codeCollecte.isEmpty) {
+        final region = localisation['region'] ?? '';
+        final province = localisation['province'] ?? '';
+        final commune = localisation['commune'] ?? '';
+
+        if (region.isNotEmpty && province.isNotEmpty && commune.isNotEmpty) {
+          codeCollecte = LocaliteCodificationService.generateCodeLocalite(
+            regionNom: region,
+            provinceNom: province,
+            communeNom: commune,
+          );
+          print(
+              '🔵 ProducteurModel: Code collecte généré automatiquement: $codeCollecte');
+        }
+      }
+
       final producteur = ProducteurModel(
         id: doc.id,
         nomPrenom: data['nomPrenom']?.toString() ?? '',
@@ -72,6 +93,7 @@ class ProducteurModel {
         appartenance: data['appartenance']?.toString() ?? '',
         cooperative: data['cooperative']?.toString() ?? '',
         localisation: localisation,
+        codeCollecte: codeCollecte,
         nbRuchesTrad: (data['nbRuchesTrad'] ?? 0) as int,
         nbRuchesMod: (data['nbRuchesMod'] ?? 0) as int,
         totalRuches: (data['totalRuches'] ?? 0) as int,
@@ -94,6 +116,24 @@ class ProducteurModel {
   }
 
   Map<String, dynamic> toFirestore() {
+    // Génération automatique du code collecte si absent
+    String? finalCodeCollecte = codeCollecte;
+    if (finalCodeCollecte == null || finalCodeCollecte.isEmpty) {
+      final region = localisation['region'] ?? '';
+      final province = localisation['province'] ?? '';
+      final commune = localisation['commune'] ?? '';
+
+      if (region.isNotEmpty && province.isNotEmpty && commune.isNotEmpty) {
+        finalCodeCollecte = LocaliteCodificationService.generateCodeLocalite(
+          regionNom: region,
+          provinceNom: province,
+          communeNom: commune,
+        );
+        print(
+            '🔵 ProducteurModel.toFirestore: Code collecte généré: $finalCodeCollecte');
+      }
+    }
+
     return {
       'nomPrenom': nomPrenom,
       'numero': numero,
@@ -102,6 +142,7 @@ class ProducteurModel {
       'appartenance': appartenance,
       'cooperative': cooperative,
       'localisation': localisation,
+      'code_collecte': finalCodeCollecte, // NOUVEAU champ
       'nbRuchesTrad': nbRuchesTrad,
       'nbRuchesMod': nbRuchesMod,
       'totalRuches': totalRuches,
@@ -124,6 +165,7 @@ class ProducteurModel {
     String? appartenance,
     String? cooperative,
     Map<String, String>? localisation,
+    String? codeCollecte,
     int? nbRuchesTrad,
     int? nbRuchesMod,
     int? totalRuches,
@@ -144,6 +186,7 @@ class ProducteurModel {
       appartenance: appartenance ?? this.appartenance,
       cooperative: cooperative ?? this.cooperative,
       localisation: localisation ?? this.localisation,
+      codeCollecte: codeCollecte ?? this.codeCollecte,
       nbRuchesTrad: nbRuchesTrad ?? this.nbRuchesTrad,
       nbRuchesMod: nbRuchesMod ?? this.nbRuchesMod,
       totalRuches: totalRuches ?? this.totalRuches,
@@ -159,45 +202,44 @@ class ProducteurModel {
 }
 
 class ContenantModel {
-  final String id; // 🆕 ID unique pour chaque contenant
+  final String id;
   final String typeRuche;
   final String typeMiel;
-  final String typeContenant; // Nouveau champ requis
+  final String typeContenant;
   final double quantite;
   final double prixUnitaire;
   final String predominanceFlorale;
-  final String note; // Nouveau champ pour l'avis sur le contenant
+  final String note;
 
   ContenantModel({
-    required this.id, // 🆕 ID requis
+    required this.id,
     required this.typeRuche,
     required this.typeMiel,
     required this.typeContenant,
     required this.quantite,
     required this.prixUnitaire,
     required this.predominanceFlorale,
-    this.note = '', // Optionnel, valeur par défaut
+    this.note = '',
   });
 
-  // Getter calculé pour le montant total
   double get montantTotal => quantite * prixUnitaire;
 
   factory ContenantModel.fromFirestore(Map<String, dynamic> data) {
     return ContenantModel(
-      id: data['id']?.toString() ?? '', // 🆕 ID depuis Firestore
+      id: data['id']?.toString() ?? '',
       typeRuche: data['type_ruche']?.toString() ?? '',
       typeMiel: data['type_miel']?.toString() ?? '',
       typeContenant: data['type_contenant']?.toString() ?? '',
       quantite: (data['quantite'] ?? 0.0).toDouble(),
       prixUnitaire: (data['prix_unitaire'] ?? 0.0).toDouble(),
       predominanceFlorale: data['predominance_florale']?.toString() ?? '',
-      note: data['note']?.toString() ?? '', // Nouveau champ
+      note: data['note']?.toString() ?? '',
     );
   }
 
   Map<String, dynamic> toFirestore() {
     return {
-      'id': id, // 🆕 ID vers Firestore
+      'id': id,
       'type_ruche': typeRuche,
       'type_miel': typeMiel,
       'type_contenant': typeContenant,
@@ -205,35 +247,30 @@ class ContenantModel {
       'prix_unitaire': prixUnitaire,
       'montant_total': montantTotal,
       'predominance_florale': predominanceFlorale,
-      'note': note, // Nouveau champ
+      'note': note,
     };
   }
 
   ContenantModel copyWith({
-    String? id, // 🆕 ID paramètre
+    String? id,
     String? typeRuche,
     String? typeMiel,
     String? typeContenant,
     double? quantite,
     double? prixUnitaire,
     String? predominanceFlorale,
-    String? note, // Nouveau paramètre
+    String? note,
   }) {
     return ContenantModel(
-      id: id ?? this.id, // 🆕 ID dans copyWith
+      id: id ?? this.id,
       typeRuche: typeRuche ?? this.typeRuche,
       typeMiel: typeMiel ?? this.typeMiel,
       typeContenant: typeContenant ?? this.typeContenant,
       quantite: quantite ?? this.quantite,
       prixUnitaire: prixUnitaire ?? this.prixUnitaire,
       predominanceFlorale: predominanceFlorale ?? this.predominanceFlorale,
-      note: note ?? this.note, // Nouveau champ
+      note: note ?? this.note,
     );
-  }
-
-  @override
-  String toString() {
-    return 'ContenantModel(id: $id, typeRuche: $typeRuche, typeMiel: $typeMiel, typeContenant: $typeContenant, quantite: $quantite, prixUnitaire: $prixUnitaire, montantTotal: $montantTotal, predominanceFlorale: $predominanceFlorale, note: $note)';
   }
 }
 
@@ -252,7 +289,7 @@ class CollecteIndividuelleModel {
   final String collecteurNom;
   final String observations;
   final Timestamp createdAt;
-  // Champs de géolocalisation
+  final String? codeCollecte; // NOUVEAU: Code de collecte basé sur la localité
   final Map<String, dynamic>? geolocationData;
 
   CollecteIndividuelleModel({
@@ -270,153 +307,100 @@ class CollecteIndividuelleModel {
     required this.collecteurNom,
     required this.observations,
     required this.createdAt,
+    this.codeCollecte,
     this.geolocationData,
   });
 
   factory CollecteIndividuelleModel.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    final data = doc.data() as Map<String, dynamic>;
 
-    // Conversion des contenants
     List<ContenantModel> contenants = [];
     if (data['contenants'] != null) {
-      final contenantsData = data['contenants'] as List;
-      contenants = contenantsData
-          .map((c) => ContenantModel.fromFirestore(c as Map<String, dynamic>))
+      contenants = (data['contenants'] as List)
+          .map((item) => ContenantModel.fromFirestore(item))
           .toList();
     }
 
-    // Conversion des origines florales
     List<String> originesFlorales = [];
-    if (data['origines_florales'] != null) {
-      originesFlorales = List<String>.from(data['origines_florales'] as List);
+    if (data['originesFlorales'] != null) {
+      originesFlorales = List<String>.from(data['originesFlorales']);
     }
 
     return CollecteIndividuelleModel(
       idCollecte: doc.id,
-      dateAchat: data['date_achat'] as Timestamp? ?? Timestamp.now(),
-      periodeCollecte: data['periode_collecte']?.toString() ?? '',
-      poidsTotal: (data['poids_total'] ?? 0.0).toDouble(),
-      montantTotal: (data['montant_total'] ?? 0.0).toDouble(),
-      nombreContenants: (data['nombre_contenants'] ?? 0) as int,
-      idProducteur: data['id_producteur']?.toString() ?? '',
-      nomProducteur: data['nom_producteur']?.toString() ?? '',
+      dateAchat: data['dateAchat'] ?? Timestamp.now(),
+      periodeCollecte: data['periodeCollecte'] ?? '',
+      poidsTotal: (data['poidsTotal'] ?? 0.0).toDouble(),
+      montantTotal: (data['montantTotal'] ?? 0.0).toDouble(),
+      nombreContenants: data['nombreContenants'] ?? 0,
+      idProducteur: data['idProducteur'] ?? '',
+      nomProducteur: data['nomProducteur'] ?? '',
       contenants: contenants,
       originesFlorales: originesFlorales,
-      collecteurId: data['collecteur_id']?.toString() ?? '',
-      collecteurNom: data['collecteur_nom']?.toString() ?? '',
-      observations: data['observations']?.toString() ?? '',
-      createdAt: data['created_at'] as Timestamp? ?? Timestamp.now(),
-      geolocationData: data['geolocation_data'] as Map<String, dynamic>?,
-    );
-  }
-
-  Map<String, dynamic> toFirestore() {
-    final data = {
-      'date_achat': dateAchat,
-      'periode_collecte': periodeCollecte,
-      'poids_total': poidsTotal,
-      'montant_total': montantTotal,
-      'nombre_contenants': nombreContenants,
-      'id_producteur': idProducteur,
-      'nom_producteur': nomProducteur,
-      'contenants': contenants.map((c) => c.toFirestore()).toList(),
-      'origines_florales': originesFlorales,
-      'collecteur_id': collecteurId,
-      'collecteur_nom': collecteurNom,
-      'observations': observations,
-      'created_at': createdAt,
-    };
-
-    // Ajouter les données de géolocalisation si disponibles
-    if (geolocationData != null && geolocationData!.isNotEmpty) {
-      data['geolocation_data'] = geolocationData!;
-    }
-
-    return data;
-  }
-
-  /// Retourne la localisation formatée à partir des données GPS
-  String get localisationFormatee {
-    if (geolocationData == null) return 'Non spécifié';
-
-    final latitude = geolocationData!['latitude'];
-    final longitude = geolocationData!['longitude'];
-    final accuracy = geolocationData!['accuracy'];
-
-    if (latitude != null && longitude != null) {
-      final latStr = latitude.toStringAsFixed(6);
-      final lngStr = longitude.toStringAsFixed(6);
-      final accuracyStr =
-          accuracy != null ? '±${accuracy.toStringAsFixed(1)}m' : '';
-
-      return 'GPS: $latStr, $lngStr $accuracyStr';
-    }
-
-    return 'Non spécifié';
-  }
-}
-
-class StatistiquesProducteurModel {
-  final int nombreTotalProducteurs;
-  final Map<String, int> producteursParVillage;
-  final Map<String, int> collectesParProducteur;
-  final Map<String, Map<String, int>> contenantsParType;
-  final Map<String, Map<String, double>> prixParTypeMiel;
-  final Map<String, Map<String, double>> quantiteParTypeMiel;
-  final Map<String, Map<String, double>> montantTotalParType;
-  final Timestamp derniereAnalyse;
-
-  StatistiquesProducteurModel({
-    required this.nombreTotalProducteurs,
-    required this.producteursParVillage,
-    required this.collectesParProducteur,
-    required this.contenantsParType,
-    required this.prixParTypeMiel,
-    required this.quantiteParTypeMiel,
-    required this.montantTotalParType,
-    required this.derniereAnalyse,
-  });
-
-  factory StatistiquesProducteurModel.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-
-    return StatistiquesProducteurModel(
-      nombreTotalProducteurs: (data['nombre_total_producteurs'] ?? 0) as int,
-      producteursParVillage:
-          Map<String, int>.from(data['producteurs_par_village'] ?? {}),
-      collectesParProducteur:
-          Map<String, int>.from(data['collectes_par_producteur'] ?? {}),
-      contenantsParType:
-          (data['contenants_par_type'] as Map<String, dynamic>? ?? {}).map(
-              (key, value) =>
-                  MapEntry(key, Map<String, int>.from(value as Map))),
-      prixParTypeMiel:
-          (data['prix_par_type_miel'] as Map<String, dynamic>? ?? {}).map(
-              (key, value) =>
-                  MapEntry(key, Map<String, double>.from(value as Map))),
-      quantiteParTypeMiel:
-          (data['quantite_par_type_miel'] as Map<String, dynamic>? ?? {}).map(
-              (key, value) =>
-                  MapEntry(key, Map<String, double>.from(value as Map))),
-      montantTotalParType:
-          (data['montant_total_par_type'] as Map<String, dynamic>? ?? {}).map(
-              (key, value) =>
-                  MapEntry(key, Map<String, double>.from(value as Map))),
-      derniereAnalyse:
-          data['derniere_analyse'] as Timestamp? ?? Timestamp.now(),
+      collecteurId: data['collecteurId'] ?? '',
+      collecteurNom: data['collecteurNom'] ?? '',
+      observations: data['observations'] ?? '',
+      createdAt: data['createdAt'] ?? Timestamp.now(),
+      codeCollecte: data['code_collecte'],
+      geolocationData: data['geolocationData'],
     );
   }
 
   Map<String, dynamic> toFirestore() {
     return {
-      'nombre_total_producteurs': nombreTotalProducteurs,
-      'producteurs_par_village': producteursParVillage,
-      'collectes_par_producteur': collectesParProducteur,
-      'contenants_par_type': contenantsParType,
-      'prix_par_type_miel': prixParTypeMiel,
-      'quantite_par_type_miel': quantiteParTypeMiel,
-      'montant_total_par_type': montantTotalParType,
-      'derniere_analyse': derniereAnalyse,
+      'dateAchat': dateAchat,
+      'periodeCollecte': periodeCollecte,
+      'poidsTotal': poidsTotal,
+      'montantTotal': montantTotal,
+      'nombreContenants': nombreContenants,
+      'idProducteur': idProducteur,
+      'nomProducteur': nomProducteur,
+      'contenants': contenants.map((c) => c.toFirestore()).toList(),
+      'originesFlorales': originesFlorales,
+      'collecteurId': collecteurId,
+      'collecteurNom': collecteurNom,
+      'observations': observations,
+      'createdAt': createdAt,
+      'code_collecte': codeCollecte,
+      'geolocationData': geolocationData,
     };
+  }
+
+  CollecteIndividuelleModel copyWith({
+    String? idCollecte,
+    Timestamp? dateAchat,
+    String? periodeCollecte,
+    double? poidsTotal,
+    double? montantTotal,
+    int? nombreContenants,
+    String? idProducteur,
+    String? nomProducteur,
+    List<ContenantModel>? contenants,
+    List<String>? originesFlorales,
+    String? collecteurId,
+    String? collecteurNom,
+    String? observations,
+    Timestamp? createdAt,
+    String? codeCollecte,
+    Map<String, dynamic>? geolocationData,
+  }) {
+    return CollecteIndividuelleModel(
+      idCollecte: idCollecte ?? this.idCollecte,
+      dateAchat: dateAchat ?? this.dateAchat,
+      periodeCollecte: periodeCollecte ?? this.periodeCollecte,
+      poidsTotal: poidsTotal ?? this.poidsTotal,
+      montantTotal: montantTotal ?? this.montantTotal,
+      nombreContenants: nombreContenants ?? this.nombreContenants,
+      idProducteur: idProducteur ?? this.idProducteur,
+      nomProducteur: nomProducteur ?? this.nomProducteur,
+      contenants: contenants ?? this.contenants,
+      originesFlorales: originesFlorales ?? this.originesFlorales,
+      collecteurId: collecteurId ?? this.collecteurId,
+      collecteurNom: collecteurNom ?? this.collecteurNom,
+      observations: observations ?? this.observations,
+      createdAt: createdAt ?? this.createdAt,
+      codeCollecte: codeCollecte ?? this.codeCollecte,
+      geolocationData: geolocationData ?? this.geolocationData,
+    );
   }
 }

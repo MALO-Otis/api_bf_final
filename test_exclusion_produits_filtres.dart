@@ -1,5 +1,6 @@
 /// Script de test pour valider l'exclusion des produits filtrés
 /// Ce script simule le comportement attendu du module de filtrage
+library;
 
 void main() {
   print('🧪 TEST: Validation de l\'exclusion des produits filtrés\n');

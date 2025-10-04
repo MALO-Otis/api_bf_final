@@ -1,12 +1,15 @@
-// Formulaire de contrôle qualité du miel
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import '../utils/formatters.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../models/quality_control_models.dart';
 import '../models/collecte_models.dart';
-import '../utils/formatters.dart';
+import '../models/quality_control_models.dart';
 import '../services/quality_control_service.dart';
-import '../../filtrage/widgets/visual_container_id_widget.dart';
+import '../../../authentication/user_session.dart';
 import '../../../services/universal_container_id_service.dart';
+import '../../filtrage/widgets/visual_container_id_widget.dart';
+// Formulaire de contrôle qualité du miel
 
 class QualityControlForm extends StatefulWidget {
   final BaseCollecte collecteItem;
@@ -56,6 +59,16 @@ class _QualityControlFormState extends State<QualityControlForm> {
   ContainerType? _selectedContainerType;
   ConformityStatus _conformityStatus = ConformityStatus.conforme;
 
+  // 🆕 Nouvelles variables d'état pour le contrôle qualité avancé
+  ContainerQualityApproval _containerQualityApproval =
+      ContainerQualityApproval.approuver;
+  OdorApproval _odorApproval = OdorApproval.approuver;
+  SandDepositPresence _sandDepositPresence = SandDepositPresence.non;
+  String _trackingCode = '';
+  String _collectionPeriod = '';
+  String _autoHiveType = '';
+  String _autoHoneyNature = '';
+
   // Nouveau système d'ID universel
   String _validatedContainerId = '';
   List<ContainerMatchResult> _possibleMatches = [];
@@ -71,9 +84,18 @@ class _QualityControlFormState extends State<QualityControlForm> {
     _initializeControllers();
     _loadExistingData();
 
-    // Auto-remplir la prédominance florale si c'est un nouveau formulaire
+    // Auto-remplir les champs obligatoires si c'est un nouveau formulaire
     if (widget.existingData == null) {
       _autoFillFloralPredominance();
+      _autoFillMandatoryFields(); // 🆕 Auto-remplit type ruche, période, nature
+      _autoFillControllerName(); // 🆕 Auto-remplit nom contrôleur
+
+      // Générer le code de suivi initial
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() {
+          _trackingCode = _generateTrackingCode();
+        });
+      });
     }
   }
 
@@ -161,35 +183,10 @@ class _QualityControlFormState extends State<QualityControlForm> {
     }
   }
 
-  /// Détermine automatiquement la qualité et la conformité selon la teneur en eau
+  /// 🔧 Détermine automatiquement la qualité selon la nouvelle logique (appelée quand teneur eau change)
   void _determineQualityFromWaterContent() {
-    final waterContentText = _waterContentController.text;
-
-    if (waterContentText.isNotEmpty) {
-      try {
-        final waterContent = double.parse(waterContentText);
-        String quality;
-        ConformityStatus conformity;
-
-        if (waterContent < 21) {
-          quality = 'Très bonne';
-          conformity = ConformityStatus.conforme;
-        } else if (waterContent >= 21 && waterContent <= 22) {
-          quality = 'Bonne';
-          conformity = ConformityStatus.conforme;
-        } else {
-          quality = 'Mauvaise';
-          conformity = ConformityStatus.nonConforme;
-        }
-
-        setState(() {
-          _qualityController.text = quality;
-          _conformityStatus = conformity;
-        });
-      } catch (e) {
-        // En cas d'erreur de parsing, on ne fait rien
-      }
-    }
+    // Appeler directement la nouvelle logique qui prend en compte tous les critères
+    _autoUpdateConformityAndQuality();
   }
 
   /// Auto-remplissage de la prédominance florale selon les données récupérées
@@ -279,6 +276,296 @@ class _QualityControlFormState extends State<QualityControlForm> {
         duration: const Duration(seconds: 3),
       ),
     );
+  }
+
+  /// 🆕 Auto-remplit les champs obligatoires depuis les données de collecte réelles
+  void _autoFillMandatoryFields() {
+    final collecteItem = widget.collecteItem;
+
+    // 🔧 Auto-remplir le type de ruche depuis les contenants de la collecte
+    if (collecteItem is Individuel && collecteItem.contenants.isNotEmpty) {
+      // Récupérer le type de ruche du premier contenant (ou faire une agrégation si plusieurs)
+      final typeRuche = collecteItem
+          .contenants.first.typeMiel; // ou autre propriété appropriée
+      _autoHiveType = 'Ruche ${typeRuche}';
+      _hiveTypeController.text = _autoHiveType;
+    } else if (collecteItem is Scoop && collecteItem.contenants.isNotEmpty) {
+      // Pour les SCOOP, récupérer le type depuis les contenants
+      final typeRuche = collecteItem.contenants.first.typeMiel;
+      _autoHiveType = 'Ruche SCOOP ${typeRuche}';
+      _hiveTypeController.text = _autoHiveType;
+    } else if (collecteItem is Recolte && collecteItem.contenants.isNotEmpty) {
+      // Pour les récoltes, récupérer le type de ruche réel
+      final typeRuche = collecteItem.contenants.first.hiveType;
+      _autoHiveType = typeRuche;
+      _hiveTypeController.text = _autoHiveType;
+    } else {
+      _autoHiveType = 'Type non défini';
+      _hiveTypeController.text = _autoHiveType;
+    }
+
+    // 🔧 Auto-remplir la date de collecte précise (renommé)
+    _collectionPeriod = DateFormat('dd/MM/yyyy').format(collecteItem.date);
+
+    // 🔧 Auto-remplir la nature du miel selon les données réelles de collecte
+    _honeyNature = _determineHoneyNature(collecteItem);
+    _autoHoneyNature = QualityControlUtils.getHoneyNatureLabel(_honeyNature);
+
+    // 🔧 Auto-remplir le type de contenant depuis la collecte d'origine
+    _autoFillContainerType(collecteItem);
+  }
+
+  /// 🆕 Auto-remplit le type de contenant depuis les données de collecte
+  void _autoFillContainerType(BaseCollecte collecteItem) {
+    String containerType = '';
+
+    if (collecteItem is Individuel && collecteItem.contenants.isNotEmpty) {
+      containerType = collecteItem.contenants.first.typeContenant;
+    } else if (collecteItem is Scoop && collecteItem.contenants.isNotEmpty) {
+      containerType = collecteItem.contenants.first.typeContenant;
+    } else if (collecteItem is Recolte && collecteItem.contenants.isNotEmpty) {
+      containerType = collecteItem.contenants.first.containerType;
+    }
+
+    if (containerType.isNotEmpty) {
+      _containerTypeController.text = containerType;
+      // Également mettre à jour le type sélectionné si nécessaire
+      try {
+        _selectedContainerType = ContainerType.values.firstWhere(
+          (type) => type.label == containerType,
+        );
+      } catch (e) {
+        // Si le type n'est pas trouvé dans l'enum, garder le texte libre
+      }
+    }
+  }
+
+  /// 🆕 Détermine automatiquement la nature du miel
+  HoneyNature _determineHoneyNature(BaseCollecte collecteItem) {
+    // Logique pour déterminer la nature selon les données
+    if (widget.containerCode.toLowerCase().contains('cire')) {
+      return HoneyNature.cire;
+    } else if (widget.containerCode.toLowerCase().contains('filtre')) {
+      return HoneyNature.prefilitre;
+    } else {
+      return HoneyNature.brut;
+    }
+  }
+
+  /// 🆕 Auto-détermine la conformité et qualité selon les critères
+  /// 🆕 Auto-détermination de la qualité et conformité selon les nouveaux critères
+  void _autoUpdateConformityAndQuality() {
+    bool isContainerApproved =
+        _containerQualityApproval == ContainerQualityApproval.approuver;
+    bool isOdorApproved = _odorApproval == OdorApproval.approuver;
+    bool noSandDeposit = _sandDepositPresence == SandDepositPresence.non;
+
+    if (isContainerApproved && isOdorApproved && noSandDeposit) {
+      // 🔧 Tous les critères sont bons → vérifier la teneur en eau
+      final waterContentText = _waterContentController.text;
+
+      if (waterContentText.isNotEmpty) {
+        try {
+          final waterContent = double.parse(waterContentText);
+
+          setState(() {
+            if (waterContent < 20) {
+              _qualityController.text = 'Très Bonne';
+              _conformityStatus = ConformityStatus.conforme;
+              _nonConformityCauseController.text = '';
+            } else if (waterContent <= 21) {
+              _qualityController.text = 'Bonne';
+              _conformityStatus = ConformityStatus.conforme;
+              _nonConformityCauseController.text = '';
+            } else {
+              _qualityController.text = 'Mauvaise';
+              _conformityStatus = ConformityStatus.nonConforme;
+              _nonConformityCauseController.text =
+                  'Teneur en eau trop élevée (>21%)';
+            }
+          });
+        } catch (e) {
+          // Si la teneur en eau n'est pas parsable, marquer comme bonne par défaut
+          setState(() {
+            _qualityController.text = 'Bonne';
+            _conformityStatus = ConformityStatus.conforme;
+            _nonConformityCauseController.text = '';
+          });
+        }
+      } else {
+        // Si pas de teneur en eau saisie, marquer comme bonne par défaut
+        setState(() {
+          _qualityController.text = 'Bonne';
+          _conformityStatus = ConformityStatus.conforme;
+          _nonConformityCauseController.text = '';
+        });
+      }
+    } else {
+      // 🔧 Au moins un critère n'est pas bon → Non conforme
+      setState(() {
+        _conformityStatus = ConformityStatus.nonConforme;
+        _qualityController.text = 'Mauvaise';
+
+        // Construire la cause de non-conformité
+        List<String> causes = [];
+        if (!isContainerApproved)
+          causes.add('Qualité du contenant non approuvée');
+        if (!isOdorApproved) causes.add('Odeurs non approuvées');
+        if (!noSandDeposit) causes.add('Présence de dépôt de sable');
+
+        _nonConformityCauseController.text = causes.join(', ');
+      });
+    }
+  }
+
+  /// 🆕 Génère le code de suivi avec le nouveau format
+  String _generateTrackingCode() {
+    final now = DateTime.now();
+    final collecteItem = widget.collecteItem;
+
+    // 🔧 Nouveau format: [Recolte]__[Du(date precise de collecte)]__[De-VALENTIN-ZOUNGRANA]__[A-(code localité)]__[Site de (nom site)]__[Controle-(date controle)]__[Controler-Par-(nom controleur)]__[Code-Contenant-00001]
+
+    // 1. Type de collecte
+    String typeCollecte = '';
+    if (collecteItem is Recolte) {
+      typeCollecte = 'Recolte';
+    } else if (collecteItem is Scoop) {
+      typeCollecte = 'Scoop';
+    } else if (collecteItem is Individuel) {
+      typeCollecte = 'Individuel';
+    } else {
+      typeCollecte = 'Collecte';
+    }
+
+    // 2. Date précise de collecte
+    String datePreciseCollecte =
+        DateFormat('dd-MM-yyyy').format(collecteItem.date);
+
+    // 3. Nom du producteur/technicien (De-XXX-XXX)
+    String nomProducteur = '';
+    if (collecteItem is Individuel) {
+      nomProducteur = collecteItem.nomProducteur
+          .toUpperCase()
+          .replaceAll(' ', '-')
+          .replaceAll(RegExp(r'[^A-Z\-]'), '');
+    } else if (collecteItem.technicien != null) {
+      nomProducteur = collecteItem.technicien!
+          .toUpperCase()
+          .replaceAll(' ', '-')
+          .replaceAll(RegExp(r'[^A-Z\-]'), '');
+    } else {
+      nomProducteur = 'TECHNICIEN';
+    }
+
+    // 4. Code de localité (A-04-03-01-VillageName)
+    String codeLocalite = _buildLocationCode(collecteItem);
+
+    // 5. Site de récolte
+    String siteRecolte = collecteItem.site.toUpperCase().replaceAll(' ', '-');
+
+    // 6. Date de contrôle
+    String dateControle = DateFormat('dd-MM-yyyy').format(now);
+
+    // 7. Nom du contrôleur
+    String nomControleur = '';
+    try {
+      final userSession = Get.find<UserSession>();
+      if (userSession.nom != null && userSession.nom!.isNotEmpty) {
+        nomControleur = userSession.nom!
+            .toUpperCase()
+            .replaceAll(' ', '-')
+            .replaceAll(RegExp(r'[^A-Z\-]'), '');
+      } else {
+        nomControleur = 'CONTROLEUR';
+      }
+    } catch (e) {
+      nomControleur = 'CONTROLEUR';
+    }
+
+    // 8. Code contenant (extraire le numéro du containerCode)
+    String codeContenant = _extractContainerNumber(widget.containerCode);
+
+    // Construire le code final
+    return '[$typeCollecte]__[Du-$datePreciseCollecte]__[De-$nomProducteur]__[A-$codeLocalite]__[Site-de-$siteRecolte]__[Controle-$dateControle]__[Controler-Par-$nomControleur]__[Code-Contenant-$codeContenant]';
+  }
+
+  /// 🆕 Construit le code de localité selon les données géographiques
+  String _buildLocationCode(BaseCollecte collecteItem) {
+    String codeRegion = '04'; // Valeur par défaut
+    String codeProvince = '03'; // Valeur par défaut
+    String codeCommune = '01'; // Valeur par défaut
+    String nomVillage = 'VILLAGE';
+
+    // Récupérer les données géographiques selon le type de collecte
+    if (collecteItem is Recolte) {
+      // Pour les récoltes, utiliser les données géographiques spécifiques
+      if (collecteItem.village != null && collecteItem.village!.isNotEmpty) {
+        nomVillage = collecteItem.village!.toUpperCase().replaceAll(' ', '-');
+      }
+      // TODO: Mapper region/province/commune vers des codes numériques
+      // Pour l'instant utiliser des valeurs par défaut
+    } else if (collecteItem is Scoop) {
+      if (collecteItem.village != null && collecteItem.village!.isNotEmpty) {
+        nomVillage = collecteItem.village!.toUpperCase().replaceAll(' ', '-');
+      }
+    } else if (collecteItem is Individuel) {
+      if (collecteItem.village != null && collecteItem.village!.isNotEmpty) {
+        nomVillage = collecteItem.village!.toUpperCase().replaceAll(' ', '-');
+      }
+    }
+
+    // Si on a accès aux champs du formulaire, les utiliser
+    if (_villageController.text.isNotEmpty) {
+      nomVillage = _villageController.text.toUpperCase().replaceAll(' ', '-');
+    }
+
+    return '$codeRegion-$codeProvince-$codeCommune-$nomVillage';
+  }
+
+  /// 🆕 Extrait le numéro du code contenant
+  String _extractContainerNumber(String containerCode) {
+    // Extraire les derniers chiffres ou formater en 00001
+    final regex = RegExp(r'(\d+)$');
+    final match = regex.firstMatch(containerCode);
+
+    if (match != null) {
+      final number = int.tryParse(match.group(1)!) ?? 1;
+      return number.toString().padLeft(5, '0');
+    } else {
+      // Si pas de numéro trouvé, utiliser 00001
+      return '00001';
+    }
+  }
+
+  /// 🔧 Auto-remplit le nom du contrôleur avec les vraies données utilisateur
+  void _autoFillControllerName() {
+    try {
+      // Récupérer la session utilisateur depuis GetX
+      final userSession = Get.find<UserSession>();
+
+      String controllerInfo = '';
+
+      // Construire le nom avec rôle
+      if (userSession.nom != null && userSession.nom!.isNotEmpty) {
+        controllerInfo = userSession.nom!;
+
+        // Ajouter le rôle principal si disponible
+        if (userSession.roles.isNotEmpty) {
+          final primaryRole = userSession.roles.first;
+          controllerInfo += ' -- $primaryRole';
+        }
+      } else {
+        // Fallback si pas de nom
+        controllerInfo =
+            'Contrôleur -- ${userSession.roles.isNotEmpty ? userSession.roles.first : 'Non défini'}';
+      }
+
+      _controllerNameController.text = controllerInfo;
+    } catch (e) {
+      print('Erreur lors de la récupération des données utilisateur: $e');
+      // Fallback en cas d'erreur
+      _controllerNameController.text = 'Contrôleur -- Non identifié';
+    }
   }
 
   @override
@@ -488,11 +775,12 @@ class _QualityControlFormState extends State<QualityControlForm> {
             ],
             const SizedBox(height: 16),
             _buildTextField(
-              'Type de ruche',
+              'Type de ruche (auto-rempli)',
               _hiveTypeController,
               'Ex: Langstroth, Kenyane...',
               isMobile,
               isRequired: true,
+              isReadOnly: true, // 🆕 Champ non modifiable
             ),
           ],
           isMobile,
@@ -522,12 +810,26 @@ class _QualityControlFormState extends State<QualityControlForm> {
 
         const SizedBox(height: 24),
 
-        // Section 2: Période de collecte
+        // Section 2: Date de collecte précise
         _buildSection(
           context,
-          'Période de collecte',
+          'Date de collecte précise',
           Icons.date_range,
           [
+            // 🆕 Champ Date de collecte précise auto-rempli
+            TextField(
+              controller: TextEditingController(text: _collectionPeriod),
+              readOnly: true,
+              decoration: InputDecoration(
+                labelText: 'Date de collecte précise (auto-remplie)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                filled: true,
+                fillColor: Colors.grey[100],
+              ),
+            ),
+            const SizedBox(height: 16),
             if (isMobile && isVerySmall) ...[
               _buildDateField(
                 'Du',
@@ -581,7 +883,19 @@ class _QualityControlFormState extends State<QualityControlForm> {
           'Nature et contenant',
           Icons.inventory_2,
           [
-            _buildHoneyNatureSelector(theme, isMobile),
+            // 🆕 Nature du miel auto-remplie (non modifiable)
+            TextField(
+              controller: TextEditingController(text: _autoHoneyNature),
+              readOnly: true,
+              decoration: InputDecoration(
+                labelText: 'Nature du miel (auto-remplie)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                filled: true,
+                fillColor: Colors.grey[100],
+              ),
+            ),
             const SizedBox(height: 16),
             // ⚠️ MISE À JOUR: Champs synchronisés automatiquement avec l'ID ci-dessus
             Container(
@@ -762,31 +1076,80 @@ class _QualityControlFormState extends State<QualityControlForm> {
 
         const SizedBox(height: 24),
 
-        // Section 5: Qualité
+        // Section 5: Qualité et conformité
         _buildSection(
           context,
           'Qualité et conformité',
           Icons.verified,
           [
+            // 🆕 Qualité du contenant (radio)
+            _buildApprovalRadio(
+              'Qualité du contenant',
+              _containerQualityApproval,
+              (value) => setState(() {
+                _containerQualityApproval = value;
+                _autoUpdateConformityAndQuality();
+              }),
+              ContainerQualityApproval.values,
+              isMobile,
+            ),
+            const SizedBox(height: 16),
+
+            // 🆕 Approbation des odeurs (radio)
+            _buildApprovalRadio(
+              'Approbation des Odeurs',
+              _odorApproval,
+              (value) => setState(() {
+                _odorApproval = value;
+                _autoUpdateConformityAndQuality();
+              }),
+              OdorApproval.values,
+              isMobile,
+            ),
+            const SizedBox(height: 16),
+
+            // 🆕 Présence de dépôt de sable (Oui/Non)
+            _buildYesNoRadio(
+              'Présence de Dépôt de Sable',
+              _sandDepositPresence,
+              (value) => setState(() {
+                _sandDepositPresence = value;
+                _autoUpdateConformityAndQuality();
+              }),
+              isMobile,
+            ),
+            const SizedBox(height: 16),
+
+            // Qualité déterminée automatiquement
             _buildTextField(
-              'Qualité (déterminée automatiquement selon la teneur en eau)',
+              'Qualité du miel (déterminée automatiquement)',
               _qualityController,
-              'Très bonne (<21%), Bonne (21-22%), Mauvaise (>22%)',
+              'Calculée automatiquement selon les critères',
               isMobile,
               isRequired: true,
               isReadOnly: true,
             ),
             const SizedBox(height: 16),
-            _buildTextField(
-              'Prédominance florale',
-              _floralPredominanceController,
-              'Ex: Acacia, Tournesol...',
-              isMobile,
-              isRequired: true,
+
+            // 🆕 Prédominance florale auto-remplie (non modifiable)
+            TextField(
+              controller: _floralPredominanceController,
+              readOnly: true,
+              decoration: InputDecoration(
+                labelText: 'Prédominance florale (auto-remplie)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                filled: true,
+                fillColor: Colors.grey[100],
+              ),
             ),
             const SizedBox(height: 16),
+
+            // Conformité déterminée automatiquement
             _buildConformitySelector(theme, isMobile),
             const SizedBox(height: 16),
+
             if (_conformityStatus == ConformityStatus.nonConforme) ...[
               _buildTextField(
                 'Cause de la non-conformité',
@@ -804,12 +1167,27 @@ class _QualityControlFormState extends State<QualityControlForm> {
 
         const SizedBox(height: 24),
 
-        // Section 6: Observations
+        // Section 6: Observations et suivi
         _buildSection(
           context,
-          'Observations',
+          'Observations et suivi',
           Icons.notes,
           [
+            // 🆕 Code de suivi (auto-généré)
+            TextField(
+              controller: TextEditingController(text: _trackingCode),
+              readOnly: true,
+              decoration: InputDecoration(
+                labelText: 'Code de suivi (auto-généré)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                filled: true,
+                fillColor: Colors.grey[100],
+              ),
+            ),
+            const SizedBox(height: 16),
+
             _buildTextField(
               'Observations / Actions',
               _observationsController,
@@ -818,12 +1196,19 @@ class _QualityControlFormState extends State<QualityControlForm> {
               maxLines: 4,
             ),
             const SizedBox(height: 16),
-            _buildTextField(
-              'Nom du contrôleur',
-              _controllerNameController,
-              'Votre nom',
-              isMobile,
-              isRequired: true,
+
+            // 🆕 Nom du contrôleur auto-rempli (non modifiable)
+            TextField(
+              controller: _controllerNameController,
+              readOnly: true,
+              decoration: InputDecoration(
+                labelText: 'Nom du contrôleur (auto-rempli)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                filled: true,
+                fillColor: Colors.grey[100],
+              ),
             ),
           ],
           isMobile,
@@ -1054,6 +1439,91 @@ class _QualityControlFormState extends State<QualityControlForm> {
     );
   }
 
+  /// 🆕 Widget pour les champs radio Approuver/Non Approuver
+  Widget _buildApprovalRadio(
+    String label,
+    dynamic currentValue,
+    ValueChanged<dynamic> onChanged,
+    List<dynamic> options,
+    bool isMobile,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+                fontSize: isMobile ? 12 : 14,
+              ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: options.map((option) {
+            return Expanded(
+              child: RadioListTile<dynamic>(
+                title: Text(
+                  option.label,
+                  style: TextStyle(fontSize: isMobile ? 12 : 14),
+                ),
+                value: option,
+                groupValue: currentValue,
+                onChanged: (value) {
+                  onChanged(value!);
+                  _autoUpdateConformityAndQuality(); // 🆕 Auto-mise à jour
+                },
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  /// 🆕 Widget pour les champs Oui/Non
+  Widget _buildYesNoRadio(
+    String label,
+    SandDepositPresence currentValue,
+    ValueChanged<SandDepositPresence> onChanged,
+    bool isMobile,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+                fontSize: isMobile ? 12 : 14,
+              ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: SandDepositPresence.values.map((option) {
+            return Expanded(
+              child: RadioListTile<SandDepositPresence>(
+                title: Text(
+                  option.label,
+                  style: TextStyle(fontSize: isMobile ? 12 : 14),
+                ),
+                value: option,
+                groupValue: currentValue,
+                onChanged: (value) {
+                  onChanged(value!);
+                  _autoUpdateConformityAndQuality(); // 🆕 Auto-mise à jour
+                },
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
   Widget _buildDateField(
     String label,
     DateTime? value,
@@ -1131,60 +1601,6 @@ class _QualityControlFormState extends State<QualityControlForm> {
               ],
             ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildHoneyNatureSelector(ThemeData theme, bool isMobile) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Nature du miel',
-          style: theme.textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-            fontSize: isMobile ? 12 : 14,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: HoneyNature.values.map((nature) {
-            return Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: RadioListTile<HoneyNature>(
-                  title: Text(
-                    QualityControlUtils.getHoneyNatureLabel(nature),
-                    style: TextStyle(fontSize: isMobile ? 13 : 14),
-                  ),
-                  value: nature,
-                  groupValue: _honeyNature,
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() {
-                        _honeyNature = value;
-                        // Réinitialiser le type de contenant si nécessaire
-                        final availableTypes =
-                            QualityControlUtils.getAvailableContainerTypes(
-                                value);
-                        if (_selectedContainerType != null &&
-                            !availableTypes.contains(_selectedContainerType)) {
-                          _selectedContainerType = availableTypes.isNotEmpty
-                              ? availableTypes.first
-                              : null;
-                          _containerTypeController.text =
-                              _selectedContainerType?.label ?? '';
-                        }
-                      });
-                    }
-                  },
-                  contentPadding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-            );
-          }).toList(),
         ),
       ],
     );
@@ -1468,6 +1884,11 @@ class _QualityControlFormState extends State<QualityControlForm> {
               : null,
           createdAt: DateTime.now(),
           controllerName: _controllerNameController.text.trim(),
+          // 🆕 Nouveaux champs pour l'amélioration du contrôle qualité
+          containerQualityApproval: _containerQualityApproval,
+          odorApproval: _odorApproval,
+          sandDepositPresence: _sandDepositPresence,
+          trackingCode: _trackingCode,
         );
 
         // Sauvegarder avec le service en incluant l'ID de la collecte

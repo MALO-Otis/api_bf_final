@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../../data/models/collecte_models.dart';
 import '../../../../widgets/money_icon_widget.dart';
+import '../../../../data/models/collecte_models.dart';
 import '../../../../data/personnel/personnel_apisavana.dart';
 
 class ModalContenantIndividuel extends StatefulWidget {
@@ -37,6 +37,38 @@ class _ModalContenantIndividuelState extends State<ModalContenantIndividuel> {
 
   bool get _isEdit => widget.contenant != null;
 
+  // Données de prix par contenant depuis Firestore
+  final Map<String, int> _prixParContenant = {
+    'Bidon': 2000,
+    'Fût': 2000,
+    'Sac': 2000,
+    'Seau': 2500,
+  };
+
+  /// Calcule et met à jour le prix unitaire automatiquement selon le type de contenant
+  void _updatePrixAutomatique() {
+    final prixParKg = _prixParContenant[_typeContenant] ?? 2000;
+    // Afficher le prix unitaire (prix par kg) au lieu du prix total
+    _prixUnitaireController.text = prixParKg.toString();
+  }
+
+  /// Retourne les types de contenants disponibles selon le type de miel
+  List<String> _getAvailableContenantTypes() {
+    switch (_typeMiel) {
+      case 'Liquide':
+        // Pour le miel liquide : Bidon, Fût, Seau
+        return ['Bidon', 'Fût', 'Seau'];
+      case 'Brute':
+        // Pour le miel brute : Fût, Seau (pas de Bidon)
+        return ['Fût', 'Seau'];
+      case 'Cire':
+        // Pour la cire, seul le sac est autorisé
+        return ['Sac'];
+      default:
+        return ['Bidon'];
+    }
+  }
+
   String _getTypeCireLabel(TypeCire type) {
     switch (type) {
       case TypeCire.brute:
@@ -56,18 +88,7 @@ class _ModalContenantIndividuelState extends State<ModalContenantIndividuel> {
   }
 
   final List<String> _typesRuche = ['Traditionnelle', 'Moderne'];
-  final List<String> _typesMiel = ['Liquide', 'Cristallisé', 'Cire'];
-
-  /// Retourne les types de contenants disponibles selon le type de miel sélectionné
-  List<String> _getAvailableContenantTypes() {
-    if (_typeMiel == 'Cire') {
-      // 🆕 Pour la cire, seul le sac est autorisé
-      return ['Sac'];
-    } else {
-      // Pour les autres types de miel (Liquide, Cristallisé), tous les contenants sont disponibles
-      return ['Bidon', 'Seau', 'Fût'];
-    }
-  }
+  final List<String> _typesMiel = ['Liquide', 'Brute', 'Cire'];
 
   @override
   void initState() {
@@ -86,11 +107,24 @@ class _ModalContenantIndividuelState extends State<ModalContenantIndividuel> {
       _quantiteController.text = contenant.quantite.toString();
       _prixUnitaireController.text = contenant.prixUnitaire.toString();
       _noteController.text = contenant.note;
+    } else {
+      // Initialisation par défaut : Liquide avec Bidon
+      _typeMiel = 'Liquide';
+      _typeContenant = 'Bidon';
+    }
+
+    // Listeners pour calcul automatique du prix
+    _quantiteController.addListener(_updatePrixAutomatique);
+
+    // Initialiser le prix automatiquement si ce n'est pas en mode édition
+    if (!_isEdit) {
+      _updatePrixAutomatique();
     }
   }
 
   @override
   void dispose() {
+    _quantiteController.removeListener(_updatePrixAutomatique);
     _quantiteController.dispose();
     _prixUnitaireController.dispose();
     _noteController.dispose();
@@ -175,14 +209,11 @@ class _ModalContenantIndividuelState extends State<ModalContenantIndividuel> {
                             _typeCire = null;
                             _couleurCire = null;
                           }
-                          // 🆕 Si on passe à Cire, forcer le type de contenant à Sac
-                          if (_typeMiel == 'Cire') {
-                            _typeContenant = 'Sac';
-                          }
-                          // Si on passe à un autre type que Cire, remettre à Bidon par défaut
-                          else {
-                            _typeContenant = 'Bidon';
-                          }
+                          // Sélectionner automatiquement le type de contenant selon le miel
+                          final availableTypes = _getAvailableContenantTypes();
+                          _typeContenant = availableTypes.first;
+                          // Recalculer le prix avec le nouveau type de contenant
+                          _updatePrixAutomatique();
                         });
                       },
                     ),
@@ -319,9 +350,36 @@ class _ModalContenantIndividuelState extends State<ModalContenantIndividuel> {
                         );
                       }).toList(),
                       onChanged: (value) {
-                        setState(() => _typeContenant = value!);
+                        setState(() {
+                          _typeContenant = value!;
+                          // Recalculer le prix quand on change le type de contenant
+                          _updatePrixAutomatique();
+                        });
                       },
                     ),
+
+                    // Indicateur de prix pour le conteneur sélectionné
+                    if (_typeContenant.isNotEmpty &&
+                        _prixParContenant.containsKey(_typeContenant))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.blue.shade200),
+                          ),
+                          child: Text(
+                            'Prix $_typeContenant: ${_prixParContenant[_typeContenant]} CFA/kg',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
 
@@ -501,7 +559,7 @@ class _ModalContenantIndividuelState extends State<ModalContenantIndividuel> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Notes (optionnel)',
+                      'Notes *',
                       style: TextStyle(fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 8),
@@ -516,6 +574,12 @@ class _ModalContenantIndividuelState extends State<ModalContenantIndividuel> {
                       ),
                       maxLines: 2,
                       maxLength: 200,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Les notes sont obligatoires';
+                        }
+                        return null;
+                      },
                     ),
                   ],
                 ),

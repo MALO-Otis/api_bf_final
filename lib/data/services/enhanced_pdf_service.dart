@@ -1,28 +1,62 @@
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:printing/printing.dart';
-import '../models/report_models.dart';
 import 'map_service.dart';
-
-// Imports conditionnels
-import 'enhanced_pdf_service_web.dart'
-    if (dart.library.io) 'enhanced_pdf_service_io.dart' as platform_service;
+import 'package:pdf/pdf.dart';
+import '../models/report_models.dart';
+import 'enhanced_pdf_service_web.dart';
+import 'package:flutter/services.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:flutter/foundation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Service amélioré pour la génération de rapports PDF avec design parfait
 /// et téléchargement multiplateforme (Desktop, Web, Mobile)
 class EnhancedPdfService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Couleurs personnalisées
-  static const PdfColor primaryColor = PdfColor.fromInt(0xFFF49101);
-  static const PdfColor accentColor = PdfColor.fromInt(0xFF0066CC);
-  static const PdfColor successColor = PdfColor.fromInt(0xFF28A745);
-  static const PdfColor warningColor = PdfColor.fromInt(0xFFFFC107);
-  static const PdfColor dangerColor = PdfColor.fromInt(0xFFDC3545);
+  // Couleurs noir et blanc uniquement
+  static const PdfColor primaryColor = PdfColors.black;
+  static const PdfColor accentColor = PdfColors.black;
+  static const PdfColor successColor = PdfColors.black;
+  static const PdfColor warningColor = PdfColors.black;
+  static const PdfColor dangerColor = PdfColors.black;
+
+  // Cache pour le logo APISAVANA
+  static Uint8List? _cachedLogoBytes;
+
+  /// Charge le logo APISAVANA depuis assets/logo/logo.jpeg
+  static Future<void> loadLogo() async {
+    if (_cachedLogoBytes != null) return; // Déjà chargé
+
+    try {
+      final byteData = await rootBundle.load('assets/logo/logo.jpeg');
+      _cachedLogoBytes = byteData.buffer.asUint8List();
+      print('✅ Logo APISAVANA chargé avec succès dans EnhancedPdfService');
+    } catch (e) {
+      print('❌ Erreur chargement logo dans EnhancedPdfService: $e');
+      _cachedLogoBytes = null;
+    }
+  }
+
+  /// Widget du logo APISAVANA bien visible
+  static pw.Widget? _buildLogoWidget({double size = 120}) {
+    if (_cachedLogoBytes == null) return null;
+    return pw.Container(
+      width: size,
+      decoration: pw.BoxDecoration(
+        borderRadius: pw.BorderRadius.circular(8),
+        border: pw.Border.all(color: PdfColors.black, width: 1),
+      ),
+      child: pw.Padding(
+        padding: const pw.EdgeInsets.all(4),
+        child: pw.Image(
+          pw.MemoryImage(_cachedLogoBytes!),
+          fit: pw.BoxFit.contain,
+          width: size,
+        ),
+      ),
+    );
+  }
 
   /// Génère un rapport statistiques avec design amélioré
   static Future<Uint8List> genererRapportStatistiquesAmeliore(
@@ -92,6 +126,8 @@ class EnhancedPdfService {
       final fontBold = await PdfGoogleFonts.robotoBold();
       final fontMedium = await PdfGoogleFonts.robotoMedium();
 
+      final logoBytes = await _loadReceiptLogo();
+
       // Pré-générer la carte de localisation
       final mapSectionRecu = await _buildLocationMapSectionRecu(
           recu, fontBold, fontMedium, fontRegular);
@@ -104,7 +140,7 @@ class EnhancedPdfService {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               // En-tête moderne avec logo
-              _buildModernReceiptHeader(recu, fontBold, fontRegular),
+              _buildModernReceiptHeader(recu, fontBold, fontRegular, logoBytes),
               pw.SizedBox(height: 30),
 
               // Informations de collecte avec design cards
@@ -153,10 +189,10 @@ class EnhancedPdfService {
     try {
       if (kIsWeb) {
         // Téléchargement pour Web
-        await platform_service.downloadPdfWeb(pdfBytes, filename);
+        await downloadPdfWeb(pdfBytes, filename);
       } else {
         // Pour Desktop et Mobile, utiliser le service IO
-        await platform_service.downloadPdfDesktop(pdfBytes, filename, title);
+        await downloadPdfDesktop(pdfBytes, filename, title);
       }
 
       print('✅ PDF téléchargé avec succès: $filename');
@@ -214,13 +250,13 @@ class EnhancedPdfService {
               pw.Container(
                 width: 4,
                 height: 20,
-                color: PdfColors.teal,
+                color: PdfColors.black,
               ),
               pw.SizedBox(width: 8),
               pw.Text(
                 'LOCALISATION SUR CARTE',
                 style: pw.TextStyle(
-                    font: fontBold, fontSize: 16, color: PdfColors.teal),
+                    font: fontBold, fontSize: 16, color: PdfColors.black),
               ),
             ],
           ),
@@ -229,9 +265,9 @@ class EnhancedPdfService {
             width: double.infinity,
             padding: const pw.EdgeInsets.all(16),
             decoration: pw.BoxDecoration(
-              color: PdfColors.grey50,
+              color: PdfColors.white,
               borderRadius: pw.BorderRadius.circular(8),
-              border: pw.Border.all(color: PdfColors.grey300),
+              border: pw.Border.all(color: PdfColors.black),
             ),
             child: pw.Column(
               children: [
@@ -240,7 +276,7 @@ class EnhancedPdfService {
                   pw.Container(
                     decoration: pw.BoxDecoration(
                       borderRadius: pw.BorderRadius.circular(8),
-                      border: pw.Border.all(color: PdfColors.grey400),
+                      border: pw.Border.all(color: PdfColors.black),
                     ),
                     child: pw.Container(
                       width: 450,
@@ -259,14 +295,10 @@ class EnhancedPdfService {
                   width: double.infinity,
                   padding: const pw.EdgeInsets.all(12),
                   decoration: pw.BoxDecoration(
-                    color: coords['isTest']
-                        ? PdfColors.orange50
-                        : PdfColors.green50,
+                    color: PdfColors.white,
                     borderRadius: pw.BorderRadius.circular(6),
                     border: pw.Border.all(
-                      color: coords['isTest']
-                          ? PdfColors.orange200
-                          : PdfColors.green200,
+                      color: PdfColors.black,
                     ),
                   ),
                   child: pw.Column(
@@ -279,9 +311,7 @@ class EnhancedPdfService {
                         style: pw.TextStyle(
                           font: fontBold,
                           fontSize: 12,
-                          color: coords['isTest']
-                              ? PdfColors.orange800
-                              : PdfColors.green800,
+                          color: PdfColors.black,
                         ),
                       ),
                       pw.SizedBox(height: 4),
@@ -353,9 +383,9 @@ class EnhancedPdfService {
         width: double.infinity,
         padding: const pw.EdgeInsets.all(16),
         decoration: pw.BoxDecoration(
-          color: PdfColors.teal.shade(0.05),
+          color: PdfColors.grey100,
           borderRadius: pw.BorderRadius.circular(10),
-          border: pw.Border.all(color: PdfColors.teal.shade(0.3)),
+          border: pw.Border.all(color: PdfColors.grey300),
         ),
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -365,7 +395,7 @@ class EnhancedPdfService {
               style: pw.TextStyle(
                 font: fontBold,
                 fontSize: 14,
-                color: PdfColors.teal,
+                color: PdfColors.black,
               ),
             ),
             pw.SizedBox(height: 12),
@@ -375,7 +405,7 @@ class EnhancedPdfService {
                 child: pw.Container(
                   decoration: pw.BoxDecoration(
                     borderRadius: pw.BorderRadius.circular(8),
-                    border: pw.Border.all(color: PdfColors.teal.shade(0.3)),
+                    border: pw.Border.all(color: PdfColors.grey300),
                   ),
                   child: pw.Container(
                     width: 400,
@@ -457,8 +487,9 @@ class EnhancedPdfService {
       return pw.Container(
         padding: const pw.EdgeInsets.all(12),
         decoration: pw.BoxDecoration(
-          color: PdfColors.orange50,
+          color: PdfColors.grey100,
           borderRadius: pw.BorderRadius.circular(8),
+          border: pw.Border.all(color: PdfColors.grey300),
         ),
         child: pw.Text(
           '⚠️ Carte non disponible',
@@ -470,7 +501,7 @@ class EnhancedPdfService {
 
   // ==================== BUILDERS PDF AMÉLIORÉS ====================
 
-  /// En-tête moderne avec gradient et logo
+  /// En-tête moderne avec logo APISAVANA bien visible
   static pw.Widget _buildEnhancedHeader(
     RapportStatistiques rapport,
     pw.Font fontBold,
@@ -478,13 +509,10 @@ class EnhancedPdfService {
   ) {
     return pw.Container(
       width: double.infinity,
-      height: 80,
+      height: 100,
       decoration: pw.BoxDecoration(
-        gradient: const pw.LinearGradient(
-          colors: [primaryColor, accentColor],
-          begin: pw.Alignment.centerLeft,
-          end: pw.Alignment.centerRight,
-        ),
+        color: PdfColors.white,
+        border: pw.Border.all(color: PdfColors.black, width: 2),
         borderRadius: pw.BorderRadius.circular(10),
       ),
       child: pw.Padding(
@@ -492,28 +520,60 @@ class EnhancedPdfService {
         child: pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              mainAxisAlignment: pw.MainAxisAlignment.center,
-              children: [
-                pw.Text(
-                  'APISAVANA GESTION',
-                  style: pw.TextStyle(
-                    font: fontBold,
-                    fontSize: 20,
-                    color: PdfColors.white,
+            // Logo APISAVANA à gauche, bien visible
+            if (_buildLogoWidget() != null) ...[
+              _buildLogoWidget(size: 80)!,
+              pw.SizedBox(width: 20),
+            ] else ...[
+              // Fallback si le logo ne charge pas
+              pw.Container(
+                width: 80,
+                height: 60,
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.black,
+                  borderRadius: pw.BorderRadius.circular(8),
+                ),
+                child: pw.Center(
+                  child: pw.Text(
+                    'APISAVANA',
+                    style: pw.TextStyle(
+                      font: fontBold,
+                      fontSize: 10,
+                      color: PdfColors.white,
+                    ),
+                    textAlign: pw.TextAlign.center,
                   ),
                 ),
-                pw.Text(
-                  'Rapport Statistiques de Collecte',
-                  style: pw.TextStyle(
-                    font: fontRegular,
-                    fontSize: 14,
-                    color: PdfColors.white.shade(0.7),
+              ),
+              pw.SizedBox(width: 20),
+            ],
+            // Informations du rapport au centre
+            pw.Expanded(
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                mainAxisAlignment: pw.MainAxisAlignment.center,
+                children: [
+                  pw.Text(
+                    'APISAVANA GESTION',
+                    style: pw.TextStyle(
+                      font: fontBold,
+                      fontSize: 18,
+                      color: PdfColors.black,
+                    ),
                   ),
-                ),
-              ],
+                  pw.SizedBox(height: 4),
+                  pw.Text(
+                    'Rapport Statistiques de Collecte',
+                    style: pw.TextStyle(
+                      font: fontRegular,
+                      fontSize: 12,
+                      color: PdfColors.black,
+                    ),
+                  ),
+                ],
+              ),
             ),
+            // Numéro et date à droite
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.end,
               mainAxisAlignment: pw.MainAxisAlignment.center,
@@ -522,16 +582,17 @@ class EnhancedPdfService {
                   'N° ${rapport.numeroRapport}',
                   style: pw.TextStyle(
                     font: fontBold,
-                    fontSize: 16,
-                    color: PdfColors.white,
+                    fontSize: 14,
+                    color: PdfColors.black,
                   ),
                 ),
+                pw.SizedBox(height: 2),
                 pw.Text(
                   rapport.dateGenerationFormatee,
                   style: pw.TextStyle(
                     font: fontRegular,
-                    fontSize: 12,
-                    color: PdfColors.white.shade(0.7),
+                    fontSize: 10,
+                    color: PdfColors.black,
                   ),
                 ),
               ],
@@ -705,6 +766,44 @@ class EnhancedPdfService {
     );
   }
 
+  static pw.Widget _buildReceiptInfoCard(
+    String label,
+    String value,
+    pw.Font fontMedium,
+    pw.Font fontRegular,
+  ) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.white,
+        borderRadius: pw.BorderRadius.circular(6),
+        border: pw.Border.all(color: PdfColors.grey300),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            label,
+            style: pw.TextStyle(
+              font: fontMedium,
+              fontSize: 10,
+              color: PdfColors.grey600,
+            ),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            value,
+            style: pw.TextStyle(
+              font: fontRegular,
+              fontSize: 12,
+              color: PdfColors.black,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Tableau parfait avec design moderne
   static pw.Widget _buildPerfectTable(
     RapportStatistiques rapport,
@@ -749,11 +848,8 @@ class EnhancedPdfService {
               // En-tête avec gradient
               pw.TableRow(
                 decoration: pw.BoxDecoration(
-                  gradient: const pw.LinearGradient(
-                    colors: [accentColor, primaryColor],
-                    begin: pw.Alignment.centerLeft,
-                    end: pw.Alignment.centerRight,
-                  ),
+                  color: PdfColors.white,
+                  border: pw.Border.all(color: PdfColors.black),
                   borderRadius: const pw.BorderRadius.only(
                     topLeft: pw.Radius.circular(8),
                     topRight: pw.Radius.circular(8),
@@ -761,13 +857,13 @@ class EnhancedPdfService {
                 ),
                 children: [
                   _buildPerfectTableCell(
-                      'Type de contenant', fontBold, 11, PdfColors.white, true),
+                      'Type de contenant', fontBold, 11, PdfColors.black, true),
                   _buildPerfectTableCell(
-                      'Type de miel', fontBold, 11, PdfColors.white, true),
+                      'Type de miel', fontBold, 11, PdfColors.black, true),
                   _buildPerfectTableCell(
-                      'Poids (kg)', fontBold, 11, PdfColors.white, true),
+                      'Poids (kg)', fontBold, 11, PdfColors.black, true),
                   _buildPerfectTableCell(
-                      'Prix/kg (FCFA)', fontBold, 11, PdfColors.white, true),
+                      'Prix/kg (FCFA)', fontBold, 11, PdfColors.black, true),
                   _buildPerfectTableCell(
                       'Total (FCFA)', fontBold, 11, PdfColors.white, true),
                 ],
@@ -851,13 +947,16 @@ class EnhancedPdfService {
             pw.Container(
               width: 4,
               height: 20,
-              color: successColor,
+              color: PdfColors.black,
             ),
             pw.SizedBox(width: 8),
             pw.Text(
               'STATISTIQUES VISUELLES',
               style: pw.TextStyle(
-                  font: fontBold, fontSize: 16, color: successColor),
+                font: fontBold,
+                fontSize: 16,
+                color: PdfColors.black,
+              ),
             ),
           ],
         ),
@@ -870,7 +969,6 @@ class EnhancedPdfService {
                 '${rapport.nombreContenants}',
                 fontBold,
                 fontMedium,
-                successColor,
               ),
             ),
             pw.SizedBox(width: 12),
@@ -880,7 +978,6 @@ class EnhancedPdfService {
                 rapport.collecte.poidsFormatte,
                 fontBold,
                 fontMedium,
-                accentColor,
               ),
             ),
           ],
@@ -894,7 +991,6 @@ class EnhancedPdfService {
                 rapport.collecte.montantFormatte,
                 fontBold,
                 fontMedium,
-                warningColor,
               ),
             ),
             pw.SizedBox(width: 12),
@@ -904,7 +1000,6 @@ class EnhancedPdfService {
                 rapport.prixMoyenFormatte,
                 fontBold,
                 fontMedium,
-                dangerColor,
               ),
             ),
           ],
@@ -919,14 +1014,13 @@ class EnhancedPdfService {
     String value,
     pw.Font fontBold,
     pw.Font fontMedium,
-    PdfColor color,
   ) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(16),
       decoration: pw.BoxDecoration(
-        color: color.shade(0.1),
+        color: PdfColors.white,
         borderRadius: pw.BorderRadius.circular(8),
-        border: pw.Border.all(color: color.shade(0.3)),
+        border: pw.Border.all(color: PdfColors.grey300),
       ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.center,
@@ -936,7 +1030,7 @@ class EnhancedPdfService {
             style: pw.TextStyle(
               font: fontMedium,
               fontSize: 12,
-              color: color,
+              color: PdfColors.grey700,
             ),
             textAlign: pw.TextAlign.center,
           ),
@@ -946,7 +1040,7 @@ class EnhancedPdfService {
             style: pw.TextStyle(
               font: fontBold,
               fontSize: 18,
-              color: color,
+              color: PdfColors.black,
             ),
             textAlign: pw.TextAlign.center,
           ),
@@ -970,13 +1064,13 @@ class EnhancedPdfService {
             pw.Container(
               width: 4,
               height: 20,
-              color: PdfColors.purple,
+              color: PdfColors.black,
             ),
             pw.SizedBox(width: 8),
             pw.Text(
               'RÉPARTITIONS ET ANALYSES',
               style: pw.TextStyle(
-                  font: fontBold, fontSize: 16, color: PdfColors.purple),
+                  font: fontBold, fontSize: 16, color: PdfColors.black),
             ),
           ],
         ),
@@ -991,7 +1085,6 @@ class EnhancedPdfService {
                 fontBold,
                 fontMedium,
                 fontRegular,
-                accentColor,
               ),
             ),
             pw.SizedBox(width: 16),
@@ -1003,7 +1096,6 @@ class EnhancedPdfService {
                 fontBold,
                 fontMedium,
                 fontRegular,
-                successColor,
               ),
             ),
           ],
@@ -1019,7 +1111,6 @@ class EnhancedPdfService {
     pw.Font fontBold,
     pw.Font fontMedium,
     pw.Font fontRegular,
-    PdfColor color,
   ) {
     final total = data.values.fold<double>(0, (sum, value) {
       return sum + (value is num ? value.toDouble() : 0);
@@ -1028,9 +1119,9 @@ class EnhancedPdfService {
     return pw.Container(
       padding: const pw.EdgeInsets.all(12),
       decoration: pw.BoxDecoration(
-        color: color.shade(0.05),
+        color: PdfColors.white,
         borderRadius: pw.BorderRadius.circular(8),
-        border: pw.Border.all(color: color.shade(0.2)),
+        border: pw.Border.all(color: PdfColors.grey300),
       ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -1040,7 +1131,7 @@ class EnhancedPdfService {
             style: pw.TextStyle(
               font: fontBold,
               fontSize: 12,
-              color: color,
+              color: PdfColors.black,
             ),
           ),
           pw.SizedBox(height: 8),
@@ -1077,7 +1168,7 @@ class EnhancedPdfService {
                       width: (percentage / 100) *
                           200, // Largeur fixe pour la barre
                       decoration: pw.BoxDecoration(
-                        color: color,
+                        color: PdfColors.black,
                         borderRadius: pw.BorderRadius.circular(2),
                       ),
                     ),
@@ -1157,76 +1248,106 @@ class EnhancedPdfService {
     RecuCollecte recu,
     pw.Font fontBold,
     pw.Font fontRegular,
+    Uint8List? logoBytes,
   ) {
     return pw.Container(
       width: double.infinity,
-      height: 100,
+      padding: const pw.EdgeInsets.all(20),
       decoration: pw.BoxDecoration(
-        gradient: const pw.LinearGradient(
-          colors: [successColor, PdfColors.teal],
-          begin: pw.Alignment.topLeft,
-          end: pw.Alignment.bottomRight,
-        ),
+        color: PdfColors.white,
         borderRadius: pw.BorderRadius.circular(12),
+        border: pw.Border.all(color: PdfColors.grey300),
       ),
-      child: pw.Padding(
-        padding: const pw.EdgeInsets.all(20),
-        child: pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              mainAxisAlignment: pw.MainAxisAlignment.center,
-              children: [
-                pw.Text(
-                  'APISAVANA GESTION',
-                  style: pw.TextStyle(
-                    font: fontBold,
-                    fontSize: 24,
-                    color: PdfColors.white,
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              if (logoBytes != null)
+                pw.Container(
+                  width: 60,
+                  height: 60,
+                  decoration: pw.BoxDecoration(
+                    borderRadius: pw.BorderRadius.circular(8),
+                    border: pw.Border.all(color: PdfColors.grey400),
                   ),
-                ),
-                pw.SizedBox(height: 4),
-                pw.Text(
-                  'REÇU DE COLLECTE OFFICIEL',
-                  style: pw.TextStyle(
-                    font: fontRegular,
-                    fontSize: 16,
-                    color: PdfColors.white.shade(0.7),
+                  child: pw.Center(
+                    child: pw.Image(
+                      pw.MemoryImage(logoBytes),
+                      fit: pw.BoxFit.contain,
+                    ),
                   ),
-                ),
-              ],
-            ),
-            pw.Container(
-              padding: const pw.EdgeInsets.all(12),
-              decoration: pw.BoxDecoration(
-                color: PdfColors.white.shade(0.2),
-                borderRadius: pw.BorderRadius.circular(8),
-              ),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: [
-                  pw.Text(
-                    'N° ${recu.numeroRecu}',
+                )
+              else
+                pw.Container(
+                  width: 60,
+                  height: 60,
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.grey200,
+                    borderRadius: pw.BorderRadius.circular(8),
+                  ),
+                  alignment: pw.Alignment.center,
+                  child: pw.Text(
+                    'AS',
                     style: pw.TextStyle(
                       font: fontBold,
                       fontSize: 18,
-                      color: PdfColors.white,
+                      color: PdfColors.grey600,
                     ),
                   ),
+                ),
+              pw.SizedBox(width: 16),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                mainAxisAlignment: pw.MainAxisAlignment.center,
+                children: [
                   pw.Text(
-                    recu.dateGenerationFormatee,
+                    'APISAVANA GESTION',
+                    style: pw.TextStyle(
+                      font: fontBold,
+                      fontSize: 22,
+                      color: PdfColors.black,
+                    ),
+                  ),
+                  pw.SizedBox(height: 4),
+                  pw.Text(
+                    'REÇU DE COLLECTE OFFICIEL',
                     style: pw.TextStyle(
                       font: fontRegular,
-                      fontSize: 12,
-                      color: PdfColors.white.shade(0.7),
+                      fontSize: 14,
+                      color: PdfColors.grey700,
                     ),
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            mainAxisAlignment: pw.MainAxisAlignment.center,
+            children: [
+              pw.Text(
+                'N° ${recu.numeroRecu}',
+                style: pw.TextStyle(
+                  font: fontBold,
+                  fontSize: 18,
+                  color: PdfColors.black,
+                ),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                recu.dateGenerationFormatee,
+                style: pw.TextStyle(
+                  font: fontRegular,
+                  fontSize: 12,
+                  color: PdfColors.grey700,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1243,22 +1364,20 @@ class EnhancedPdfService {
         pw.Row(
           children: [
             pw.Expanded(
-              child: _buildInfoCard(
+              child: _buildReceiptInfoCard(
                 'Date de collecte',
                 recu.collecte.dateFormatee,
                 fontMedium,
                 fontRegular,
-                accentColor,
               ),
             ),
             pw.SizedBox(width: 12),
             pw.Expanded(
-              child: _buildInfoCard(
+              child: _buildReceiptInfoCard(
                 'Type de collecte',
                 recu.collecte.typeCollecte.label,
                 fontMedium,
                 fontRegular,
-                successColor,
               ),
             ),
           ],
@@ -1267,33 +1386,30 @@ class EnhancedPdfService {
         pw.Row(
           children: [
             pw.Expanded(
-              child: _buildInfoCard(
+              child: _buildReceiptInfoCard(
                 'Source/Producteur',
                 recu.collecte.nomSource,
                 fontMedium,
                 fontRegular,
-                warningColor,
               ),
             ),
             pw.SizedBox(width: 12),
             pw.Expanded(
-              child: _buildInfoCard(
+              child: _buildReceiptInfoCard(
                 'Technicien responsable',
                 recu.collecte.technicienNom,
                 fontMedium,
                 fontRegular,
-                dangerColor,
               ),
             ),
           ],
         ),
         pw.SizedBox(height: 12),
-        _buildInfoCard(
+        _buildReceiptInfoCard(
           'Localisation complète',
           recu.collecte.localisationComplete,
           fontMedium,
           fontRegular,
-          PdfColors.purple,
         ),
       ],
     );
@@ -1324,11 +1440,7 @@ class EnhancedPdfService {
           // En-tête
           pw.TableRow(
             decoration: pw.BoxDecoration(
-              gradient: const pw.LinearGradient(
-                colors: [successColor, PdfColors.teal],
-                begin: pw.Alignment.centerLeft,
-                end: pw.Alignment.centerRight,
-              ),
+              color: PdfColors.black,
               borderRadius: const pw.BorderRadius.only(
                 topLeft: pw.Radius.circular(8),
                 topRight: pw.Radius.circular(8),
@@ -1352,7 +1464,7 @@ class EnhancedPdfService {
             final index = entry.key;
             final contenant = entry.value;
             final isEven = index % 2 == 0;
-            final bgColor = isEven ? successColor.shade(0.05) : PdfColors.white;
+            final bgColor = isEven ? PdfColors.grey200 : PdfColors.white;
 
             return pw.TableRow(
               decoration: pw.BoxDecoration(color: bgColor),
@@ -1362,18 +1474,18 @@ class EnhancedPdfService {
                 _buildPerfectTableCell(contenant.typeMiel, fontRegular, 10,
                     PdfColors.grey800, false),
                 _buildPerfectTableCell(contenant.quantite.toStringAsFixed(2),
-                    fontMedium, 10, accentColor, false),
+                    fontMedium, 10, PdfColors.black, false),
                 _buildPerfectTableCell(
                     contenant.prixUnitaire.toStringAsFixed(0),
                     fontMedium,
                     10,
-                    warningColor,
+                    PdfColors.black,
                     false),
                 _buildPerfectTableCell(
                     contenant.montantTotal.toStringAsFixed(0),
                     fontBold,
                     10,
-                    successColor,
+                    PdfColors.black,
                     false),
               ],
             );
@@ -1393,12 +1505,9 @@ class EnhancedPdfService {
       width: double.infinity,
       padding: const pw.EdgeInsets.all(20),
       decoration: pw.BoxDecoration(
-        gradient: const pw.LinearGradient(
-          colors: [successColor, PdfColors.teal],
-          begin: pw.Alignment.centerLeft,
-          end: pw.Alignment.centerRight,
-        ),
+        color: PdfColors.white,
         borderRadius: pw.BorderRadius.circular(12),
+        border: pw.Border.all(color: PdfColors.grey300),
       ),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
@@ -1410,7 +1519,7 @@ class EnhancedPdfService {
                 style: pw.TextStyle(
                   font: fontMedium,
                   fontSize: 14,
-                  color: PdfColors.white.shade(0.7),
+                  color: PdfColors.grey700,
                 ),
               ),
               pw.SizedBox(height: 4),
@@ -1419,7 +1528,7 @@ class EnhancedPdfService {
                 style: pw.TextStyle(
                   font: fontBold,
                   fontSize: 20,
-                  color: PdfColors.white,
+                  color: PdfColors.black,
                 ),
               ),
             ],
@@ -1427,7 +1536,7 @@ class EnhancedPdfService {
           pw.Container(
             width: 2,
             height: 40,
-            color: PdfColors.white.shade(0.3),
+            color: PdfColors.grey300,
           ),
           pw.Column(
             children: [
@@ -1436,7 +1545,7 @@ class EnhancedPdfService {
                 style: pw.TextStyle(
                   font: fontMedium,
                   fontSize: 14,
-                  color: PdfColors.white.shade(0.7),
+                  color: PdfColors.grey700,
                 ),
               ),
               pw.SizedBox(height: 4),
@@ -1445,7 +1554,7 @@ class EnhancedPdfService {
                 style: pw.TextStyle(
                   font: fontBold,
                   fontSize: 20,
-                  color: PdfColors.white,
+                  color: PdfColors.black,
                 ),
               ),
             ],
@@ -1453,7 +1562,7 @@ class EnhancedPdfService {
           pw.Container(
             width: 2,
             height: 40,
-            color: PdfColors.white.shade(0.3),
+            color: PdfColors.grey300,
           ),
           pw.Column(
             children: [
@@ -1462,7 +1571,7 @@ class EnhancedPdfService {
                 style: pw.TextStyle(
                   font: fontMedium,
                   fontSize: 14,
-                  color: PdfColors.white.shade(0.7),
+                  color: PdfColors.grey700,
                 ),
               ),
               pw.SizedBox(height: 4),
@@ -1471,7 +1580,7 @@ class EnhancedPdfService {
                 style: pw.TextStyle(
                   font: fontBold,
                   fontSize: 20,
-                  color: PdfColors.white,
+                  color: PdfColors.black,
                 ),
               ),
             ],
@@ -1491,18 +1600,18 @@ class EnhancedPdfService {
       width: double.infinity,
       padding: const pw.EdgeInsets.all(20),
       decoration: pw.BoxDecoration(
-        color: warningColor.shade(0.1),
+        color: PdfColors.grey100,
         borderRadius: pw.BorderRadius.circular(10),
-        border: pw.Border.all(color: warningColor.shade(0.3)),
+        border: pw.Border.all(color: PdfColors.grey300),
       ),
       child: pw.Column(
         children: [
           pw.Text(
-            '🍯 MESSAGE DE REMERCIEMENT',
+            'MESSAGE DE REMERCIEMENT',
             style: pw.TextStyle(
               font: fontMedium,
               fontSize: 16,
-              color: warningColor,
+              color: PdfColors.black,
             ),
           ),
           pw.SizedBox(height: 12),
@@ -1573,6 +1682,30 @@ class EnhancedPdfService {
         ],
       ),
     );
+  }
+
+  static Future<Uint8List?> _loadReceiptLogo() async {
+    const candidatePaths = [
+      'assets/logo/logo.jpeg',
+      'assets/logo/logo.jpg',
+      'assets/logo/logo.png',
+      'assets/logo/logo.PNG',
+      'assets/logo/apisavana_logo.jpg',
+      'assets/logo/apisavana_logo.png',
+    ];
+
+    for (final path in candidatePaths) {
+      try {
+        final data = await rootBundle.load(path);
+        print('🖼️ Logo reçu chargé: $path');
+        return data.buffer.asUint8List();
+      } catch (_) {
+        // Continue jusqu'à trouver un logo valide.
+      }
+    }
+
+    print('⚠️ Aucun logo trouvé pour le reçu amélioré.');
+    return null;
   }
 
   /// Sauvegarde les métadonnées d'un rapport

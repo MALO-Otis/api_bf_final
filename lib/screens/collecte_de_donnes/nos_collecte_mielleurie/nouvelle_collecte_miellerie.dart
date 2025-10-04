@@ -55,6 +55,38 @@ class _NouvelleCollecteMielleriePageState
   final _prixController = TextEditingController();
   final _notesController = TextEditingController();
 
+  // Données de prix par contenant depuis Firestore (identique au SCOOP et individuel)
+  final Map<String, int> _prixParContenant = {
+    'Bidon': 2000,
+    'Fût': 2000,
+    'Sac': 2000,
+    'Seau': 2500,
+  };
+
+  /// Retourne les types de contenants disponibles selon le type de miel sélectionné (identique au SCOOP)
+  List<String> _getAvailableContenantTypes() {
+    switch (_typeMiel) {
+      case 'Liquide':
+        // Pour le miel liquide : Bidon, Fût, Seau
+        return ['Bidon', 'Fût', 'Seau'];
+      case 'Brute':
+        // Pour le miel brute : Fût, Seau (pas de Bidon)
+        return ['Fût', 'Seau'];
+      case 'Cire':
+        // Pour la cire, seul le sac est autorisé
+        return ['Sac'];
+      default:
+        return ['Bidon'];
+    }
+  }
+
+  /// Calcule et met à jour le prix unitaire automatiquement selon le type de contenant
+  void _updatePrixAutomatique() {
+    final prixParKg = _prixParContenant[_typeContenant] ?? 2000;
+    // Afficher le prix unitaire (prix par kg) au lieu du prix total
+    _prixController.text = prixParKg.toString();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -63,6 +95,11 @@ class _NouvelleCollecteMielleriePageState
     // Initialiser le collecteur avec l'utilisateur connecté
     _selectedCollecteur =
         PersonnelUtils.findTechnicienByName(_userSession.nom ?? '');
+
+    // Listeners pour calcul automatique du prix
+    _poidsController.addListener(_updatePrixAutomatique);
+    // Initialiser le prix automatiquement au démarrage
+    _updatePrixAutomatique();
   }
 
   @override
@@ -71,6 +108,7 @@ class _NouvelleCollecteMielleriePageState
     _repondantController.dispose();
     _observationsController.dispose();
     // NOUVEAU SYSTÈME SCOOP : Nettoyage
+    _poidsController.removeListener(_updatePrixAutomatique);
     _poidsController.dispose();
     _prixController.dispose();
     _notesController.dispose();
@@ -874,12 +912,11 @@ class _NouvelleCollecteMielleriePageState
           _typeCire = null;
           _couleurCire = null;
 
-          // 🆕 Ajuster automatiquement le type de contenant selon le nouveau type de miel
-          final typesDisponibles =
-              TypeContenantMiellerie.getTypesForMiel(_typeMiel);
-          if (!typesDisponibles.contains(_typeContenant)) {
-            _typeContenant = typesDisponibles.first;
-          }
+          // Sélectionner automatiquement le type de contenant selon le miel (identique au SCOOP)
+          final availableTypes = _getAvailableContenantTypes();
+          _typeContenant = availableTypes.first;
+          // Recalculer le prix avec le nouveau type de contenant
+          _updatePrixAutomatique();
         });
       },
       validator: (value) =>
@@ -931,31 +968,56 @@ class _NouvelleCollecteMielleriePageState
   }
 
   Widget _buildTypeContenantField() {
-    // 🆕 Obtenir les types de contenants disponibles selon le type de miel
-    final typesDisponibles = TypeContenantMiellerie.getTypesForMiel(_typeMiel);
+    final availableTypes = _getAvailableContenantTypes();
 
-    // 🆕 Vérifier si le type actuel est encore valide, sinon prendre le premier disponible
-    if (!typesDisponibles.contains(_typeContenant)) {
-      _typeContenant = typesDisponibles.first;
-    }
-
-    return DropdownButtonFormField<String>(
-      value: _typeContenant,
-      decoration: const InputDecoration(
-        labelText: 'Type de contenant',
-        border: OutlineInputBorder(),
-        prefixIcon: Icon(Icons.inventory),
-      ),
-      items: typesDisponibles.map((type) {
-        return DropdownMenuItem(value: type, child: Text(type));
-      }).toList(),
-      onChanged: (value) {
-        setState(() {
-          _typeContenant = value!;
-        });
-      },
-      validator: (value) =>
-          value?.isEmpty ?? true ? 'Type de contenant requis' : null,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DropdownButtonFormField<String>(
+          value: availableTypes.contains(_typeContenant)
+              ? _typeContenant
+              : availableTypes.first,
+          decoration: const InputDecoration(
+            labelText: 'Type de contenant',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.inventory),
+          ),
+          items: availableTypes.map((type) {
+            return DropdownMenuItem(value: type, child: Text(type));
+          }).toList(),
+          onChanged: (value) {
+            setState(() {
+              _typeContenant = value!;
+              // Recalculer le prix quand on change le type de contenant
+              _updatePrixAutomatique();
+            });
+          },
+          validator: (value) =>
+              value?.isEmpty ?? true ? 'Type de contenant requis' : null,
+        ),
+        // Indicateur de prix pour le conteneur sélectionné (identique au SCOOP)
+        if (_typeContenant.isNotEmpty &&
+            _prixParContenant.containsKey(_typeContenant))
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Text(
+                'Prix $_typeContenant: ${_prixParContenant[_typeContenant]} CFA/kg',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.blue.shade700,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -1027,12 +1089,18 @@ class _NouvelleCollecteMielleriePageState
     return TextFormField(
       controller: _notesController,
       decoration: const InputDecoration(
-        labelText: 'Notes (optionnel)',
+        labelText: 'Notes *',
         border: OutlineInputBorder(),
         prefixIcon: Icon(Icons.notes),
         hintText: 'Qualité, observations...',
       ),
       maxLines: 2,
+      validator: (value) {
+        if (value == null || value.trim().isEmpty) {
+          return 'Les notes sont obligatoires';
+        }
+        return null;
+      },
     );
   }
 

@@ -25,6 +25,7 @@ import 'package:apisavana_gestion/screens/conditionnement/pages/stock_conditionn
 import 'package:apisavana_gestion/screens/controle_de_donnes/controle_de_donnes_advanced.dart';
 import 'package:apisavana_gestion/screens/controle_de_donnes/historique_attribution_page.dart';
 import 'package:apisavana_gestion/screens/vente/controllers/espace_commercial_controller.dart';
+import 'package:apisavana_gestion/screens/quality_control/pages/quality_control_home_page.dart';
 import 'package:apisavana_gestion/screens/dashboard/controllers/dashboard_stats_controller.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nouvelle_collecte_individuelle.dart';
 import 'package:apisavana_gestion/screens/collecte_de_donnes/nos_collecte_recoltes/nouvelle_collecte_recolte.dart';
@@ -95,6 +96,12 @@ class DashboardController extends GetxController {
               subModule == 'Contrôles en attente')) {
         print('✅ Navigation vers ${subModule} -> ControlePageDashboard');
         currentPage.value = const ControlePageDashboard();
+        return;
+      }
+
+      if (moduleName == 'CONTRÔLE QUALITÉ') {
+        print('✅ Navigation vers Contrôle Qualité ($subModule)');
+        currentPage.value = const QualityControlHomePage();
         return;
       }
 
@@ -194,6 +201,10 @@ class DashboardController extends GetxController {
           print('✅ Navigation par défaut vers CONTRÔLE');
           currentPage.value =
               const ControlePageDashboard(); // Nouvelle page de contrôle avancé
+          break;
+        case 'CONTRÔLE QUALITÉ':
+          print('✅ Navigation par défaut vers CONTRÔLE QUALITÉ');
+          currentPage.value = const QualityControlHomePage();
           break;
         case 'EXTRACTION':
           print('✅ Navigation par défaut vers EXTRACTION');
@@ -3540,6 +3551,13 @@ class NavigationSlider extends StatelessWidget {
 
     // 🔒 CONTRÔLEUR : Seulement CONTRÔLE, FILTRAGE, EXTRACTION
     'CONTRÔLE': ['Admin', 'Contrôleur', 'Controlleur'],
+    'CONTRÔLE QUALITÉ': [
+      'Admin',
+      'Contrôleur',
+      'Controlleur',
+      'Filtreur',
+      'Extracteur'
+    ],
     'FILTRAGE': [
       'Admin',
       'Contrôleur',
@@ -3651,6 +3669,14 @@ class NavigationSlider extends StatelessWidget {
         "subModules": [
           {"name": "Nouveau contrôle"},
           {"name": "Historique contrôles"}
+        ]
+      },
+      {
+        "icon": Icons.verified,
+        "name": "CONTRÔLE QUALITÉ",
+        "subModules": [
+          {"name": "Tableau qualité", "icon": Icons.dashboard_customize},
+          {"name": "Rapports qualité", "icon": Icons.picture_as_pdf},
         ]
       },
       {

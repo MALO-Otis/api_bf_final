@@ -1,8 +1,8 @@
+import 'contenant_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../../data/models/collecte_models.dart';
-import 'contenant_card.dart';
 import '../../../../widgets/money_icon_widget.dart';
+import '../../../../data/models/collecte_models.dart';
 
 class SectionContenants extends StatefulWidget {
   final List<ContenantModel> contenants;
@@ -31,21 +31,42 @@ class _SectionContenantsState extends State<SectionContenants> {
   static const List<String> _typesCire = ['Brute', 'Purifiée'];
   static const List<String> _couleursCire = ['Jaune', 'Marron'];
 
+  // Données de prix par contenant depuis Firestore (identique au SCOOP)
+  final Map<String, int> _prixParContenant = {
+    'Bidon': 2000,
+    'Fût': 2000,
+    'Sac': 2000,
+    'Seau': 2500,
+  };
+
   // Variables d'état du formulaire
   String _typeMiel = 'Liquide';
   String? _typeCire;
   String? _couleurCire;
   String _typeContenant = 'Bidon';
 
-  /// Retourne les types de contenants disponibles selon le type de miel sélectionné
+  /// Retourne les types de contenants disponibles selon le type de miel sélectionné (identique au SCOOP)
   List<String> _getAvailableContenantTypes() {
-    if (_typeMiel == 'Cire') {
-      // 🆕 Pour la cire, seul le sac est autorisé
-      return ['Sac'];
-    } else {
-      // Pour les autres types de miel (Liquide, Brute), tous les contenants sont disponibles
-      return ['Bidon', 'Seau', 'Fût'];
+    switch (_typeMiel) {
+      case 'Liquide':
+        // Pour le miel liquide : Bidon, Fût, Seau
+        return ['Bidon', 'Fût', 'Seau'];
+      case 'Brute':
+        // Pour le miel brute : Fût, Seau (pas de Bidon)
+        return ['Fût', 'Seau'];
+      case 'Cire':
+        // Pour la cire, seul le sac est autorisé
+        return ['Sac'];
+      default:
+        return ['Bidon'];
     }
+  }
+
+  /// Calcule et met à jour le prix unitaire automatiquement selon le type de contenant
+  void _updatePrixAutomatique() {
+    final prixParKg = _prixParContenant[_typeContenant] ?? 2000;
+    // Afficher le prix unitaire (prix par kg) au lieu du prix total
+    _prixController.text = prixParKg.toString();
   }
 
   final _poidsController = TextEditingController();
@@ -53,7 +74,17 @@ class _SectionContenantsState extends State<SectionContenants> {
   final _notesController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    // Listeners pour calcul automatique du prix
+    _poidsController.addListener(_updatePrixAutomatique);
+    // Initialiser le prix automatiquement au démarrage
+    _updatePrixAutomatique();
+  }
+
+  @override
   void dispose() {
+    _poidsController.removeListener(_updatePrixAutomatique);
     _poidsController.dispose();
     _prixController.dispose();
     _notesController.dispose();
@@ -300,14 +331,11 @@ class _SectionContenantsState extends State<SectionContenants> {
                 _typeCire = null;
                 _couleurCire = null;
               }
-              // 🆕 Si on passe à Cire, forcer le type de contenant à Sac
-              if (_typeMiel == 'Cire') {
-                _typeContenant = 'Sac';
-              }
-              // Si on passe à un autre type que Cire, remettre à Bidon par défaut
-              else {
-                _typeContenant = 'Bidon';
-              }
+              // Sélectionner automatiquement le type de contenant selon le miel (identique au SCOOP)
+              final availableTypes = _getAvailableContenantTypes();
+              _typeContenant = availableTypes.first;
+              // Recalculer le prix avec le nouveau type de contenant
+              _updatePrixAutomatique();
             });
           },
         ),
@@ -433,36 +461,35 @@ class _SectionContenantsState extends State<SectionContenants> {
             );
           }).toList(),
           onChanged: (value) {
-            setState(() => _typeContenant = value!);
+            setState(() {
+              _typeContenant = value!;
+              // Recalculer le prix quand on change le type de contenant
+              _updatePrixAutomatique();
+            });
           },
         ),
-        // 🆕 Message informatif pour la cire
-        if (_typeMiel == 'Cire') ...[
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.blue.withOpacity(0.3)),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.blue.shade600, size: 16),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Pour la cire, seul le sac est disponible',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.blue.shade800,
-                    ),
-                  ),
+        // Indicateur de prix pour le conteneur sélectionné (identique au SCOOP)
+        if (_typeContenant.isNotEmpty &&
+            _prixParContenant.containsKey(_typeContenant))
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Text(
+                'Prix $_typeContenant: ${_prixParContenant[_typeContenant]} CFA/kg',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.blue.shade700,
+                  fontWeight: FontWeight.w500,
                 ),
-              ],
+              ),
             ),
           ),
-        ],
       ],
     );
   }
@@ -552,7 +579,7 @@ class _SectionContenantsState extends State<SectionContenants> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Notes (optionnel)',
+          'Notes *',
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 8),
@@ -565,6 +592,12 @@ class _SectionContenantsState extends State<SectionContenants> {
           ),
           maxLines: 2,
           maxLength: 200,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Les notes sont obligatoires';
+            }
+            return null;
+          },
           onChanged: (value) {
             setState(() {}); // Met à jour l'aperçu en temps réel
           },

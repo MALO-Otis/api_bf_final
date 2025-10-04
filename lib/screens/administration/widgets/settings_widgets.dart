@@ -1,7 +1,11 @@
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../models/metier_models.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/settings_models.dart';
 import '../services/settings_service.dart';
+import '../services/metier_settings_service.dart';
+import '../../../widgets/geographie_management_widget_simple.dart';
 
 /// Widget principal pour le contenu d'une catégorie de paramètres
 class SettingsCategoryContent extends StatelessWidget {
@@ -331,76 +335,497 @@ class SettingsCategoryContent extends StatelessWidget {
   }
 
   Widget _buildBusinessSettings() {
-    return Column(
-      children: [
-        _buildSettingsCard(
-          title: 'Tarification',
+    final metierService = Get.find<MetierSettingsService>();
+
+    return Obx(() {
+      final isInitialLoading =
+          metierService.isLoading && metierService.predominences.isEmpty;
+
+      return Column(
+        children: [
+          if (isInitialLoading)
+            _buildMetierLoadingCard()
+          else ...[
+            _buildPredominenceManagerCard(metierService),
+            const SizedBox(height: 16),
+            _buildMetierPricingCard(metierService),
+            const SizedBox(height: 16),
+            _buildContainerPricingCard(metierService),
+          ],
+          const SizedBox(height: 16),
+          _buildBusinessOrganizationCard(),
+          const SizedBox(height: 16),
+          // Widget de gestion géographique
+          const GeographieManagementWidget(),
+        ],
+      );
+    });
+  }
+
+  Widget _buildMetierLoadingCard() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildNumberField(
-              label: 'Prix par défaut du miel (FCFA/kg)',
-              value: settings.defaultHoneyPricePerKg,
-              onChanged: (value) => _updateSettings(
-                  settings.copyWith(defaultHoneyPricePerKg: value)),
-              min: 100,
-              max: 10000,
-              isDecimal: true,
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            _buildDropdownField(
-              label: 'Devise par défaut',
-              value: settings.defaultCurrency,
-              items: ['FCFA', 'EUR', 'USD'],
-              onChanged: (value) =>
-                  _updateSettings(settings.copyWith(defaultCurrency: value)),
-            ),
+            SizedBox(width: 12),
+            Text('Chargement des paramètres métier...'),
           ],
         ),
-        const SizedBox(height: 16),
-        _buildSettingsCard(
-          title: 'Prix par type de miel',
-          children: settings.honeyPricesByType.entries
-              .map((entry) => _buildNumberField(
-                    label: '${entry.key} (FCFA/kg)',
-                    value: entry.value,
-                    onChanged: (value) {
-                      final newPrices =
-                          Map<String, double>.from(settings.honeyPricesByType);
-                      newPrices[entry.key] = value;
-                      _updateSettings(
-                          settings.copyWith(honeyPricesByType: newPrices));
-                    },
-                    min: 100,
-                    max: 10000,
-                    isDecimal: true,
-                  ))
-              .toList(),
+      ),
+    );
+  }
+
+  Widget _buildPredominenceManagerCard(MetierSettingsService service) {
+    final hasItems = service.predominences.isNotEmpty;
+
+    return _buildSettingsCard(
+      title: 'Prédominances florales',
+      children: [
+        Text(
+          'Déclarez ici toutes les prédominances florales utilisées dans vos produits. '
+          'Lorsqu’un produit ne référence qu’une seule flore, il sera considéré comme mono-floral. '
+          'S’il combine plusieurs flores de cette liste, il sera automatiquement classé en multifloral.',
+          style: TextStyle(color: Colors.grey[700], height: 1.4),
         ),
         const SizedBox(height: 16),
-        _buildSettingsCard(
-          title: 'Configuration métier',
+        if (service.errorMessage != null)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF3E0),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFFFB74D)),
+            ),
+            child: Text(
+              service.errorMessage!,
+              style: const TextStyle(color: Color(0xFFEF6C00)),
+            ),
+          ),
+        if (!hasItems)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Aucune prédominance définie',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Ajoutez vos premières prédominances pour catégoriser vos produits mono ou multifloraux.',
+                ),
+              ],
+            ),
+          ),
+        ...service.predominences
+            .map((pred) => _buildPredominenceTile(pred, service))
+            .toList(),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: () => _showAddPredominenceDialog(service),
+            icon: const Icon(Icons.add_circle_outline),
+            label: const Text('Ajouter une prédominance'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPredominenceTile(
+    FloralPredominence predominence,
+    MetierSettingsService service,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFAF0),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFFD180)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  key: ValueKey('${predominence.id}_name'),
+                  initialValue: predominence.name,
+                  decoration: InputDecoration(
+                    labelText: 'Nom de la prédominance',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onChanged: (value) =>
+                      service.updatePredominenceName(predominence.id, value),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Supprimer cette prédominance',
+                onPressed: () =>
+                    _confirmRemovePredominence(service, predominence),
+                icon:
+                    const Icon(Icons.delete_outline, color: Color(0xFFB71C1C)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Chip(
+              avatar: const Icon(Icons.tag, size: 18),
+              label: Text('Identifiant: ${predominence.id}'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetierPricingCard(MetierSettingsService service) {
+    return _buildSettingsCard(
+      title: 'Tarifs par type de miel',
+      children: [
+        Text(
+          'Définissez les prix par conditionnement pour chaque type de miel. '
+          'Tous les produits mono-floraux utiliseront le premier tableau, tandis que les produits mille fleurs '
+          '(multifloraux) utiliseront le second.',
+          style: TextStyle(color: Colors.grey[700], height: 1.4),
+        ),
+        const SizedBox(height: 24),
+        _buildPackagingPriceSection(
+          title: 'Mono-florale',
+          description:
+              'Appliqué aux produits issus d\'une seule prédominance florale (ex. Acacia, Néré, Karité...).',
+          fieldPrefix: 'mono',
+          prices: service.monoPackagingPrices,
+          onValueChanged: service.updateMonoPackagingPrice,
+        ),
+        const SizedBox(height: 24),
+        _buildPackagingPriceSection(
+          title: 'Mille fleurs (multiflorale)',
+          description:
+              'Appliqué aux produits composés de plusieurs prédominances florales (mélanges, mille fleurs...).',
+          fieldPrefix: 'mille_fleurs',
+          prices: service.milleFleursPackagingPrices,
+          onValueChanged: service.updateMilleFleursPackagingPrice,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPackagingPriceSection({
+    required String title,
+    required String description,
+    required String fieldPrefix,
+    required Map<String, double> prices,
+    required void Function(String size, double price) onValueChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          description,
+          style: TextStyle(
+            color: Colors.grey[700],
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 16,
+          runSpacing: 16,
           children: [
-            _buildNumberField(
-              label: 'Durée d\'expiration par défaut (jours)',
-              value: settings.defaultExpirationDays.toDouble(),
-              onChanged: (value) => _updateSettings(
-                  settings.copyWith(defaultExpirationDays: value.toInt())),
-              min: 30,
-              max: 1095,
-            ),
-            _buildChipList(
-              label: 'Sites disponibles',
-              items: settings.availableSites,
-              onItemsChanged: (items) =>
-                  _updateSettings(settings.copyWith(availableSites: items)),
-            ),
-            _buildChipList(
-              label: 'Rôles disponibles',
-              items: settings.availableRoles,
-              onItemsChanged: (items) =>
-                  _updateSettings(settings.copyWith(availableRoles: items)),
-            ),
+            for (final size in kHoneyPackagingOrder)
+              _buildPackagingPriceField(
+                fieldKey: '${fieldPrefix}_$size',
+                size: size,
+                prices: prices,
+                onChanged: (value) => onValueChanged(size, value),
+              ),
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildPackagingPriceField({
+    required String fieldKey,
+    required String size,
+    required Map<String, double> prices,
+    required void Function(double price) onChanged,
+  }) {
+    final double rawValue = prices[size] ?? 0;
+    final String displayValue = rawValue == 0
+        ? ''
+        : (rawValue % 1 == 0
+            ? rawValue.toInt().toString()
+            : rawValue.toStringAsFixed(2));
+
+    return SizedBox(
+      width: 170,
+      child: TextFormField(
+        key: ValueKey(fieldKey),
+        initialValue: displayValue,
+        decoration: InputDecoration(
+          labelText: kHoneyPackagingLabels[size] ?? size,
+          suffixText: 'FCFA',
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        inputFormatters: [
+          FilteringTextInputFormatter.allow(RegExp(r'[0-9,. ]')),
+        ],
+        onChanged: (value) {
+          final normalized = value.replaceAll(' ', '').replaceAll(',', '.');
+          final parsedValue = double.tryParse(normalized);
+          onChanged(parsedValue ?? 0);
+        },
+      ),
+    );
+  }
+
+  /// Construit la carte de configuration des prix par type de contenant
+  Widget _buildContainerPricingCard(MetierSettingsService service) {
+    return _buildSettingsCard(
+      title: 'Prix par type de contenant',
+      children: [
+        Text(
+          'Définissez les prix du kg de miel selon le type de contenant utilisé.',
+          style: TextStyle(color: Colors.grey[700], height: 1.4),
+        ),
+        const SizedBox(height: 16),
+        Obx(() {
+          final containerPrices = service.containerPrices;
+          return Wrap(
+            spacing: 16,
+            runSpacing: 16,
+            children: [
+              for (final containerType in ContainerType.values)
+                _buildContainerPriceField(
+                  containerType: containerType,
+                  pricing: containerPrices[containerType.name],
+                  onChanged: (value) => service.updateContainerPrice(
+                    containerType.name,
+                    value,
+                  ),
+                ),
+            ],
+          );
+        }),
+      ],
+    );
+  }
+
+  /// Construit un champ de saisie pour le prix d'un type de contenant
+  Widget _buildContainerPriceField({
+    required ContainerType containerType,
+    required ContainerPricing? pricing,
+    required ValueChanged<double> onChanged,
+  }) {
+    final price = pricing?.pricePerKg ?? 0.0;
+
+    return SizedBox(
+      width: 200,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _getContainerIcon(containerType),
+                size: 16,
+                color: Colors.blue[600],
+              ),
+              const SizedBox(width: 8),
+              Text(
+                containerType.displayName,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            key: ValueKey('container_${containerType.name}'),
+            initialValue: price > 0 ? price.toString() : '',
+            decoration: const InputDecoration(
+              labelText: 'Prix/kg (FCFA)',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (value) {
+              final parsed = double.tryParse(value);
+              if (parsed != null && parsed >= 0) {
+                onChanged(parsed);
+              }
+            },
+          ),
+          if (pricing?.lastUpdated != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Modifié le ${_formatDate(pricing!.lastUpdated)}',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Retourne l'icône appropriée pour un type de contenant
+  IconData _getContainerIcon(ContainerType containerType) {
+    switch (containerType) {
+      case ContainerType.fut:
+        return Icons.water_drop;
+      case ContainerType.seau:
+        return Icons.cleaning_services;
+      case ContainerType.bidon:
+        return Icons.local_drink;
+      case ContainerType.pot:
+        return Icons.coffee;
+      case ContainerType.sac:
+        return Icons.shopping_bag;
+    }
+  }
+
+  /// Formate une date pour l'affichage
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  Widget _buildBusinessOrganizationCard() {
+    return _buildSettingsCard(
+      title: 'Organisation métier',
+      children: [
+        Text(
+          'Complétez les points de vente et les rôles opérationnels disponibles dans votre organisation.',
+          style: TextStyle(color: Colors.grey[700], height: 1.4),
+        ),
+        const SizedBox(height: 16),
+        _buildChipList(
+          label: 'Sites disponibles',
+          items: settings.availableSites,
+          onItemsChanged: (items) =>
+              _updateSettings(settings.copyWith(availableSites: items)),
+        ),
+        _buildChipList(
+          label: 'Rôles disponibles',
+          items: settings.availableRoles,
+          onItemsChanged: (items) =>
+              _updateSettings(settings.copyWith(availableRoles: items)),
+        ),
+      ],
+    );
+  }
+
+  void _showAddPredominenceDialog(MetierSettingsService service) {
+    final nameController = TextEditingController();
+
+    Get.dialog(
+      StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Nouvelle prédominance florale'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nom de la prédominance',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Get.back(),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  service.addPredominence(
+                    name: nameController.text,
+                  );
+                  Get.back();
+                },
+                child: const Text('Ajouter'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _confirmRemovePredominence(
+    MetierSettingsService service,
+    FloralPredominence predominence,
+  ) {
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Supprimer la prédominance'),
+        content: Text(
+            'Confirmez-vous la suppression de "${predominence.name}" ? Cette prédominance ne sera plus disponible pour vos produits.'),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              service.removePredominence(predominence.id);
+              Get.back();
+            },
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Supprimer'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD32F2F),
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -606,11 +1031,15 @@ class SettingsCategoryContent extends StatelessWidget {
         ),
         keyboardType: TextInputType.number,
         onChanged: (text) {
-          final parsedValue = isDecimal
-              ? double.tryParse(text)
-              : double.tryParse(text)?.toInt()?.toDouble();
-          if (parsedValue != null && parsedValue >= min && parsedValue <= max) {
-            onChanged(parsedValue);
+          final normalized = text.replaceAll(' ', '').replaceAll(',', '.');
+          final numericValue = double.tryParse(normalized);
+          if (numericValue == null) return;
+
+          final double finalValue =
+              isDecimal ? numericValue : numericValue.round().toDouble();
+
+          if (finalValue >= min && finalValue <= max) {
+            onChanged(finalValue);
           }
         },
       ),

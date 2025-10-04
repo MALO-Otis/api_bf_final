@@ -1,8 +1,9 @@
+import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../data/models/scoop_models.dart';
-import '../../../../data/geographe/geographie.dart';
-import 'package:dropdown_search/dropdown_search.dart';
+import '../../core/collecte_geographie_service.dart';
+import '../../../../widgets/geographic_selection_widget.dart';
 import '../../../../data/services/stats_scoop_contenants_service.dart';
 
 class ModalNouveauScoop extends StatefulWidget {
@@ -39,11 +40,6 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
   String? _selectedProvince;
   String? _selectedCommune;
   String? _selectedVillage;
-  String? _selectedArrondissement;
-  String? _selectedSecteur;
-  String? _selectedQuartier;
-
-  // Gestion du village personnalisé
   bool _villagePersonnaliseActive = false;
 
   // Prédominances florales sélectionnées
@@ -88,9 +84,41 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
                 const SizedBox(width: 16),
                 const Expanded(
                   child: Text(
-                    'Nouveau SCOOP',
+                    'Nouvelle SCOOP',
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
+                ),
+                // Bouton de rafraîchissement géographique
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: Colors.blue),
+                  onPressed: () async {
+                    try {
+                      // Rafraîchir les données géographiques
+                      final geographieService =
+                          Get.find<CollecteGeographieService>();
+                      await geographieService.refreshData();
+
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Données géographiques rafraîchies'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content:
+                                Text('Erreur lors du rafraîchissement: $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  tooltip: 'Rafraîchir les données géographiques',
                 ),
                 IconButton(
                   icon: const Icon(Icons.close),
@@ -174,11 +202,11 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
             final left = TextFormField(
               controller: _nomController,
               decoration: const InputDecoration(
-                labelText: 'Nom du SCOOP',
+                labelText: 'Nom de la SCOOP',
                 prefixIcon: Icon(Icons.apartment),
                 border: OutlineInputBorder(),
                 floatingLabelBehavior: FloatingLabelBehavior.always,
-                hintText: 'Saisir le nom du SCOOP',
+                hintText: 'Saisir le nom de la SCOOP',
               ),
               validator: (value) =>
                   value?.isEmpty == true ? 'Nom requis' : null,
@@ -237,383 +265,57 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 16),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final bool isCompact = constraints.maxWidth < 420;
-            final children = <Widget>[
-              // Région
-              DropdownSearch<String>(
-                items: GeographieData.regionsBurkina
-                    .map<String>((region) => region['nom']! as String)
-                    .toList(),
-                selectedItem: _selectedRegion,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedRegion = value;
-                    _selectedProvince = null;
-                    _selectedCommune = null;
-                    _selectedVillage = null;
-                    _selectedArrondissement = null;
-                    _selectedSecteur = null;
-                    _selectedQuartier = null;
-                  });
-                },
-                dropdownDecoratorProps: const DropDownDecoratorProps(
-                  dropdownSearchDecoration: InputDecoration(
-                    labelText: 'Région',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                // Empêche le retour à la ligne du texte sélectionné
-                dropdownBuilder: (context, item) => Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  child: Text(
-                    item ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                ),
-                popupProps: const PopupProps.menu(showSearchBox: true),
-                validator: (value) => value == null ? 'Région requise' : null,
-              ),
-              if (!isCompact)
-                const SizedBox(width: 16)
-              else
-                const SizedBox(height: 16),
-              // Province
-              DropdownSearch<String>(
-                items: _selectedRegion != null
-                    ? _getProvincesForRegion(_selectedRegion!)
-                    : [],
-                selectedItem: _selectedProvince,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedProvince = value;
-                    _selectedCommune = null;
-                    _selectedVillage = null;
-                    _selectedArrondissement = null;
-                    _selectedSecteur = null;
-                    _selectedQuartier = null;
-                  });
-                },
-                dropdownDecoratorProps: const DropDownDecoratorProps(
-                  dropdownSearchDecoration: InputDecoration(
-                    labelText: 'Province',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                dropdownBuilder: (context, item) => Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  child: Text(
-                    item ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                ),
-                popupProps: const PopupProps.menu(showSearchBox: true),
-                validator: (value) => value == null ? 'Province requise' : null,
-              ),
-            ];
-
-            if (isCompact) {
-              return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: children);
-            } else {
-              return Row(children: [
-                Expanded(child: children[0]),
-                children[1],
-                Expanded(child: children[2]),
-              ]);
-            }
+        GeographicSelectionWidget(
+          selectedRegion: _selectedRegion,
+          selectedProvince: _selectedProvince,
+          selectedCommune: _selectedCommune,
+          selectedVillage: _selectedVillage,
+          villagePersonnaliseActive: _villagePersonnaliseActive,
+          villagePersonnalise: _villagePersonnaliseController.text,
+          onRegionChanged: (value) {
+            setState(() {
+              _selectedRegion = value;
+              _selectedProvince = null;
+              _selectedCommune = null;
+              _selectedVillage = null;
+            });
           },
-        ),
-        const SizedBox(height: 16),
-        DropdownSearch<String>(
-          items: _selectedProvince != null
-              ? _getCommunesForProvince(_selectedProvince!)
-              : [],
-          selectedItem: _selectedCommune,
-          onChanged: (value) {
+          onProvinceChanged: (value) {
+            setState(() {
+              _selectedProvince = value;
+              _selectedCommune = null;
+              _selectedVillage = null;
+            });
+          },
+          onCommuneChanged: (value) {
             setState(() {
               _selectedCommune = value;
               _selectedVillage = null;
-              _selectedArrondissement = null;
-              _selectedSecteur = null;
-              _selectedQuartier = null;
             });
           },
-          dropdownDecoratorProps: const DropDownDecoratorProps(
-            dropdownSearchDecoration: InputDecoration(
-              labelText: 'Commune',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          dropdownBuilder: (context, item) => Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Text(
-              item ?? '',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 14),
-            ),
-          ),
-          popupProps: const PopupProps.menu(showSearchBox: true),
-          validator: (value) => value == null ? 'Commune requise' : null,
+          onVillageChanged: (value) {
+            setState(() {
+              _selectedVillage = value;
+            });
+          },
+          onVillagePersonnaliseToggle: (value) {
+            setState(() {
+              _villagePersonnaliseActive = value;
+              if (!value) {
+                _villagePersonnaliseController.clear();
+              } else {
+                _selectedVillage = null;
+              }
+            });
+          },
+          onVillagePersonnaliseChanged: (value) {
+            _villagePersonnaliseController.text = value;
+          },
+          showRefreshButton:
+              false, // Le bouton de rafraîchissement est dans l'en-tête
         ),
-        const SizedBox(height: 16),
-        // Gestion spéciale pour Ouaga/Bobo ou villages classiques
-        if (_selectedCommune != null) _buildSpecificLocationFields(),
-
-        // Aperçu de la localisation avec code
-        if (_selectedRegion != null &&
-            _selectedProvince != null &&
-            _selectedCommune != null) ...[
-          const SizedBox(height: 16),
-          _buildLocationPreview(),
-        ],
       ],
     );
-  }
-
-  Widget _buildLocationPreview() {
-    // Déterminer le village final
-    final villageFinal = _villagePersonnaliseActive
-        ? _villagePersonnaliseController.text.trim().isNotEmpty
-            ? _villagePersonnaliseController.text.trim()
-            : null
-        : _selectedVillage;
-
-    // Créer la map pour le formatage
-    final Map<String, String> localisationMap = {
-      'region': _selectedRegion ?? '',
-      'province': _selectedProvince ?? '',
-      'commune': _selectedCommune ?? '',
-      'village': villageFinal ?? '',
-    };
-
-    final codeLocalisation =
-        GeographieData.formatLocationCodeFromMap(localisationMap);
-    final List<String> parts = [
-      _selectedRegion!,
-      _selectedProvince!,
-      _selectedCommune!
-    ];
-    if (villageFinal != null) parts.add(villageFinal);
-    if (_selectedArrondissement != null) parts.add(_selectedArrondissement!);
-    if (_selectedSecteur != null) parts.add(_selectedSecteur!);
-    if (_selectedQuartier != null) parts.add(_selectedQuartier!);
-    final localisation = parts.join(', ');
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.preview, color: Colors.blue.shade600, size: 18),
-              const SizedBox(width: 8),
-              Text(
-                'Aperçu Localisation',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.blue.shade800,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Code: $codeLocalisation',
-            style: TextStyle(
-              color: Colors.blue.shade700,
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Localisation: $localisation',
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSpecificLocationFields() {
-    final isOuagaBobo = _selectedCommune == 'Ouagadougou' ||
-        _selectedCommune == 'BOBO-DIOULASSO' ||
-        _selectedCommune == 'Bobo-Dioulasso';
-
-    if (isOuagaBobo) {
-      return Column(
-        children: [
-          // Arrondissement, Secteur, Quartier pour Ouaga/Bobo
-          DropdownSearch<String>(
-            items: _getArrondissementsForCommune(_selectedCommune!),
-            selectedItem: _selectedArrondissement,
-            onChanged: (value) {
-              setState(() {
-                _selectedArrondissement = value;
-                _selectedSecteur = null;
-                _selectedQuartier = null;
-              });
-            },
-            dropdownDecoratorProps: const DropDownDecoratorProps(
-              dropdownSearchDecoration: InputDecoration(
-                labelText: 'Arrondissement',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            popupProps: const PopupProps.menu(showSearchBox: true),
-          ),
-          if (_selectedArrondissement != null) ...[
-            const SizedBox(height: 16),
-            DropdownSearch<String>(
-              items: _getSecteursForArrondissement(
-                  _selectedCommune!, _selectedArrondissement!),
-              selectedItem: _selectedSecteur,
-              onChanged: (value) {
-                setState(() {
-                  _selectedSecteur = value;
-                  _selectedQuartier = null;
-                });
-              },
-              dropdownDecoratorProps: const DropDownDecoratorProps(
-                dropdownSearchDecoration: InputDecoration(
-                  labelText: 'Secteur',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              popupProps: const PopupProps.menu(showSearchBox: true),
-            ),
-          ],
-          if (_selectedSecteur != null) ...[
-            const SizedBox(height: 16),
-            DropdownSearch<String>(
-              items:
-                  _getQuartiersForSecteur(_selectedCommune!, _selectedSecteur!),
-              selectedItem: _selectedQuartier,
-              onChanged: (value) => setState(() => _selectedQuartier = value),
-              dropdownDecoratorProps: const DropDownDecoratorProps(
-                dropdownSearchDecoration: InputDecoration(
-                  labelText: 'Quartier',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              popupProps: const PopupProps.menu(showSearchBox: true),
-            ),
-          ],
-        ],
-      );
-    } else {
-      // Village pour autres communes avec système amélioré
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Choix entre village de la liste ou village personnalisé
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade50,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.blue.shade200),
-            ),
-            child: Column(
-              children: [
-                _buildVillageChoiceOption(
-                  value: false,
-                  title: 'Village de la liste',
-                  subtitle: 'Sélectionner un village existant',
-                ),
-                const SizedBox(height: 8),
-                _buildVillageChoiceOption(
-                  value: true,
-                  title: 'Village non répertorié',
-                  subtitle: 'Saisir un nouveau village',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Champ conditionnel selon le choix
-          if (!_villagePersonnaliseActive)
-            // Dropdown pour villages existants
-            DropdownSearch<String>(
-              items: _getVillagesForCurrentCommune(),
-              selectedItem: _selectedVillage,
-              onChanged: (value) => setState(() => _selectedVillage = value),
-              dropdownDecoratorProps: DropDownDecoratorProps(
-                dropdownSearchDecoration: InputDecoration(
-                  labelText: 'Village de la liste',
-                  hintText: _getVillagesForCurrentCommune().isEmpty
-                      ? 'Aucun village disponible'
-                      : 'Rechercher ou sélectionner...',
-                  prefixIcon:
-                      const Icon(Icons.location_city, color: Colors.blue),
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-              popupProps: const PopupProps.menu(
-                showSearchBox: true,
-                searchFieldProps: TextFieldProps(
-                  decoration: InputDecoration(
-                    hintText: 'Rechercher un village...',
-                    prefixIcon: Icon(Icons.search),
-                  ),
-                ),
-              ),
-              validator: (value) {
-                if (!_villagePersonnaliseActive && value == null) {
-                  return 'Sélectionnez un village';
-                }
-                return null;
-              },
-            )
-          else
-            // TextFormField pour village personnalisé
-            TextFormField(
-              controller: _villagePersonnaliseController,
-              decoration: InputDecoration(
-                labelText: 'Nom du village',
-                hintText: 'Saisir le nom du village...',
-                prefixIcon: const Icon(Icons.add_location, color: Colors.green),
-                border: const OutlineInputBorder(),
-                enabledBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Colors.green.shade300),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderSide:
-                      BorderSide(color: Colors.green.shade600, width: 2),
-                ),
-              ),
-              validator: (value) {
-                if (_villagePersonnaliseActive &&
-                    (value == null || value.trim().isEmpty)) {
-                  return 'Nom du village requis';
-                }
-                return null;
-              },
-            ),
-        ],
-      );
-    }
   }
 
   Widget _buildRuchesSection() {
@@ -865,9 +567,9 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
         province: _selectedProvince!,
         commune: _selectedCommune!,
         village: villageFinal,
-        arrondissement: _selectedArrondissement,
-        secteur: _selectedSecteur,
-        quartier: _selectedQuartier,
+        arrondissement: null, // Plus utilisé
+        secteur: null, // Plus utilisé
+        quartier: null, // Plus utilisé
         nbRuchesTrad: int.parse(_nbRuchesTradController.text),
         nbRuchesModernes: int.parse(_nbRuchesModController.text),
         nbMembres: int.parse(_nbMembresController.text),
@@ -910,167 +612,5 @@ class _ModalNouveauScoopState extends State<ModalNouveauScoop> {
     } finally {
       setState(() => _isLoading = false);
     }
-  }
-
-  // Méthodes de géographie utilisant GeographieData
-  List<String> _getProvincesForRegion(String region) {
-    try {
-      final regionCode = GeographieData.getRegionCodeByName(region);
-      final provinces = GeographieData.getProvincesForRegion(regionCode);
-      final provinceNames = provinces
-          .map<String>((province) => province['nom']! as String)
-          .toList();
-      print(
-          '🔵 SCOOP Provinces: ${provinceNames.length} provinces trouvées pour $region');
-      return provinceNames;
-    } catch (e) {
-      print('🔴 SCOOP Provinces: Erreur -> $e pour région $region');
-      return [];
-    }
-  }
-
-  List<String> _getCommunesForProvince(String province) {
-    if (_selectedRegion == null) return [];
-    try {
-      final regionCode = GeographieData.getRegionCodeByName(_selectedRegion!);
-      final provinceCode =
-          GeographieData.getProvinceCodeByName(regionCode, province);
-      final communes =
-          GeographieData.getCommunesForProvince(regionCode, provinceCode);
-      final communeNames =
-          communes.map<String>((commune) => commune['nom']! as String).toList();
-      print(
-          '🔵 SCOOP Communes: ${communeNames.length} communes trouvées pour $province');
-      return communeNames;
-    } catch (e) {
-      print('🔴 SCOOP Communes: Erreur -> $e pour province $province');
-      return [];
-    }
-  }
-
-  // Nouvelle méthode utilisant GeographieData avec les codes corrects
-  List<String> _getVillagesForCurrentCommune() {
-    if (_selectedRegion == null ||
-        _selectedProvince == null ||
-        _selectedCommune == null) {
-      print('🔵 SCOOP Villages: Sélections incomplètes');
-      return [];
-    }
-
-    try {
-      final regionCode = GeographieData.getRegionCodeByName(_selectedRegion!);
-      final provinceCode =
-          GeographieData.getProvinceCodeByName(regionCode, _selectedProvince!);
-      final communeCode = GeographieData.getCommuneCodeByName(
-          regionCode, provinceCode, _selectedCommune!);
-
-      print(
-          '🔵 SCOOP Villages: Codes récupérés - Region: $regionCode, Province: $provinceCode, Commune: $communeCode');
-
-      final villages = GeographieData.getVillagesForCommune(
-          regionCode, provinceCode, communeCode);
-      final villageNames =
-          villages.map<String>((village) => village['nom']! as String).toList();
-
-      print(
-          '🔵 SCOOP Villages: ${villageNames.length} villages trouvés pour ${_selectedCommune}');
-      if (villageNames.isNotEmpty) {
-        print(
-            '🔵 SCOOP Villages: Exemples -> ${villageNames.take(3).join(", ")}');
-      }
-
-      return villageNames;
-    } catch (e) {
-      print('🔴 SCOOP Villages: Erreur récupération -> $e');
-      print(
-          '🔍 SCOOP Villages: Région: $_selectedRegion, Province: $_selectedProvince, Commune: $_selectedCommune');
-      return [];
-    }
-  }
-
-  List<String> _getArrondissementsForCommune(String commune) {
-    // Système arrondissement/quartier abandonné
-    return [];
-  }
-
-  List<String> _getSecteursForArrondissement(
-      String commune, String arrondissement) {
-    // Système arrondissement/quartier abandonné
-    return [];
-  }
-
-  List<String> _getQuartiersForSecteur(String commune, String secteur) {
-    // Système arrondissement/quartier abandonné
-    return [];
-  }
-
-  // --- UI helpers ---
-  Widget _buildVillageChoiceOption({
-    required bool value,
-    required String title,
-    required String subtitle,
-  }) {
-    final selected = _villagePersonnaliseActive == value;
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: () {
-        setState(() {
-          _villagePersonnaliseActive = value;
-          if (!_villagePersonnaliseActive) {
-            _villagePersonnaliseController.clear();
-          } else {
-            _selectedVillage = null;
-          }
-        });
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Radio<bool>(
-              value: value,
-              groupValue: _villagePersonnaliseActive,
-              onChanged: (v) {
-                setState(() {
-                  _villagePersonnaliseActive = v!;
-                  if (!_villagePersonnaliseActive) {
-                    _villagePersonnaliseController.clear();
-                  } else {
-                    _selectedVillage = null;
-                  }
-                });
-              },
-              activeColor: Colors.blue.shade600,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: selected ? Colors.blue.shade800 : Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Colors.grey.shade700, height: 1.2),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

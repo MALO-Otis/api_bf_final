@@ -1,5 +1,6 @@
 /// Script de test pour valider la correction complète du module filtrage
 /// Ce script simule le processus complet : produit visible -> filtrage -> produit invisible
+library;
 
 void main() {
   print(
@@ -108,7 +109,7 @@ void main() {
     if (produitsAttribution[i]['codeContenant'] == produitAFiltrer) {
       produitsAttribution[i]['estFiltre'] = true;
       print(
-          '      ✅ Attribution mise à jour: ${produitAFiltrer} -> estFiltre=true');
+          '      ✅ Attribution mise à jour: $produitAFiltrer -> estFiltre=true');
       break;
     }
   }

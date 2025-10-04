@@ -1,12 +1,12 @@
-/// Service pour générer des PDF de statistiques détaillées des collectes
 import 'dart:io';
 import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:get/get.dart';
-import '../../../authentication/user_session.dart';
+import 'package:intl/intl.dart';
+import 'package:pdf/widgets.dart' as pw;
 import '../models/collecte_models.dart';
+import 'package:path_provider/path_provider.dart';
+import '../../../authentication/user_session.dart';
+/// Service pour générer des PDF de statistiques détaillées des collectes
 
 class PDFStatisticsService {
   static const PdfColor primaryColor = PdfColor.fromInt(0xFF2E7D32);
@@ -320,7 +320,7 @@ class PDFStatisticsService {
               ),
               pw.Text(
                 'Site: $site',
-                style: pw.TextStyle(fontSize: 12, color: PdfColors.grey600),
+                style: pw.TextStyle(fontSize: 12, color: PdfColors.black),
               ),
             ],
           ),
@@ -329,11 +329,11 @@ class PDFStatisticsService {
             children: [
               pw.Text(
                 'Date: ${DateFormat('dd/MM/yyyy').format(date)}',
-                style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
+                style: pw.TextStyle(fontSize: 10, color: PdfColors.black),
               ),
               pw.Text(
                 'Heure: ${DateFormat('HH:mm').format(date)}',
-                style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
+                style: pw.TextStyle(fontSize: 10, color: PdfColors.black),
               ),
             ],
           ),
@@ -346,7 +346,7 @@ class PDFStatisticsService {
   static pw.Widget _buildFooter(pw.Context context) {
     return pw.Container(
       decoration: const pw.BoxDecoration(
-        border: pw.Border(top: pw.BorderSide(color: PdfColors.grey400)),
+        border: pw.Border(top: pw.BorderSide(color: PdfColors.black)),
       ),
       padding: const pw.EdgeInsets.only(top: 10),
       child: pw.Row(
@@ -354,11 +354,11 @@ class PDFStatisticsService {
         children: [
           pw.Text(
             'ApiSavana - Système de Gestion des Collectes',
-            style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+            style: pw.TextStyle(fontSize: 8, color: PdfColors.black),
           ),
           pw.Text(
             'Page ${context.pageNumber}',
-            style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+            style: pw.TextStyle(fontSize: 8, color: PdfColors.black),
           ),
         ],
       ),
@@ -371,9 +371,8 @@ class PDFStatisticsService {
       width: double.infinity,
       padding: const pw.EdgeInsets.all(20),
       decoration: pw.BoxDecoration(
-        gradient: const pw.LinearGradient(
-          colors: [primaryColor, secondaryColor],
-        ),
+        color: PdfColors.white,
+        border: pw.Border.all(color: PdfColors.black),
         borderRadius: pw.BorderRadius.circular(10),
       ),
       child: pw.Column(
@@ -538,7 +537,7 @@ class PDFStatisticsService {
     return pw.Container(
       padding: const pw.EdgeInsets.all(16),
       decoration: pw.BoxDecoration(
-        color: PdfColors.grey100,
+        color: PdfColors.black,
         borderRadius: pw.BorderRadius.circular(8),
       ),
       child: pw.Column(
@@ -594,7 +593,7 @@ class PDFStatisticsService {
               width: double.infinity,
               height: 8,
               decoration: pw.BoxDecoration(
-                color: PdfColors.grey300,
+                color: PdfColors.black,
                 borderRadius: pw.BorderRadius.circular(4),
               ),
             ),
@@ -707,16 +706,16 @@ class PDFStatisticsService {
     return pw.Container(
       padding: const pw.EdgeInsets.all(16),
       decoration: pw.BoxDecoration(
-        color: PdfColors.grey100,
+        color: PdfColors.black,
         borderRadius: pw.BorderRadius.circular(8),
-        border: pw.Border.all(color: PdfColors.grey400),
+        border: pw.Border.all(color: PdfColors.black),
       ),
       child: pw.Center(
         child: pw.Text(
           'Aucune collecte $sectionName trouvée',
           style: pw.TextStyle(
             fontSize: 12,
-            color: PdfColors.grey600,
+            color: PdfColors.black,
             fontStyle: pw.FontStyle.italic,
           ),
         ),
@@ -730,9 +729,9 @@ class PDFStatisticsService {
     return pw.Container(
       padding: const pw.EdgeInsets.all(16),
       decoration: pw.BoxDecoration(
-        color: PdfColors.blue50,
+        color: PdfColors.black,
         borderRadius: pw.BorderRadius.circular(8),
-        border: pw.Border.all(color: PdfColors.blue),
+        border: pw.Border.all(color: PdfColors.black),
       ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -742,7 +741,7 @@ class PDFStatisticsService {
             style: pw.TextStyle(
               fontSize: 14,
               fontWeight: pw.FontWeight.bold,
-              color: PdfColors.blue,
+              color: PdfColors.black,
             ),
           ),
           pw.SizedBox(height: 12),
@@ -761,9 +760,9 @@ class PDFStatisticsService {
     return pw.Container(
       padding: const pw.EdgeInsets.all(16),
       decoration: pw.BoxDecoration(
-        color: PdfColors.green50,
+        color: PdfColors.black,
         borderRadius: pw.BorderRadius.circular(8),
-        border: pw.Border.all(color: PdfColors.green),
+        border: pw.Border.all(color: PdfColors.black),
       ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -773,7 +772,7 @@ class PDFStatisticsService {
             style: pw.TextStyle(
               fontSize: 14,
               fontWeight: pw.FontWeight.bold,
-              color: PdfColors.green,
+              color: PdfColors.black,
             ),
           ),
           pw.SizedBox(height: 12),

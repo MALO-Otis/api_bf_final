@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:flutter/services.dart' show rootBundle;
 
 /// NOTE: Pour utiliser le logo, assurez-vous que l'actif `assets/logo/logo.jpeg` existe.
 /// Le chargement doit être initié côté Flutter (widgets) avec rootBundle, puis passé
@@ -24,12 +25,14 @@ class ApiSavanaPdfService {
   static const String _companyAddress = "BP 153 Koudougou";
   static const String _companyPhone = "Tél: 00226 25441084/70240456";
 
-  /// Couleurs de l'entreprise
-  static const PdfColor primaryColor = PdfColor.fromInt(0xFFF49101); // Orange
-  static const PdfColor secondaryColor =
-      PdfColor.fromInt(0xFF2D0C0D); // Marron foncé
-  static const PdfColor accentColor =
-      PdfColor.fromInt(0xFF8B4513); // Marron moyen
+  /// Couleurs de l'entreprise - Version noir et blanc
+  static const PdfColor primaryColor = PdfColors.black; // Noir
+  static const PdfColor secondaryColor = PdfColors.black; // Noir
+  static const PdfColor accentColor = PdfColors.black; // Noir
+
+  static const PdfColor bodyTextColor = PdfColors.black;
+  static const PdfColor bodyBackgroundColor = PdfColors.white;
+  static const PdfColor bodyBorderColor = PdfColors.black;
 
   // Cache mémoire pour le logo (bytes) afin d'éviter rechargements multiples.
   static Uint8List? _cachedLogoBytes;
@@ -42,16 +45,40 @@ class ApiSavanaPdfService {
     _cachedLogoBytes = bytes;
   }
 
-  /// Retourne un widget image PDF si un logo a été défini, sinon null.
-  /// Returns a plain image widget for the cached logo (no rounded corners or border).
+  /// Charge le logo depuis assets/logo/logo.jpeg
+  static Future<void> loadLogo() async {
+    if (_cachedLogoBytes != null) return; // Déjà chargé
+
+    try {
+      // Charger le logo depuis assets/logo/logo.jpeg
+      final byteData = await rootBundle.load('assets/logo/logo.jpeg');
+      _cachedLogoBytes = byteData.buffer.asUint8List();
+      print('✅ Logo APISAVANA chargé avec succès depuis assets/logo/logo.jpeg');
+    } catch (e) {
+      print('❌ Erreur chargement logo: $e');
+      _cachedLogoBytes = null;
+    }
+  }
+
+  /// Retourne un widget image PDF pour le logo APISAVANA avec taille optimisée.
+  /// Le logo sera bien visible avec le texte APISAVANA lisible.
   /// Use `size` to control the width (height will keep image aspect ratio).
-  static pw.Widget? _buildLogoWidget({double size = 60}) {
+  static pw.Widget? _buildLogoWidget({double size = 100}) {
     if (_cachedLogoBytes == null) return null;
     return pw.Container(
       width: size,
-      // Keep height flexible and let the image preserve aspect ratio
-      child:
-          pw.Image(pw.MemoryImage(_cachedLogoBytes!), fit: pw.BoxFit.contain),
+      decoration: pw.BoxDecoration(
+        borderRadius: pw.BorderRadius.circular(8),
+        border: pw.Border.all(color: PdfColors.black, width: 1),
+      ),
+      child: pw.Padding(
+        padding: const pw.EdgeInsets.all(4),
+        child: pw.Image(
+          pw.MemoryImage(_cachedLogoBytes!),
+          fit: pw.BoxFit.contain,
+          width: size,
+        ),
+      ),
     );
   }
 
@@ -73,35 +100,37 @@ class ApiSavanaPdfService {
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
-          // Logo at top-left and company name centered
+          // Logo APISAVANA bien visible en haut avec le nom de l'entreprise
           pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
               if (showLogo && _buildLogoWidget() != null) ...[
-                // Place the raw logo at the left without any masking
-                _buildLogoWidget(size: 72)!,
-                pw.SizedBox(width: 12),
+                // Logo APISAVANA plus grand et bien visible
+                _buildLogoWidget(size: 120)!,
+                pw.SizedBox(width: 20),
               ] else ...[
-                // Fallback placeholder if no logo defined
+                // Fallback si le logo ne charge pas
                 pw.Container(
-                  width: 72,
-                  height: 48,
+                  width: 120,
+                  height: 80,
                   decoration: pw.BoxDecoration(
-                    color: primaryColor,
+                    color: PdfColors.black,
+                    borderRadius: pw.BorderRadius.circular(8),
+                    border: pw.Border.all(color: PdfColors.black, width: 2),
                   ),
                   child: pw.Center(
                     child: pw.Text(
-                      'GIE\nAPI\nSAVANA',
+                      'APISAVANA\nGESTION',
                       style: pw.TextStyle(
                         color: PdfColors.white,
-                        fontSize: 8,
+                        fontSize: 14,
                         fontWeight: pw.FontWeight.bold,
                       ),
                       textAlign: pw.TextAlign.center,
                     ),
                   ),
                 ),
-                pw.SizedBox(width: 12),
+                pw.SizedBox(width: 20),
               ],
               pw.Expanded(
                 child: pw.Column(
@@ -249,11 +278,11 @@ class ApiSavanaPdfService {
         children: [
           pw.Text(
             'Document généré automatiquement - ApiSavana',
-            style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+            style: pw.TextStyle(fontSize: 8, color: bodyTextColor),
           ),
           pw.Text(
             'Page ${1}', // Sera mis à jour par le contexte
-            style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+            style: pw.TextStyle(fontSize: 8, color: bodyTextColor),
           ),
         ],
       ),
@@ -276,23 +305,26 @@ class ApiSavanaPdfService {
           : null,
       headerDecoration: hasHeader
           ? pw.BoxDecoration(
-              color: primaryColor,
+              color: bodyBackgroundColor,
               borderRadius: pw.BorderRadius.circular(4),
+              border: pw.Border(
+                bottom: pw.BorderSide(color: bodyBorderColor, width: 0.8),
+              ),
             )
           : null,
       headerStyle: hasHeader
           ? pw.TextStyle(
               fontWeight: pw.FontWeight.bold,
-              color: PdfColors.white,
+              color: bodyTextColor,
               fontSize: 11,
             )
           : null,
-      cellStyle: pw.TextStyle(fontSize: 10),
+      cellStyle: pw.TextStyle(fontSize: 10, color: bodyTextColor),
       cellAlignment: pw.Alignment.centerLeft,
       headerAlignment: pw.Alignment.center,
       cellPadding: const pw.EdgeInsets.all(6),
       border: pw.TableBorder.all(
-        color: PdfColors.grey300,
+        color: bodyBorderColor,
         width: 0.5,
       ),
     );
@@ -304,21 +336,24 @@ class ApiSavanaPdfService {
     required pw.Widget content,
     PdfColor? titleColor,
   }) {
+    final double borderWidth = titleColor != null ? 1.2 : 0.8;
+
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Container(
           padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 12),
           decoration: pw.BoxDecoration(
-            color: titleColor ?? accentColor,
+            color: bodyBackgroundColor,
             borderRadius: pw.BorderRadius.circular(4),
+            border: pw.Border.all(color: bodyBorderColor, width: borderWidth),
           ),
           child: pw.Text(
             title,
             style: pw.TextStyle(
               fontSize: 12,
               fontWeight: pw.FontWeight.bold,
-              color: PdfColors.white,
+              color: bodyTextColor,
             ),
           ),
         ),

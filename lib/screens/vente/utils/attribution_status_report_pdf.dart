@@ -34,7 +34,8 @@ class AttributionStatusReportPdf {
         return pw.Container(
           padding: const pw.EdgeInsets.all(8),
           decoration: pw.BoxDecoration(
-            color: PdfColors.grey100,
+            color: PdfColors.white,
+            border: pw.Border.all(color: PdfColors.black),
             borderRadius: pw.BorderRadius.circular(4),
           ),
           child: pw.Text('Aucune attribution',
@@ -128,7 +129,7 @@ class AttributionStatusReportPdf {
           pw.SizedBox(height: 16),
           pw.Text(
             'Document généré automatiquement le ${ApiSavanaPdfService.formatDateTime(DateTime.now())}.',
-            style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+            style: pw.TextStyle(fontSize: 9, color: PdfColors.black),
           )
         ],
       ),

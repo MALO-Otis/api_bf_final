@@ -1,5 +1,6 @@
 /// Test de validation du module filtrage corrigé
 /// Ce fichier vérifie que les corrections apportées fonctionnent correctement
+library;
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -33,8 +34,9 @@ void main() {
         final statutFiltrage = produit['statutFiltrage'] ?? "Non filtré";
         final isFiltrageTotal = statutFiltrage == "Filtrage total";
 
-        if (isFiltrageTotal)
+        if (isFiltrageTotal) {
           continue; // Exclure les produits totalement filtrés
+        }
 
         produitsAffiches.add(produit);
       }

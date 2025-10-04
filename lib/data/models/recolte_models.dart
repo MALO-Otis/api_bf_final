@@ -1,4 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/localite_codi    required this.commune;
+    required this.village;
+    this.codeCollecte, // Sera généré automatiquement si null
+    required this.technicienNom;tion_service.dart';
 
 /// Modèle pour représenter un contenant de récolte
 class ContenantRecolteModel {
@@ -67,6 +71,7 @@ class RecolteModel {
   final String province;
   final String commune;
   final String village;
+  final String? codeCollecte; // NOUVEAU: Code de collecte XX-XX-XX
   final String technicienNom;
   final String? technicienTelephone;
   final List<String> predominancesFlorales;
@@ -86,6 +91,7 @@ class RecolteModel {
     required this.province,
     required this.commune,
     required this.village,
+    this.codeCollecte, // Sera généré automatiquement si null
     required this.technicienNom,
     this.technicienTelephone,
     this.predominancesFlorales = const [],
@@ -139,6 +145,18 @@ class RecolteModel {
         }
       }
 
+      // Génération automatique du code collecte si nécessaire
+      String? codeCollecte = data['code_collecte']?.toString();
+      if (codeCollecte == null || codeCollecte.isEmpty) {
+        codeCollecte = LocaliteCodificationService.generateCodeLocalite(
+          regionNom: data['region']?.toString() ?? '',
+          provinceNom: data['province']?.toString() ?? '',
+          communeNom: data['commune']?.toString() ?? '',
+        );
+        print(
+            '🔵 RecolteModel: Code collecte généré automatiquement: $codeCollecte');
+      }
+
       final recolte = RecolteModel(
         id: doc.id,
         site: data['site']?.toString() ?? '',
@@ -146,6 +164,7 @@ class RecolteModel {
         province: data['province']?.toString() ?? '',
         commune: data['commune']?.toString() ?? '',
         village: data['village']?.toString() ?? '',
+        codeCollecte: codeCollecte,
         technicienNom: data['technicien_nom']?.toString() ?? '',
         technicienTelephone: data['technicien_telephone']?.toString(),
         predominancesFlorales: predominancesList,
@@ -170,6 +189,18 @@ class RecolteModel {
   }
 
   Map<String, dynamic> toFirestore() {
+    // Génération automatique du code collecte si absent
+    String? finalCodeCollecte = codeCollecte;
+    if (finalCodeCollecte == null || finalCodeCollecte.isEmpty) {
+      finalCodeCollecte = LocaliteCodificationService.generateCodeLocalite(
+        regionNom: region,
+        provinceNom: province,
+        communeNom: commune,
+      );
+      print(
+          '🔵 RecolteModel.toFirestore: Code collecte généré: $finalCodeCollecte');
+    }
+
     return {
       'id': id,
       'site': site,
@@ -177,6 +208,7 @@ class RecolteModel {
       'province': province,
       'commune': commune,
       'village': village,
+      'code_collecte': finalCodeCollecte, // NOUVEAU champ
       'technicien_nom': technicienNom,
       'technicien_telephone': technicienTelephone,
       'predominances_florales': predominancesFlorales,
@@ -198,6 +230,7 @@ class RecolteModel {
     String? province,
     String? commune,
     String? village,
+    String? codeCollecte,
     String? technicienNom,
     String? technicienTelephone,
     List<String>? predominancesFlorales,
@@ -217,6 +250,7 @@ class RecolteModel {
       province: province ?? this.province,
       commune: commune ?? this.commune,
       village: village ?? this.village,
+      codeCollecte: codeCollecte ?? this.codeCollecte,
       technicienNom: technicienNom ?? this.technicienNom,
       technicienTelephone: technicienTelephone ?? this.technicienTelephone,
       predominancesFlorales:

@@ -1,5 +1,6 @@
 import '../geographe/geographie.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/localite_codification_service.dart';
 
 /// Modèle pour un SCOOP (coopérative)
 class ScoopModel {
@@ -14,6 +15,7 @@ class ScoopModel {
   final String? arrondissement;
   final String? secteur;
   final String? quartier;
+  final String? codeLocalite; // NOUVEAU: Code de localité XX-XX-XX
   final int nbRuchesTrad;
   final int nbRuchesModernes;
   final int nbMembres;
@@ -35,6 +37,7 @@ class ScoopModel {
     this.arrondissement,
     this.secteur,
     this.quartier,
+    this.codeLocalite, // Sera généré automatiquement si null
     required this.nbRuchesTrad,
     required this.nbRuchesModernes,
     required this.nbMembres,
@@ -47,6 +50,19 @@ class ScoopModel {
 
   factory ScoopModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
+
+    // Génération automatique du code localité si nécessaire
+    String? codeLocalite = data['code_localite']?.toString();
+    if (codeLocalite == null || codeLocalite.isEmpty) {
+      codeLocalite = LocaliteCodificationService.generateCodeLocalite(
+        regionNom: data['region']?.toString() ?? '',
+        provinceNom: data['province']?.toString() ?? '',
+        communeNom: data['commune']?.toString() ?? '',
+      );
+      print(
+          '🔵 ScoopModel: Code localité généré automatiquement: $codeLocalite');
+    }
+
     return ScoopModel(
       id: doc.id,
       nom: data['nom'] ?? '',
@@ -59,6 +75,7 @@ class ScoopModel {
       arrondissement: data['arrondissement'],
       secteur: data['secteur'],
       quartier: data['quartier'],
+      codeLocalite: codeLocalite,
       nbRuchesTrad: data['nbRuchesTrad'] ?? 0,
       nbRuchesModernes: data['nbRuchesModernes'] ?? 0,
       nbMembres: data['nbMembres'] ?? 0,
@@ -73,6 +90,18 @@ class ScoopModel {
   }
 
   Map<String, dynamic> toFirestore() {
+    // Génération automatique du code localité si absent
+    String? finalCodeLocalite = codeLocalite;
+    if (finalCodeLocalite == null || finalCodeLocalite.isEmpty) {
+      finalCodeLocalite = LocaliteCodificationService.generateCodeLocalite(
+        regionNom: region,
+        provinceNom: province,
+        communeNom: commune,
+      );
+      print(
+          '🔵 ScoopModel.toFirestore: Code localité généré: $finalCodeLocalite');
+    }
+
     return {
       'nom': nom,
       'president': president,
@@ -84,6 +113,7 @@ class ScoopModel {
       'arrondissement': arrondissement,
       'secteur': secteur,
       'quartier': quartier,
+      'code_localite': finalCodeLocalite, // NOUVEAU champ
       'nbRuchesTrad': nbRuchesTrad,
       'nbRuchesModernes': nbRuchesModernes,
       'nbMembres': nbMembres,
@@ -128,9 +158,9 @@ class ScoopModel {
 
 /// Types de contenants autorisés
 enum ContenantType {
-  seau('Seau'), // 🔧 Correction: seau doit afficher "Seau"
+  seau('Seau'),
   bidon('Bidon'),
-  fut('Fût'), // 🆕 Ajout du fût comme type séparé
+  fut('Fût'),
   sac('Sac');
 
   const ContenantType(this.label);
@@ -138,17 +168,16 @@ enum ContenantType {
 
   /// Retourne les types de contenants disponibles selon le type de miel
   static List<ContenantType> getTypesForMiel(MielType typeMiel) {
-    if (typeMiel == MielType.cire) {
-      // 🆕 Pour la cire, seul le sac est autorisé
-      return [ContenantType.sac];
-    } else {
-      // Pour les autres types (Liquide, Brute), tous les contenants sont disponibles
-      return [
-        ContenantType.seau,
-        ContenantType.bidon,
-        ContenantType.fut,
-        ContenantType.sac
-      ];
+    switch (typeMiel) {
+      case MielType.liquide:
+        // Pour le miel liquide: Bidon, Fût, Seau
+        return [ContenantType.bidon, ContenantType.fut, ContenantType.seau];
+      case MielType.brute:
+        // Pour le miel brute: Fût, Seau (pas de Bidon)
+        return [ContenantType.fut, ContenantType.seau];
+      case MielType.cire:
+        // Pour la cire, seul le sac est autorisé
+        return [ContenantType.sac];
     }
   }
 }
@@ -286,6 +315,7 @@ class CollecteScoopModel {
   final String statut;
   // Champs de géolocalisation
   final Map<String, dynamic>? geolocationData;
+  final String? codeLocalite; // NOUVEAU: Code de localité XX-XX-XX
 
   CollecteScoopModel({
     required this.id,
@@ -303,10 +333,15 @@ class CollecteScoopModel {
     required this.createdAt,
     this.statut = 'collecte_terminee',
     this.geolocationData,
+    this.codeLocalite, // Sera généré automatiquement si null depuis le SCOOP
   });
 
   factory CollecteScoopModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
+
+    // Le code localité peut être récupéré directement ou hérité du SCOOP
+    String? codeLocalite = data['code_localite']?.toString();
+
     return CollecteScoopModel(
       id: doc.id,
       dateAchat: data['date_achat'] != null
@@ -329,6 +364,7 @@ class CollecteScoopModel {
           : DateTime.now(), // 🔧 Fallback si null
       statut: data['statut'] ?? 'collecte_terminee',
       geolocationData: data['geolocation_data'] as Map<String, dynamic>?,
+      codeLocalite: codeLocalite,
     );
   }
 
@@ -348,6 +384,7 @@ class CollecteScoopModel {
       'observations': observations,
       'created_at': Timestamp.fromDate(createdAt),
       'statut': statut,
+      'code_localite': codeLocalite, // NOUVEAU champ
     };
 
     // Ajouter les données de géolocalisation si disponibles

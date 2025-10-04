@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../historiques_collectes.dart';
 import 'widgets/section_contenants.dart';
 import 'widgets/section_observations.dart';
-import 'package:geolocator/geolocator.dart';
+import '../../../utils/clean_geolocation.dart';
 import '../../../data/models/scoop_models.dart';
 import '../../../authentication/user_session.dart';
 import '../../../services/universal_container_id_service.dart';
@@ -39,10 +39,10 @@ class _NouvelAchatScoopContenantsPageState
 
   // Liste des étapes
   final List<String> _steps = [
+    'Géolocalisation',
     'SCOOP',
     'Période',
     'Contenants',
-    'Géolocalisation',
     'Observations',
     'Résumé'
   ];
@@ -74,16 +74,14 @@ class _NouvelAchatScoopContenantsPageState
   // Validation des étapes pour empêcher le scroll non autorisé
   bool _isStepEnabled(int stepIndex) {
     switch (stepIndex) {
-      case 0: // SCOOP
+      case 0: // Géolocalisation (maintenant en première position)
         return true;
-      case 1: // Période
+      case 1: // SCOOP
+        return true;
+      case 2: // Période
         return _selectedScoop != null;
-      case 2: // Contenants
+      case 3: // Contenants
         return _selectedScoop != null && _selectedPeriode.isNotEmpty;
-      case 3: // Géolocalisation
-        return _selectedScoop != null &&
-            _selectedPeriode.isNotEmpty &&
-            _contenants.isNotEmpty;
       case 4: // Observations
         return _selectedScoop != null &&
             _selectedPeriode.isNotEmpty &&
@@ -100,19 +98,16 @@ class _NouvelAchatScoopContenantsPageState
   void _showValidationMessage(int targetStep) {
     String message = '';
     switch (targetStep) {
-      case 1:
+      case 2:
         message = 'Veuillez d\'abord sélectionner un SCOOP';
         break;
-      case 2:
-        message = 'Veuillez d\'abord sélectionner un SCOOP et une période';
-        break;
       case 3:
-        message =
-            'Veuillez d\'abord sélectionner un SCOOP, une période et ajouter des contenants';
+        message = 'Veuillez d\'abord sélectionner un SCOOP et une période';
         break;
       case 4:
       case 5:
-        message = 'Veuillez compléter toutes les étapes précédentes';
+        message =
+            'Veuillez d\'abord sélectionner un SCOOP, une période et ajouter des contenants';
         break;
     }
 
@@ -359,10 +354,10 @@ class _NouvelAchatScoopContenantsPageState
                       child: TabBarView(
                         controller: _tabController,
                         children: [
+                          _buildGeolocationSection(),
                           _buildScoopSection(),
                           _buildPeriodeSection(),
                           _buildContenantsSection(),
-                          _buildGeolocationSection(),
                           _buildObservationsSection(),
                           _buildResumeSection(),
                         ],
@@ -781,73 +776,32 @@ class _NouvelAchatScoopContenantsPageState
   }
 
   Future<void> _getCurrentLocation() async {
-    try {
-      // Vérifier les permissions
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          Get.snackbar(
-            'Permission refusée',
-            'L\'accès à la géolocalisation est requis',
-            backgroundColor: Colors.red.shade100,
-            colorText: Colors.red.shade800,
-            icon: const Icon(Icons.error, color: Colors.red),
-          );
-          return;
-        }
-      }
+    // Utilisation de CleanGeolocation pour éviter les erreurs UTF-8
+    final position = await CleanGeolocation.getCurrentLocationClean();
 
-      if (permission == LocationPermission.deniedForever) {
-        Get.snackbar(
-          'Permission définitivement refusée',
-          'Activez la géolocalisation dans les paramètres',
-          backgroundColor: Colors.red.shade100,
-          colorText: Colors.red.shade800,
-          icon: const Icon(Icons.error, color: Colors.red),
-        );
-        return;
-      }
-
-      // Obtenir la position
-      Get.snackbar(
-        'Géolocalisation',
-        'Obtention de votre position...',
-        backgroundColor: Colors.blue.shade100,
-        colorText: Colors.blue.shade800,
-        icon: const Icon(Icons.location_searching, color: Colors.blue),
-        duration: const Duration(seconds: 2),
-      );
-
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-
-      // Note: L'adresse sera remplie par le reverse geocoding côté serveur si nécessaire
-      String? address =
-          'Lat: ${position.latitude.toStringAsFixed(6)}, Lng: ${position.longitude.toStringAsFixed(6)}';
-
+    if (position != null) {
       setState(() {
         _geolocationData = {
-          'latitude': position.latitude,
-          'longitude': position.longitude,
-          'accuracy': position.accuracy,
-          'timestamp': position.timestamp,
-          'address': address,
+          'latitude': position['latitude'],
+          'longitude': position['longitude'],
+          'accuracy': position['accuracy'],
+          'timestamp': position['timestamp'],
+          'address':
+              'Lat: ${position['latitude'].toStringAsFixed(6)}, Lng: ${position['longitude'].toStringAsFixed(6)}',
         };
       });
 
       Get.snackbar(
         'Position obtenue !',
-        'Géolocalisation réussie avec une précision de ${position.accuracy.toStringAsFixed(1)} m',
+        'Géolocalisation réussie avec une précision de ${position['accuracy'].toStringAsFixed(1)} m',
         backgroundColor: Colors.green.shade100,
         colorText: Colors.green.shade800,
         icon: const Icon(Icons.check_circle, color: Colors.green),
       );
-    } catch (e) {
+    } else {
       Get.snackbar(
         'Erreur de géolocalisation',
-        'Impossible d\'obtenir votre position: $e',
+        'Impossible d\'obtenir votre position',
         backgroundColor: Colors.red.shade100,
         colorText: Colors.red.shade800,
         icon: const Icon(Icons.error, color: Colors.red),

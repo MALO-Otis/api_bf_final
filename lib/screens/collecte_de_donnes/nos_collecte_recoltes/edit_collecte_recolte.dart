@@ -1,11 +1,13 @@
-import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:apisavana_gestion/utils/role_utils.dart';
 import 'package:apisavana_gestion/authentication/user_session.dart';
-import 'package:apisavana_gestion/data/geographe/geographie.dart';
 import 'package:apisavana_gestion/data/personnel/personnel_apisavana.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/core/collecte_reference_service.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/core/collecte_geographie_service.dart';
 
 class EditCollecteRecoltePage extends StatefulWidget {
   final String collecteId;
@@ -27,6 +29,9 @@ class EditCollecteRecoltePage extends StatefulWidget {
 class _EditCollecteRecoltePageState extends State<EditCollecteRecoltePage> {
   bool isLoading = true;
   bool isEditingContainer = false;
+
+  // Service de géographie depuis Firestore (remplace les données locales)
+  late final CollecteGeographieService _geographieService;
   int? editingContainerIndex;
   String? statusMessage;
 
@@ -62,23 +67,46 @@ class _EditCollecteRecoltePageState extends State<EditCollecteRecoltePage> {
     {'value': 'rejete', 'label': 'Rejeté'},
   ];
 
+  List<String> get _currentUserRoles {
+    final roles = <String>[];
+    for (final role in extractNormalizedRoles(currentUserData?['role'])) {
+      if (!roles.contains(role)) {
+        roles.add(role);
+      }
+    }
+    if (userSession != null) {
+      for (final role in extractNormalizedRoles(userSession!.roles)) {
+        if (!roles.contains(role)) {
+          roles.add(role);
+        }
+      }
+    }
+    return roles;
+  }
+
   // Vérification du rôle admin
   bool get isAdmin {
-    final role = currentUserData?['role']?.toString().toLowerCase();
-    return role == 'admin' || role == 'administrateur';
+    final loweredRoles =
+        _currentUserRoles.map((role) => role.toLowerCase()).toSet();
+    return loweredRoles.contains('admin') ||
+        loweredRoles.contains('administrateur');
   }
 
   final List<String> hiveTypes = ['Traditionnel', 'Moderne'];
-  final List<String> containerTypes = ['Bidon', 'Seau', 'Fût'];
+  final List<String> containerTypes = ['Seau', 'Fût'];
 
-  // Listes de données géographiques et personnel
+  // Services pour charger les données depuis Firestore
+  late final CollecteReferenceService _referenceService;
+
+  // Listes de données géographiques et personnel depuis Firestore
   final List<String> sites = sitesApisavana;
-  final List<String> regions = regionsBurkina;
-  final List<String> techniciens =
-      techniciensApisavana.map((t) => t.nomComplet).toList();
-  final List<String> florales = predominancesFlorales;
 
-  // Variables pour gérer les dépendances géographiques
+  // Variables réactives pour les données de référence
+  List<String> techniciens = [];
+  List<String> florales = [];
+  String? currentUserName;
+
+  // Variables pour gérer les dépendances géographiques (données dynamiques depuis Firestore)
   List<String> availableProvinces = [];
   List<String> availableCommunes = [];
   List<String> availableVillages = [];
@@ -89,6 +117,8 @@ class _EditCollecteRecoltePageState extends State<EditCollecteRecoltePage> {
   @override
   void initState() {
     super.initState();
+    _geographieService = Get.find<CollecteGeographieService>();
+    _referenceService = Get.find<CollecteReferenceService>();
     _initializeUserData();
   }
 
@@ -97,6 +127,9 @@ class _EditCollecteRecoltePageState extends State<EditCollecteRecoltePage> {
     setState(() => isLoading = true);
 
     try {
+      // Charger les données de référence (techniciens et prédominances florales)
+      await _loadReferenceData();
+
       // Récupérer l'utilisateur connecté
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
@@ -132,6 +165,41 @@ class _EditCollecteRecoltePageState extends State<EditCollecteRecoltePage> {
         statusMessage = 'Erreur lors du chargement des données: $e';
         isLoading = false;
       });
+    }
+  }
+
+  // Charge les données de référence (techniciens et prédominances florales)
+  Future<void> _loadReferenceData() async {
+    try {
+      // Attendre que le service soit prêt
+      if (!_referenceService.isReady) {
+        await _referenceService.initialise();
+      }
+
+      // Charger les prédominances florales
+      florales = _referenceService.floralPredominenceNames;
+
+      // Charger les techniciens
+      final techniciansData = await _referenceService.fetchTechnicians();
+      techniciens = techniciansData.map((t) => t.fullName).toList();
+
+      // Obtenir le nom de l'utilisateur connecté
+      currentUserName = _referenceService.currentTechnicianName;
+
+      print('[EditCollecteRecolte] ✅ Données de référence chargées:');
+      print(
+          '[EditCollecteRecolte] - Prédominances florales: ${florales.length}');
+      print('[EditCollecteRecolte] - Techniciens: ${techniciens.length}');
+      print('[EditCollecteRecolte] - Utilisateur connecté: $currentUserName');
+    } catch (e) {
+      print(
+          '[EditCollecteRecolte] ❌ Erreur lors du chargement des données de référence: $e');
+
+      // Utiliser des données de fallback en cas d'erreur
+      florales = predominancesFlorales;
+      techniciens = techniciensApisavana.map((t) => t.nomComplet).toList();
+
+      print('[EditCollecteRecolte] ⚠️ Utilisation des données de fallback');
     }
   }
 
@@ -237,6 +305,14 @@ class _EditCollecteRecoltePageState extends State<EditCollecteRecoltePage> {
       // Charger les champs obligatoires
       selectedSite = collecte!['site']?.toString();
       selectedTechnician = collecte!['technicien_nom']?.toString();
+
+      // Si aucun technicien n'est défini, utiliser l'utilisateur connecté
+      if (selectedTechnician == null || selectedTechnician!.isEmpty) {
+        selectedTechnician = currentUserName;
+        print(
+            '[EditCollecteRecolte] 🔄 Technicien pré-rempli avec l\'utilisateur connecté: $currentUserName');
+      }
+
       selectedRegion = collecte!['region']?.toString();
       selectedProvince = collecte!['province']?.toString();
       selectedCommune = collecte!['commune']?.toString();
@@ -1161,10 +1237,16 @@ class _EditCollecteRecoltePageState extends State<EditCollecteRecoltePage> {
     );
   }
 
-  // Méthodes pour mettre à jour les listes dépendantes
+  // Méthodes pour mettre à jour les listes dépendantes (utilise Firestore)
   void _updateAvailableProvinces(String? region) {
-    if (region != null && provincesParRegion.containsKey(region)) {
-      availableProvinces = provincesParRegion[region]!;
+    if (region != null) {
+      final regionCode = _geographieService.getRegionCodeByName(region);
+      if (regionCode != null) {
+        final provinces = _geographieService.getProvincesForRegion(regionCode);
+        availableProvinces = provinces.map((p) => p['nom']!).toList();
+      } else {
+        availableProvinces = [];
+      }
       selectedProvince = null;
       selectedCommune = null;
       selectedVillage = null;
@@ -1181,8 +1263,20 @@ class _EditCollecteRecoltePageState extends State<EditCollecteRecoltePage> {
   }
 
   void _updateAvailableCommunes(String? province) {
-    if (province != null && communesParProvince.containsKey(province)) {
-      availableCommunes = communesParProvince[province]!;
+    if (province != null && selectedRegion != null) {
+      final regionCode =
+          _geographieService.getRegionCodeByName(selectedRegion!);
+      final provinceCode = regionCode != null
+          ? _geographieService.getProvinceCodeByName(regionCode, province)
+          : null;
+
+      if (regionCode != null && provinceCode != null) {
+        final communes =
+            _geographieService.getCommunesForProvince(regionCode, provinceCode);
+        availableCommunes = communes.map((c) => c['nom']!).toList();
+      } else {
+        availableCommunes = [];
+      }
       selectedCommune = null;
       selectedVillage = null;
       availableVillages = [];
@@ -1195,8 +1289,25 @@ class _EditCollecteRecoltePageState extends State<EditCollecteRecoltePage> {
   }
 
   void _updateAvailableVillages(String? commune) {
-    if (commune != null && villagesParCommune.containsKey(commune)) {
-      availableVillages = villagesParCommune[commune]!;
+    if (commune != null && selectedRegion != null && selectedProvince != null) {
+      final regionCode =
+          _geographieService.getRegionCodeByName(selectedRegion!);
+      final provinceCode = regionCode != null
+          ? _geographieService.getProvinceCodeByName(
+              regionCode, selectedProvince!)
+          : null;
+      final communeCode = (regionCode != null && provinceCode != null)
+          ? _geographieService.getCommuneCodeByName(
+              regionCode, provinceCode, commune)
+          : null;
+
+      if (regionCode != null && provinceCode != null && communeCode != null) {
+        final villages = _geographieService.getVillagesForCommune(
+            regionCode, provinceCode, communeCode);
+        availableVillages = villages.map((v) => v['nom']!).toList();
+      } else {
+        availableVillages = [];
+      }
       selectedVillage = null;
     } else {
       availableVillages = [];
@@ -1344,7 +1455,9 @@ class _EditCollecteRecoltePageState extends State<EditCollecteRecoltePage> {
                                         _buildEditableDropdown(
                                           label: 'Région *',
                                           value: selectedRegion,
-                                          items: regions,
+                                          items: _geographieService.regions
+                                              .map((r) => r.nom)
+                                              .toList(),
                                           onChanged: (value) => setState(() {
                                             selectedRegion = value;
                                             _updateAvailableProvinces(value);
@@ -1370,7 +1483,9 @@ class _EditCollecteRecoltePageState extends State<EditCollecteRecoltePage> {
                                           child: _buildEditableDropdown(
                                             label: 'Région *',
                                             value: selectedRegion,
-                                            items: regions,
+                                            items: _geographieService.regions
+                                                .map((r) => r.nom)
+                                                .toList(),
                                             onChanged: (value) => setState(() {
                                               selectedRegion = value;
                                               _updateAvailableProvinces(value);

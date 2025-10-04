@@ -1,9 +1,12 @@
-import 'package:apisavana_gestion/data/geographe/geographie.dart';
-import 'package:apisavana_gestion/authentication/user_session.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:get/get.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:apisavana_gestion/authentication/user_session.dart';
+import 'package:apisavana_gestion/data/personnel/personnel_apisavana.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/core/collecte_reference_service.dart';
+import 'package:apisavana_gestion/screens/collecte_de_donnes/core/collecte_geographie_service.dart';
 
 enum TypeCollecte { recolte, achat }
 
@@ -13,6 +16,34 @@ class CollecteController extends GetxController {
   //############################################################################################################
   //############################################################################################################
   late final RxDouble prixTotalRx = RxDouble(0.0);
+
+  final CollecteReferenceService referenceService =
+      Get.put(CollecteReferenceService(), permanent: true);
+
+  final CollecteGeographieService geographieService =
+      Get.put(CollecteGeographieService(), permanent: true);
+
+  final RxList<String> _techniciens = <String>[].obs;
+  final RxList<String> _floralOptions = <String>[].obs;
+
+  StreamSubscription<List<TechnicianSummary>>? _technicianSubscription;
+
+  static const List<String> _fallbackFloralPredominences = [
+    'Karité',
+    'Néré',
+    'Acacia',
+    'Manguier',
+    'Baobab',
+    'Eucalyptus',
+    'Tamarinier',
+  ];
+
+  List<String> get techniciens => List<String>.unmodifiable(_techniciens);
+
+  List<String> get flores => List<String>.unmodifiable(_floralOptions);
+
+  List<String> get regionsDisponibles =>
+      referenceService.regions.map((region) => region.name).toList();
 
   // Communs
   final dateCollecte = Rxn<DateTime>();
@@ -50,33 +81,63 @@ class CollecteController extends GetxController {
   final province = RxnString();
   final commune = RxnString();
   final village = RxnString(); // tu complèteras plus tard
-  final List<String> techniciens = [
-    "ZOUNGRANA	Valentin",
-    "ROAMBA	F Y Ferdinand",
-    "YAMEOGO	A Clément",
-    "SANOU	Sitelé",
-    "YAMEOGO	Justin",
-    "Sanogo	Issouf",
-    "OUATTARA	Baladji",
-    "OUTTARA	Lassina",
-    "YAMEOGO	Innocent",
-    "OUEDRAOGO 	Issouf",
-    "YAMEOGO	Hippolyte",
-    "TRAORE	Abdoul Aziz",
-    "SIEMDE	Souleymane",
-    "KABORE	Adama",
-    "OUEDRAOGO	Adama",
-    "Milogo	Anicet",
-  ];
+  List<String> getProvincesForRegion(String? regionName) {
+    if (regionName == null || regionName.trim().isEmpty) {
+      return [];
+    }
 
-  List<String> getProvincesForRegion(String? region) =>
-      region == null ? [] : provincesParRegion[region] ?? [];
+    var regionMatch = referenceService.resolveRegion(regionName.trim());
 
-  List<String> getCommunesForProvince(String? province) =>
-      province == null ? [] : communesParProvince[province] ?? [];
+    if (regionMatch == null) {
+      try {
+        regionMatch = referenceService.regions.firstWhere(
+          (region) =>
+              region.code.toLowerCase() == regionName.trim().toLowerCase(),
+        );
+      } catch (_) {
+        regionMatch = null;
+      }
+    }
 
-  List<String> getVillagesForCommune(String? commune) =>
-      commune == null ? [] : villagesParCommune[commune] ?? [];
+    if (regionMatch == null) {
+      return [];
+    }
+
+    return referenceService
+        .provincesForRegion(regionMatch.code)
+        .map((province) => province.name)
+        .toList();
+  }
+
+  List<String> getCommunesForProvince(String? provinceName) {
+    if (provinceName == null || provinceName.trim().isEmpty) {
+      return [];
+    }
+
+    final trimmed = provinceName.trim();
+
+    // Utiliser le service pour obtenir les communes
+    final communes = geographieService.getCommunesForProvince(trimmed, '');
+    return communes
+        .map((commune) => commune['nom'] ?? '')
+        .where((nom) => nom.isNotEmpty)
+        .toList();
+  }
+
+  List<String> getVillagesForCommune(String? communeName) {
+    if (communeName == null || communeName.trim().isEmpty) {
+      return [];
+    }
+
+    final trimmed = communeName.trim();
+
+    // Utiliser le service pour obtenir les villages
+    final villages = geographieService.getVillagesForCommune(trimmed, '', '');
+    return villages
+        .map((village) => village['nom'] ?? '')
+        .where((nom) => nom.isNotEmpty)
+        .toList();
+  }
 
   // Ajoute dans le controller
   final RxList<String> predominancesFloralesSelected = <String>[].obs;
@@ -161,15 +222,6 @@ class CollecteController extends GetxController {
     'Rucher B': ['Charles', 'Denis'],
     'Rucher C': ['Eve', 'Fatou'],
   };
-  final List<String> flores = [
-    'Karité',
-    'Néré',
-    'Manguier',
-    'Baobab',
-    'NEEMIER',
-    'Ekalptus',
-    'Autres'
-  ];
   /*final List<String> scoopsConnues = [
     'SCOOPS Yam',
     'SCOOPS Faso',
@@ -240,6 +292,139 @@ class CollecteController extends GetxController {
     prixUnitaireScoopsCtrl.addListener(() {
       prixUnitaireScoops.value = double.tryParse(prixUnitaireScoopsCtrl.text);
     });
+
+    _loadReferenceData();
+  }
+
+  @override
+  void onClose() {
+    _technicianSubscription?.cancel();
+    super.onClose();
+  }
+
+  Future<void> _loadReferenceData() async {
+    try {
+      await referenceService.initialise();
+      _updateFloralOptions(referenceService.floralPredominenceNames);
+
+      final site = _resolveCurrentSite();
+      final initialTechnicians =
+          await referenceService.fetchTechnicians(site: site);
+
+      _updateTechniciens(
+        initialTechnicians.map((tech) => tech.fullName).toList(),
+      );
+
+      _technicianSubscription?.cancel();
+      _technicianSubscription =
+          referenceService.watchTechnicians(site: site).listen(
+        (technicians) {
+          _updateTechniciens(
+            technicians.map((tech) => tech.fullName).toList(),
+          );
+        },
+        onError: (_) {
+          if (_techniciens.isEmpty) {
+            _updateTechniciens(const []);
+          }
+        },
+      );
+    } catch (e) {
+      debugPrint('CollecteController::_loadReferenceData error: $e');
+      if (_floralOptions.isEmpty) {
+        _updateFloralOptions(const []);
+      }
+      if (_techniciens.isEmpty) {
+        _updateTechniciens(const []);
+      }
+    }
+  }
+
+  String? _resolveCurrentSite() {
+    if (!Get.isRegistered<UserSession>()) {
+      return null;
+    }
+
+    final session = Get.find<UserSession>();
+    final site = session.site?.trim();
+    if (site == null || site.isEmpty) {
+      return null;
+    }
+    return site;
+  }
+
+  void _updateFloralOptions(List<String> options) {
+    final sanitized = options
+        .map((name) => name.trim())
+        .where((name) => name.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+    if (sanitized.isEmpty) {
+      _floralOptions.assignAll(_fallbackFloralPredominences);
+    } else {
+      _floralOptions.assignAll(sanitized);
+    }
+  }
+
+  void _updateTechniciens(List<String> names) {
+    List<String> sanitized = names
+        .map((name) => name.trim())
+        .where((name) => name.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+    if (sanitized.isEmpty) {
+      sanitized = PersonnelUtils.getAllTechnicienNames()
+        ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    }
+
+    _techniciens.assignAll(sanitized);
+  }
+
+  double? prixConditionnementParDefaut({
+    String? packagingCode,
+    String? packagingLabel,
+    double? poidsKg,
+    bool isMonoFloral = false,
+  }) {
+    final segment = isMonoFloral
+        ? CollecteProductSegment.monoFloral
+        : CollecteProductSegment.milleFleurs;
+
+    if (packagingCode != null && packagingCode.trim().isNotEmpty) {
+      final price = referenceService.priceForPackaging(
+        packagingCode: packagingCode.trim(),
+        segment: segment,
+      );
+      if (price != null && price > 0) {
+        return price;
+      }
+    }
+
+    if (packagingLabel != null && packagingLabel.trim().isNotEmpty) {
+      final price = referenceService.priceForLabel(
+        packagingLabel: packagingLabel.trim(),
+        segment: segment,
+      );
+      if (price != null && price > 0) {
+        return price;
+      }
+    }
+
+    if (poidsKg != null && poidsKg > 0) {
+      final price = referenceService.priceForWeight(
+        poidsKg,
+        segment: segment,
+      );
+      if (price != null && price > 0) {
+        return price;
+      }
+    }
+
+    return null;
   }
 
   void _updatePrixTotalScoops() {

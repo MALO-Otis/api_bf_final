@@ -1,8 +1,10 @@
+import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../core/collecte_geographie_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../data/models/collecte_models.dart';
-import 'package:apisavana_gestion/data/geographe/geographie.dart';
+import '../../../../widgets/geographic_selection_widget.dart';
 
 class ModalNouveauProducteur extends StatefulWidget {
   final String nomSite;
@@ -26,10 +28,14 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
   final _nbRuchesModController = TextEditingController();
   final _nomCooperativeController = TextEditingController();
 
+  // Service géographie Firestore
+  late CollecteGeographieService _geographieService;
+
   String _sexeSelectionne = '';
-  String _ageSelectionne =
-      ''; // Changement : sélecteur au lieu de TextEditingController
+  String _ageSelectionne = '';
   String _appartenanceSelectionnee = '';
+
+  // Variables géographiques simplifiées
   String _regionSelectionnee = '';
   String _provinceSelectionnee = '';
   String _communeSelectionnee = '';
@@ -37,6 +43,7 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
   bool _villagePersonnaliseActive = false;
   final TextEditingController _villagePersonnaliseController =
       TextEditingController();
+
   List<String> _predominancesFloralesSelectionnees = [];
 
   bool _isLoading = false;
@@ -65,32 +72,60 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
     'Filao',
   ];
 
-  // Utilisation du nouveau système GeographieData
-  List<Map<String, dynamic>> get _provinces {
-    if (_regionSelectionnee.isEmpty) return [];
-    final regionCode = GeographieData.getRegionCodeByName(_regionSelectionnee);
-    return GeographieData.getProvincesForRegion(regionCode);
-  }
+  @override
+  void initState() {
+    super.initState();
+    print('[ModalNouveauProducteur] 🚀 Initialisation du widget...');
 
-  List<Map<String, dynamic>> get _communes {
-    if (_regionSelectionnee.isEmpty || _provinceSelectionnee.isEmpty) return [];
-    final regionCode = GeographieData.getRegionCodeByName(_regionSelectionnee);
-    final provinceCode =
-        GeographieData.getProvinceCodeByName(regionCode, _provinceSelectionnee);
-    return GeographieData.getCommunesForProvince(regionCode, provinceCode);
-  }
+    // Initialiser le service géographie de façon plus robuste
+    try {
+      _geographieService = Get.find<CollecteGeographieService>();
+      print('[ModalNouveauProducteur] ✅ Service trouvé dans GetX');
+    } catch (e) {
+      print(
+          '[ModalNouveauProducteur] ⚠️  Service non trouvé, injection en cours...');
+      // Si le service n'est pas trouvé, on l'injecte ET on force l'initialisation
+      final service = CollecteGeographieService();
+      Get.put<CollecteGeographieService>(service, permanent: true);
+      _geographieService = service;
+      print('[ModalNouveauProducteur] ✅ Service injecté avec succès');
 
-  List<Map<String, dynamic>> get _villages {
-    if (_regionSelectionnee.isEmpty ||
-        _provinceSelectionnee.isEmpty ||
-        _communeSelectionnee.isEmpty) return [];
-    final regionCode = GeographieData.getRegionCodeByName(_regionSelectionnee);
-    final provinceCode =
-        GeographieData.getProvinceCodeByName(regionCode, _provinceSelectionnee);
-    final communeCode = GeographieData.getCommuneCodeByName(
-        regionCode, provinceCode, _communeSelectionnee);
-    return GeographieData.getVillagesForCommune(
-        regionCode, provinceCode, communeCode);
+      // Forcer l'initialisation manuelle car onInit() pourrait ne pas être appelé
+      service.onInit();
+    }
+
+    print('[ModalNouveauProducteur] 📊 État initial du service:');
+    print('  - isLoading: ${_geographieService.isLoading}');
+    print('  - error: "${_geographieService.error}"');
+    print('  - regions: ${_geographieService.regions.length}');
+
+    // Forcer le chargement ET attendre un délai pour les logs
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      print(
+          '[ModalNouveauProducteur] 🔄 PostFrameCallback - Vérification des données...');
+
+      // Attendre un peu pour laisser le temps aux éventuelles données de se charger
+      await Future.delayed(Duration(milliseconds: 500));
+
+      print('[ModalNouveauProducteur] 📊 État après délai:');
+      print('  - isLoading: ${_geographieService.isLoading}');
+      print('  - error: "${_geographieService.error}"');
+      print('  - regions: ${_geographieService.regions.length}');
+
+      if (_geographieService.regions.isEmpty && !_geographieService.isLoading) {
+        print(
+            '[ModalNouveauProducteur] 📡 Déclenchement FORCÉ du chargement des données...');
+        await _geographieService.loadGeographieData();
+
+        print('[ModalNouveauProducteur] 📊 État après chargement forcé:');
+        print('  - isLoading: ${_geographieService.isLoading}');
+        print('  - error: "${_geographieService.error}"');
+        print('  - regions: ${_geographieService.regions.length}');
+      } else {
+        print(
+            '[ModalNouveauProducteur] ✅ Données déjà disponibles ou en cours de chargement');
+      }
+    });
   }
 
   @override
@@ -365,6 +400,72 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
                   padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                   child: Column(
                     children: [
+                      // Localisation avec widget unifié
+                      _buildSection(
+                        'Localisation',
+                        Icons.location_on,
+                        [
+                          GeographicSelectionWidget(
+                            selectedRegion: _regionSelectionnee,
+                            selectedProvince: _provinceSelectionnee,
+                            selectedCommune: _communeSelectionnee,
+                            selectedVillage: _villageSelectionne,
+                            villagePersonnaliseActive:
+                                _villagePersonnaliseActive,
+                            villagePersonnalise:
+                                _villagePersonnaliseController.text,
+                            onRegionChanged: (value) {
+                              setState(() {
+                                _regionSelectionnee = value ?? '';
+                                _provinceSelectionnee = '';
+                                _communeSelectionnee = '';
+                                _villageSelectionne = '';
+                                _villagePersonnaliseActive = false;
+                                _villagePersonnaliseController.clear();
+                              });
+                            },
+                            onProvinceChanged: (value) {
+                              setState(() {
+                                _provinceSelectionnee = value ?? '';
+                                _communeSelectionnee = '';
+                                _villageSelectionne = '';
+                                _villagePersonnaliseActive = false;
+                                _villagePersonnaliseController.clear();
+                              });
+                            },
+                            onCommuneChanged: (value) {
+                              setState(() {
+                                _communeSelectionnee = value ?? '';
+                                _villageSelectionne = '';
+                                _villagePersonnaliseActive = false;
+                                _villagePersonnaliseController.clear();
+                              });
+                            },
+                            onVillageChanged: (value) {
+                              setState(() {
+                                _villageSelectionne = value ?? '';
+                              });
+                            },
+                            onVillagePersonnaliseToggle: (value) {
+                              setState(() {
+                                _villagePersonnaliseActive = value;
+                                if (!value) {
+                                  _villagePersonnaliseController.clear();
+                                } else {
+                                  _villageSelectionne = '';
+                                }
+                              });
+                            },
+                            onVillagePersonnaliseChanged: (value) {
+                              _villagePersonnaliseController.text = value;
+                            },
+                            showRefreshButton: false,
+                          ),
+                        ],
+                        isSmallScreen,
+                      ),
+                      const SizedBox(height: 20),
+
                       // Informations personnelles
                       _buildSection(
                         'Informations personnelles',
@@ -581,235 +682,6 @@ class _ModalNouveauProducteurState extends State<ModalNouveauProducteur> {
                               );
                             }).toList(),
                           ),
-                        ],
-                        isSmallScreen,
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // Localisation
-                      _buildSection(
-                        'Localisation',
-                        Icons.location_on,
-                        [
-                          _buildDropdown(
-                            'Région *',
-                            _regionSelectionnee,
-                            GeographieData.regionsBurkina
-                                .map((r) => r['nom'].toString())
-                                .toList(),
-                            (value) {
-                              setState(() {
-                                _regionSelectionnee = value!;
-                                _provinceSelectionnee = '';
-                                _communeSelectionnee = '';
-                                _villageSelectionne = '';
-                                _villagePersonnaliseActive = false;
-                                _villagePersonnaliseController.clear();
-                              });
-                            },
-                          ),
-                          if (_regionSelectionnee.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            _buildDropdown(
-                              'Province *',
-                              _provinceSelectionnee,
-                              _provinces
-                                  .map((p) => p['nom'].toString())
-                                  .toList(),
-                              (value) {
-                                setState(() {
-                                  _provinceSelectionnee = value!;
-                                  _communeSelectionnee = '';
-                                  _villageSelectionne = '';
-                                  _villagePersonnaliseActive = false;
-                                  _villagePersonnaliseController.clear();
-                                });
-                              },
-                            ),
-                          ],
-                          if (_provinceSelectionnee.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            _buildDropdown(
-                              'Commune *',
-                              _communeSelectionnee,
-                              _communes
-                                  .map((c) => c['nom'].toString())
-                                  .toList(),
-                              (value) {
-                                setState(() {
-                                  _communeSelectionnee = value!;
-                                  _villageSelectionne = '';
-                                  _villagePersonnaliseActive = false;
-                                  _villagePersonnaliseController.clear();
-                                });
-                              },
-                            ),
-                          ],
-                          // Section Village avec option personnalisée
-                          if (_communeSelectionnee.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            // Option : Village de la liste ou personnalisé
-                            LayoutBuilder(
-                              builder: (context, constraints) {
-                                final isVerySmallScreen =
-                                    constraints.maxWidth < 350;
-
-                                if (isVerySmallScreen) {
-                                  // Sur très petits écrans : disposition verticale
-                                  return Column(
-                                    children: [
-                                      RadioListTile<bool>(
-                                        title: Text('Village de la liste',
-                                            style: TextStyle(fontSize: 12)),
-                                        value: false,
-                                        groupValue: _villagePersonnaliseActive,
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _villagePersonnaliseActive = value!;
-                                            if (!_villagePersonnaliseActive) {
-                                              _villagePersonnaliseController
-                                                  .clear();
-                                            } else {
-                                              _villageSelectionne = '';
-                                            }
-                                          });
-                                        },
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                                horizontal: 4),
-                                        dense: true,
-                                      ),
-                                      RadioListTile<bool>(
-                                        title: Text('Village non répertorié',
-                                            style: TextStyle(fontSize: 12)),
-                                        value: true,
-                                        groupValue: _villagePersonnaliseActive,
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _villagePersonnaliseActive = value!;
-                                            if (!_villagePersonnaliseActive) {
-                                              _villagePersonnaliseController
-                                                  .clear();
-                                            } else {
-                                              _villageSelectionne = '';
-                                            }
-                                          });
-                                        },
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                                horizontal: 4),
-                                        dense: true,
-                                      ),
-                                    ],
-                                  );
-                                } else {
-                                  // Sur écrans normaux : disposition horizontale
-                                  return Row(
-                                    children: [
-                                      Expanded(
-                                        child: RadioListTile<bool>(
-                                          title: Text('Village de la liste',
-                                              style: TextStyle(
-                                                  fontSize:
-                                                      isSmallScreen ? 12 : 14)),
-                                          value: false,
-                                          groupValue:
-                                              _villagePersonnaliseActive,
-                                          onChanged: (value) {
-                                            setState(() {
-                                              _villagePersonnaliseActive =
-                                                  value!;
-                                              if (!_villagePersonnaliseActive) {
-                                                _villagePersonnaliseController
-                                                    .clear();
-                                              } else {
-                                                _villageSelectionne = '';
-                                              }
-                                            });
-                                          },
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: RadioListTile<bool>(
-                                          title: Text('Village non répertorié',
-                                              style: TextStyle(
-                                                  fontSize:
-                                                      isSmallScreen ? 12 : 14)),
-                                          value: true,
-                                          groupValue:
-                                              _villagePersonnaliseActive,
-                                          onChanged: (value) {
-                                            setState(() {
-                                              _villagePersonnaliseActive =
-                                                  value!;
-                                              if (!_villagePersonnaliseActive) {
-                                                _villagePersonnaliseController
-                                                    .clear();
-                                              } else {
-                                                _villageSelectionne = '';
-                                              }
-                                            });
-                                          },
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                }
-                              },
-                            ),
-                            const SizedBox(height: 12),
-                            // Dropdown des villages ou champ de saisie selon le choix
-                            if (!_villagePersonnaliseActive) ...[
-                              _buildDropdown(
-                                'Village *',
-                                _villageSelectionne,
-                                _villages
-                                    .map((v) => v['nom'].toString())
-                                    .toList(),
-                                (value) {
-                                  setState(() {
-                                    _villageSelectionne = value!;
-                                  });
-                                },
-                              ),
-                              // Affichage du nombre de villages disponibles
-                              if (_villages.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Text(
-                                    '${_villages.length} village(s) disponible(s)',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey.shade600,
-                                    ),
-                                  ),
-                                ),
-                            ] else ...[
-                              _buildTextField(
-                                _villagePersonnaliseController,
-                                'Nom du village non répertorié *',
-                                Icons.location_city,
-                                validator: (value) {
-                                  if (_villagePersonnaliseActive &&
-                                      (value?.isEmpty ?? true)) {
-                                    return 'Veuillez saisir le nom du village';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Text(
-                                  'Ce village sera ajouté comme village personnalisé',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.orange.shade600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
                         ],
                         isSmallScreen,
                       ),

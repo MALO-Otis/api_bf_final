@@ -91,7 +91,7 @@ class AttributionSalesCombinedReportPdf {
         ApiSavanaPdfService.createStyledTable(data: data),
         if (list.length > 12)
           pw.Text('... ${list.length - 12} autres',
-              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.black)),
       ]);
     }
 
@@ -153,8 +153,8 @@ class AttributionSalesCombinedReportPdf {
               pw.SizedBox(height: 12),
               pw.Text(
                   'Généré le ${ApiSavanaPdfService.formatDateTime(DateTime.now())}.',
-                  style: const pw.TextStyle(
-                      fontSize: 9, color: PdfColors.grey600)),
+                  style:
+                      const pw.TextStyle(fontSize: 9, color: PdfColors.black)),
             ]));
 
     return pdf.save();

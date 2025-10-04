@@ -10,9 +10,9 @@ import 'package:flutter/foundation.dart';
 import '../models/quality_control_models.dart';
 import '../services/global_refresh_service.dart';
 import '../services/firestore_data_service.dart';
-import '../../../data/geographe/geographie.dart';
 import '../services/quality_control_service.dart';
 import '../../../authentication/user_session.dart';
+import '../../collecte_de_donnes/core/collecte_geographie_service.dart';
 // Dialog de détails d'une collecte
 
 class DetailsDialog extends StatefulWidget {
@@ -1592,9 +1592,10 @@ class _DetailsDialogState extends State<DetailsDialog> {
       'village': village ?? '',
     };
 
-    // Génération du code moderne avec GeographieData
+    // Génération du code moderne avec service Firestore
+    final geographieService = Get.find<CollecteGeographieService>();
     final localisationAvecCode =
-        GeographieData.formatLocationCodeFromMap(localisation);
+        geographieService.formatLocationCodeFromMap(localisation);
     final localisationComplete = [region, province, commune, village]
         .where((element) => element != null && element.isNotEmpty)
         .join(' › ');
