@@ -1,0 +1,1006 @@
+voici comment je veux que tu cree le module controle dans ce dossier : lib\screens\controle_de_donnes
+
+
+creer des nouveau fichiers pour tout gerer !!
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast";
+import { Search, Filter as FilterIcon, Download } from "lucide-react";
+import { AnyCollecte, Role, Section, generateMockData, exportCsv, fileNameFor, formatFCFA, formatKg } from "@/features/collectes/data";
+import { CollecteCard, DetailsDialog, ListSkeleton, MultiSelectPopover, SortMenu, SortKey, StatCard } from "@/features/collectes/components";
+
+const Index = () => {
+  const { toast } = useToast();
+
+  useEffect(() => {
+    document.title = "Collectes — Détails avancés | Apisavana";
+  }, []);
+
+  const [role, setRole] = useState<Role>("admin");
+  const [activeTab, setActiveTab] = useState<Section>("recoltes");
+  const [search, setSearch] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>(() => (localStorage.getItem("collectes_sort") as SortKey) || "date");
+  useEffect(() => { localStorage.setItem("collectes_sort", sortKey); }, [sortKey]);
+
+  const data = useMemo(() => generateMockData(48), []);
+  const allByTab: Record<Section, AnyCollecte[]> = {
+    recoltes: data.recoltes,
+    scoop: data.scoop,
+    individuel: data.individuel,
+  };
+
+  // Options for filters derived from data
+  const allSites = useMemo(() => Array.from(new Set([...data.recoltes, ...data.scoop, ...data.individuel].map(d => d.site))).sort(), [data]);
+  const allTechs = useMemo(() => Array.from(new Set([...data.recoltes, ...data.scoop, ...data.individuel].map(d => d.technicien).filter(Boolean) as string[])).sort(), [data]);
+  const allStatuses = ["en_attente", "collecte_terminee", "brouillon"];
+  const allFlorales = ["Karité", "Néré", "Acacia", "Moringa", "Anacardier", "Neem"];
+
+  const [filters, setFilters] = useState({
+    sites: [] as string[],
+    technicien: "",
+    statut: "",
+    dateFrom: "",
+    dateTo: "",
+    florales: [] as string[],
+    poidsMin: "",
+    poidsMax: "",
+    montantMin: "",
+    montantMax: "",
+    contMin: "",
+    contMax: "",
+  });
+
+  const resetFilters = () => setFilters({
+    sites: [], technicien: "", statut: "", dateFrom: "", dateTo: "", florales: [], poidsMin: "", poidsMax: "", montantMin: "", montantMax: "", contMin: "", contMax: ""
+  });
+
+  // Filter + search + role gating
+  const filtered = useMemo(() => {
+    const list = [...allByTab[activeTab]];
+    return list.filter((it) => {
+      // role: controller only his site (simulate first site)
+      if (role === "controller") {
+        const ownSite = allSites[0];
+        if (it.site !== ownSite) return false;
+      }
+      // search
+      const title = activeTab === "recoltes" ? it.site : activeTab === "scoop" ? (it as any).scoop_nom : (it as any).nom_producteur;
+      const hay = (title + " " + it.id + " " + (it.technicien || "")).toLowerCase();
+      if (search && !hay.includes(search.toLowerCase())) return false;
+      // sites
+      if (filters.sites.length && !filters.sites.includes(it.site)) return false;
+      // technicien
+      if (filters.technicien && it.technicien !== filters.technicien) return false;
+      // statut
+      if (filters.statut && it.statut !== filters.statut) return false;
+      // dates
+      if (filters.dateFrom && new Date(it.date) < new Date(filters.dateFrom)) return false;
+      if (filters.dateTo && new Date(it.date) > new Date(filters.dateTo)) return false;
+      // florales (any match)
+      if (filters.florales.length) {
+        const fl: string[] = activeTab === "recoltes" ? ((it as any).predominances_florales || [])
+          : activeTab === "individuel" ? ((it as any).origines_florales || [])
+          : [((it as any).contenants?.[0]?.predominance_florale)].filter(Boolean);
+        if (!filters.florales.some(f => fl.includes(f))) return false;
+      }
+      // numeric ranges
+      const poids = it.totalWeight || 0;
+      const montant = it.totalAmount || 0;
+      const cont = activeTab === "recoltes" ? (it as any).contenants.length : activeTab === "scoop" ? (it as any).contenants.length : (it as any).contenants.length;
+      const n = (s: string) => (s ? Number(s) : undefined);
+      const [pMin, pMax, mMin, mMax, cMin, cMax] = [n(filters.poidsMin), n(filters.poidsMax), n(filters.montantMin), n(filters.montantMax), n(filters.contMin), n(filters.contMax)];
+      if (pMin != null && poids < pMin) return false;
+      if (pMax != null && poids > pMax) return false;
+      if (mMin != null && montant < mMin) return false;
+      if (mMax != null && montant > mMax) return false;
+      if (cMin != null && cont < cMin) return false;
+      if (cMax != null && cont > cMax) return false;
+      return true;
+    });
+  }, [allByTab, activeTab, role, allSites, search, filters]);
+
+  // Sorting
+  const sorted = useMemo(() => {
+    const arr = [...filtered];
+    arr.sort((a, b) => {
+      switch (sortKey) {
+        case "date": return new Date(b.date).getTime() - new Date(a.date).getTime();
+        case "site": return a.site.localeCompare(b.site);
+        case "technicien": return (a.technicien || "").localeCompare(b.technicien || "");
+        case "poids": return (b.totalWeight || 0) - (a.totalWeight || 0);
+        case "montant": return (b.totalAmount || 0) - (a.totalAmount || 0);
+        case "contenants": {
+          const ca = (activeTab === "recoltes" ? (a as any).contenants.length : activeTab === "scoop" ? (a as any).contenants.length : (a as any).contenants.length);
+          const cb = (activeTab === "recoltes" ? (b as any).contenants.length : activeTab === "scoop" ? (b as any).contenants.length : (b as any).contenants.length);
+          return cb - ca;
+        }
+        case "libelle-asc": {
+          const ta = activeTab === "recoltes" ? a.site : activeTab === "scoop" ? (a as any).scoop_nom : (a as any).nom_producteur;
+          const tb = activeTab === "recoltes" ? b.site : activeTab === "scoop" ? (b as any).scoop_nom : (b as any).nom_producteur;
+          return ta.localeCompare(tb);
+        }
+        case "libelle-desc": {
+          const ta = activeTab === "recoltes" ? a.site : activeTab === "scoop" ? (a as any).scoop_nom : (a as any).nom_producteur;
+          const tb = activeTab === "recoltes" ? b.site : activeTab === "scoop" ? (b as any).scoop_nom : (b as any).nom_producteur;
+          return tb.localeCompare(ta);
+        }
+      }
+    });
+    return arr;
+  }, [filtered, sortKey, activeTab]);
+
+  // Stats
+  const stats = useMemo(() => {
+    const total = sorted.length;
+    const poids = sorted.reduce((s, x) => s + (x.totalWeight || 0), 0);
+    const montant = sorted.reduce((s, x) => s + (x.totalAmount || 0), 0);
+    const contenants = sorted.reduce((s, x) => s + ((x as any).contenants?.length || 0), 0);
+    return { total, poids, montant, contenants };
+  }, [sorted]);
+
+  // Infinite scroll
+  const pageSize = 20;
+  const [visible, setVisible] = useState(pageSize);
+  useEffect(() => { setVisible(pageSize); }, [activeTab, search, JSON.stringify(filters), sortKey]);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) {
+        setVisible((v) => Math.min(v + pageSize, sorted.length));
+      }
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [sorted.length]);
+
+  // Details modal
+  const [openDetails, setOpenDetails] = useState(false);
+  const [current, setCurrent] = useState<AnyCollecte | null>(null);
+
+  const canExport = role === "admin";
+  const canEdit = role === "admin";
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "/") { e.preventDefault(); (document.getElementById("global-search") as HTMLInputElement)?.focus(); }
+      if (e.key.toLowerCase() === "f") { e.preventDefault(); setShowFilters((s) => !s); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container mx-auto px-4 py-3 flex items-center gap-3">
+          <h1 className="text-xl sm:text-2xl font-semibold">Collectes — Détails avancés</h1>
+          <div className="ml-auto flex items-center gap-2">
+            <div className="relative w-64 max-w-[60vw]">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input id="global-search" placeholder="Rechercher… (/ pour focus)" className="pl-8" value={search} onChange={(e)=>setSearch(e.target.value)} />
+            </div>
+            <Button variant="outline" onClick={() => setShowFilters((s) => !s)} className="gap-2"><FilterIcon className="h-4 w-4"/>Filtres avancés</Button>
+            {canExport && (
+              <Button className="gap-2" onClick={() => {
+                const rows: (string|number)[][] = [["id","section","site","date","technicien","poids","montant","#contenants"]];
+                sorted.forEach((it) => rows.push([it.id, activeTab, it.site, new Date(it.date).toLocaleDateString('fr-FR'), it.technicien || "—", it.totalWeight || 0, it.totalAmount || 0, (it as any).contenants?.length || 0]));
+                exportCsv(fileNameFor(activeTab, filters.sites[0] || "multi", new Date(), "filtered_list"), rows);
+                toast({ title: "Export CSV", description: `${rows.length - 1} lignes exportées` });
+              }}>
+                <Download className="h-4 w-4"/>Exporter
+              </Button>
+            )}
+            <select className="border rounded-md px-2 py-1 bg-background" value={role} onChange={(e)=>setRole(e.target.value as Role)} aria-label="Rôle">
+              <option value="admin">Admin</option>
+              <option value="controller">Contrôleur</option>
+            </select>
+          </div>
+        </div>
+        <div className="container mx-auto px-4 pb-3">
+          <Tabs value={activeTab} onValueChange={(v)=>setActiveTab(v as Section)}>
+            <TabsList>
+              <TabsTrigger value="recoltes">Récoltes</TabsTrigger>
+              <TabsTrigger value="scoop">SCOOP</TabsTrigger>
+              <TabsTrigger value="individuel">Individuel</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+      </header>
+
+      {/* Filters bar */}
+      {showFilters && (
+        <div className="sticky top-[68px] z-20 border-b bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+          <div className="container mx-auto px-4 py-3 grid gap-3 md:grid-cols-4">
+            {role === 'admin' && (
+              <MultiSelectPopover label="Sites" options={allSites} values={filters.sites} onChange={(v)=>setFilters(f=>({...f, sites: v}))} />
+            )}
+            <div>
+              <Label htmlFor="tech">Technicien</Label>
+              <select id="tech" className="mt-1 w-full border rounded-md px-2 py-2 bg-background" value={filters.technicien} onChange={(e)=>setFilters(f=>({...f, technicien: e.target.value}))}>
+                <option value="">Tous</option>
+                {allTechs.map(t=> <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="statut">Statut</Label>
+              <select id="statut" className="mt-1 w-full border rounded-md px-2 py-2 bg-background" value={filters.statut} onChange={(e)=>setFilters(f=>({...f, statut: e.target.value}))}>
+                <option value="">Tous</option>
+                {allStatuses.map(s=> <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label htmlFor="from">Du</Label>
+                <Input id="from" type="date" value={filters.dateFrom} onChange={(e)=>setFilters(f=>({...f, dateFrom: e.target.value}))} />
+              </div>
+              <div>
+                <Label htmlFor="to">Au</Label>
+                <Input id="to" type="date" value={filters.dateTo} onChange={(e)=>setFilters(f=>({...f, dateTo: e.target.value}))} />
+              </div>
+            </div>
+            <div className="md:col-span-4 grid grid-cols-2 md:grid-cols-6 gap-2">
+              <Input placeholder="Poids min" value={filters.poidsMin} onChange={(e)=>setFilters(f=>({...f, poidsMin: e.target.value}))} />
+              <Input placeholder="Poids max" value={filters.poidsMax} onChange={(e)=>setFilters(f=>({...f, poidsMax: e.target.value}))} />
+              <Input placeholder="Montant min" value={filters.montantMin} onChange={(e)=>setFilters(f=>({...f, montantMin: e.target.value}))} />
+              <Input placeholder="Montant max" value={filters.montantMax} onChange={(e)=>setFilters(f=>({...f, montantMax: e.target.value}))} />
+              <Input placeholder="#contenants min" value={filters.contMin} onChange={(e)=>setFilters(f=>({...f, contMin: e.target.value}))} />
+              <Input placeholder="#contenants max" value={filters.contMax} onChange={(e)=>setFilters(f=>({...f, contMax: e.target.value}))} />
+            </div>
+            <div className="md:col-span-4 flex items-center justify-end gap-2">
+              <Button variant="secondary" onClick={resetFilters}>Réinitialiser</Button>
+              <Button onClick={()=>toast({ title: "Filtres", description: "Filtres appliqués" })}>Appliquer</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <main className="container mx-auto px-4 py-6">
+        {/* Header stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard label="Total collectes" value={stats.total} />
+          <StatCard label="Poids total" value={formatKg(stats.poids)} tone="success" />
+          <StatCard label="Montant total" value={formatFCFA(stats.montant)} tone="warning" />
+          <StatCard label="Nombre de contenants" value={stats.contenants} tone="info" />
+        </div>
+
+        <div className="mt-4 flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">{sorted.length} résultats</div>
+          <SortMenu value={sortKey} onChange={setSortKey} />
+        </div>
+
+        {/* List */}
+        <div className="mt-4 space-y-3">
+          {sorted.length === 0 ? (
+            <Card className="p-8 text-center">
+              <h3 className="text-lg font-semibold">Aucune collecte</h3>
+              <p className="text-sm text-muted-foreground mt-1">Ajustez vos filtres ou créez une nouvelle collecte.</p>
+              <div className="mt-4"><Button>Créer une collecte</Button></div>
+            </Card>
+          ) : (
+            <>
+              {sorted.slice(0, visible).map((it) => (
+                <CollecteCard key={it.id} section={activeTab} item={it} canEdit={canEdit} onOpen={(c)=>{ setCurrent(c); setOpenDetails(true); }} />
+              ))}
+              {visible < sorted.length && (
+                <div className="py-6" ref={sentinelRef}>
+                  <ListSkeleton />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </main>
+
+      <DetailsDialog open={openDetails} onOpenChange={setOpenDetails} section={activeTab} item={current} />
+    </div>
+  );
+};
+
+export default Index;
+
+
+
+
+import { useMemo } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "@/hooks/use-toast";
+import { formatFCFA, formatKg, AnyCollecte, Recolte, Scoop, Individuel, Section, Role, exportCsv, fileNameFor } from "./data";
+import { Filter, Download, MoreVertical, Copy, FileSpreadsheet, FileDown, Search, ListFilter, ChevronDown, Hash } from "lucide-react";
+
+/* Stat card */
+export function StatCard({ label, value, sublabel, tone = "muted" }: { label: string; value: string | number; sublabel?: string; tone?: "muted" | "success" | "info" | "warning"; }) {
+  const toneCls = {
+    muted: "bg-muted text-muted-foreground",
+    success: "bg-success/10 text-success",
+    info: "bg-info/10 text-info",
+    warning: "bg-warning/10 text-warning-foreground",
+  }[tone];
+  return (
+    <Card className="shadow-sm">
+      <CardContent className="p-4">
+        <div className="text-sm text-muted-foreground">{label}</div>
+        <div className="mt-1 text-2xl font-semibold tracking-tight">{value}</div>
+        {sublabel && <div className={`mt-2 inline-flex items-center rounded-md px-2 py-1 text-xs ${toneCls}`}>{sublabel}</div>}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* Multi-select popover with checkbox list */
+export function MultiSelectPopover({ label, options, values, onChange }: { label: string; options: string[]; values: string[]; onChange: (v: string[]) => void; }) {
+  const selectedLabel = values.length ? `${values.length} sélectionné(s)` : `Tous`;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="justify-between w-full">
+          <span>{label}</span>
+          <span className="text-muted-foreground flex items-center gap-1">
+            {selectedLabel}
+            <ChevronDown className="h-4 w-4" />
+          </span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64" align="start">
+        <div className="max-h-60 overflow-auto space-y-2">
+          {options.map((opt) => {
+            const checked = values.includes(opt);
+            return (
+              <div key={opt} className="flex items-center gap-2">
+                <Checkbox id={`opt-${opt}`} checked={checked} onCheckedChange={(c) => {
+                  if (c) onChange([...values, opt]); else onChange(values.filter(v => v !== opt));
+                }} />
+                <Label htmlFor={`opt-${opt}`} className="text-sm cursor-pointer">{opt}</Label>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-3 flex items-center justify-between">
+          <Button variant="secondary" size="sm" onClick={() => onChange([])}>Effacer</Button>
+          <Button variant="default" size="sm" onClick={() => toast({ title: "Filtres", description: "Options mises à jour" })}>OK</Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/* Sort menu */
+export type SortKey = "date" | "site" | "technicien" | "poids" | "montant" | "contenants" | "libelle-asc" | "libelle-desc";
+export function SortMenu({ value, onChange }: { value: SortKey; onChange: (v: SortKey) => void; }) {
+  const label = {
+    date: "Date",
+    site: "Site",
+    technicien: "Technicien",
+    poids: "Poids total",
+    montant: "Montant total",
+    contenants: "#contenants",
+    "libelle-asc": "Libellés A→Z",
+    "libelle-desc": "Libellés Z→A",
+  }[value];
+  const opts: SortKey[] = ["date", "site", "technicien", "poids", "montant", "contenants", "libelle-asc", "libelle-desc"];
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" className="gap-2"><ListFilter className="h-4 w-4" /> Trier: {label}</Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Tri</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {opts.map((k) => (
+          <DropdownMenuItem key={k} onClick={() => onChange(k)} className={k === value ? "bg-muted" : ""}>{({
+            "date": "Date",
+            "site": "Site",
+            "technicien": "Technicien",
+            "poids": "Poids total",
+            "montant": "Montant total",
+            "contenants": "#contenants",
+            "libelle-asc": "Libellés A→Z",
+            "libelle-desc": "Libellés Z→A",
+          } as Record<SortKey, string>)[k]}</DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/* Collecte card */
+export function CollecteCard({ section, item, canEdit, onOpen }: { section: Section; item: AnyCollecte; canEdit: boolean; onOpen: (c: AnyCollecte) => void; }) {
+  const sectionBadge = {
+    recoltes: "badge-recoltes",
+    scoop: "badge-scoop",
+    individuel: "badge-individuel",
+  }[section];
+  const title = section === "recoltes" ? `${item.site}` : section === "scoop" ? (item as Scoop).scoop_nom : (item as Individuel).nom_producteur;
+  const subtitle = `${new Date(item.date).toLocaleDateString('fr-FR')} • ${item.technicien || "—"}`;
+  const poids = formatKg(item.totalWeight);
+  const montant = formatFCFA(item.totalAmount);
+  const contenants = section === "recoltes" ? (item as Recolte).contenants.length : section === "scoop" ? (item as Scoop).contenants.length : (item as Individuel).contenants.length;
+
+  // summary chips (top 3)
+  const chips = useMemo(() => {
+    if (section === "recoltes") {
+      const r = item as Recolte;
+      const groups: Record<string, number> = {};
+      r.contenants.forEach((c) => { groups[c.hiveType] = (groups[c.hiveType] || 0) + 1; });
+      const arr = Object.entries(groups).sort((a,b)=>b[1]-a[1]);
+      return arr.slice(0,3).map(([k,v])=>`${k} ×${v}`);
+    }
+    if (section === "scoop") {
+      const s = item as Scoop;
+      const groups: Record<string, number> = {};
+      s.contenants.forEach((c) => { groups[c.type_miel] = (groups[c.type_miel] || 0) + 1; });
+      const arr = Object.entries(groups).sort((a,b)=>b[1]-a[1]);
+      return arr.slice(0,3).map(([k,v])=>`${k} ×${v}`);
+    }
+    const ind = item as Individuel;
+    return (ind.origines_florales || []).slice(0,3);
+  }, [item, section]);
+
+  const copy = async (text: string, label: string) => {
+    await navigator.clipboard.writeText(text);
+    toast({ title: "Copié", description: `${label} copié dans le presse-papiers` });
+  };
+
+  const sectionLabel = section === "recoltes" ? "Récoltes" : section === "scoop" ? "SCOOP" : "Individuel";
+
+  return (
+    <Card className="shadow-sm hover:shadow-md transition-shadow animate-enter">
+      <CardContent className="p-4">
+        <div className="flex items-start gap-4">
+          {/* Left: badge */}
+          <div className={`rounded-md px-2 py-1 text-xs font-medium ${sectionBadge}`}>{sectionLabel}</div>
+
+          {/* Center */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <div className="truncate">
+                <div className="text-lg font-semibold leading-tight truncate">{title}</div>
+                <div className="text-sm text-muted-foreground">{subtitle}</div>
+              </div>
+              <div className="hidden md:flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => onOpen(item)}>Détails</Button>
+                {canEdit && <Button variant="secondary" size="sm">Modifier</Button>}
+                {canEdit && <Button variant="destructive" size="sm">Supprimer</Button>}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" aria-label="Plus d'actions"><MoreVertical className="h-4 w-4" /></Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Actions rapides</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => copy(item.id, "ID collecte")}><Copy className="h-4 w-4 mr-2"/>Copier ID</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => copy(item.path, "Chemin Firestore")}><Hash className="h-4 w-4 mr-2"/>Copier chemin</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => toast({ title: "Export PDF", description: "Export PDF bientôt disponible" })}><FileDown className="h-4 w-4 mr-2"/>Exporter PDF</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => {
+                      const rows: (string|number)[][] = [["id","site","date","technicien","poids","montant","#contenants"]];
+                      rows.push([item.id, item.site, new Date(item.date).toLocaleDateString('fr-FR'), item.technicien || "—", item.totalWeight || 0, item.totalAmount || 0, contenants]);
+                      exportCsv(fileNameFor(section, item.site, new Date(item.date), item.id), rows);
+                    }}><FileSpreadsheet className="h-4 w-4 mr-2"/>Exporter CSV</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+
+            {/* Metrics */}
+            <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+              <div>
+                <div className="text-muted-foreground">Poids total</div>
+                <div className="font-medium">{poids}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Montant total</div>
+                <div className="font-medium">{montant}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">#contenants</div>
+                <div className="font-medium">{contenants}</div>
+              </div>
+            </div>
+
+            {/* Chips */}
+            {chips.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {chips.map((c) => <Badge key={c} variant="secondary">{c}</Badge>)}
+              </div>
+            )}
+
+            {/* Mobile actions */}
+            <div className="mt-3 flex md:hidden items-center gap-2">
+              <Button className="flex-1" size="sm" onClick={() => onOpen(item)}>Détails</Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm"><MoreVertical className="h-4 w-4"/></Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => copy(item.id, "ID collecte")}><Copy className="h-4 w-4 mr-2"/>Copier ID</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => copy(item.path, "Chemin Firestore")}><Hash className="h-4 w-4 mr-2"/>Copier chemin</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* Details modal */
+export function DetailsDialog({ open, onOpenChange, section, item }: { open: boolean; onOpenChange: (v: boolean) => void; section: Section; item: AnyCollecte | null; }) {
+  if (!item) return null;
+  const sectionLabel = section === "recoltes" ? "Récoltes" : section === "scoop" ? "SCOOP" : "Individuel";
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[840px]">
+        <DialogHeader>
+          <DialogTitle>Détails — {sectionLabel}</DialogTitle>
+        </DialogHeader>
+
+        {/* Global fields */}
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="ID" value={item.id} copyable />
+          <Field label="Chemin" value={item.path} copyable />
+          <Field label="Site" value={item.site} />
+          <Field label="Date" value={new Date(item.date).toLocaleString('fr-FR')} />
+          <Field label="Technicien" value={item.technicien || "—"} />
+          <Field label="Statut" value={item.statut || "—"} />
+        </div>
+
+        <Separator className="my-2" />
+        <div className="grid sm:grid-cols-3 gap-4">
+          <StatMini label="Poids total" value={formatKg(item.totalWeight)} />
+          <StatMini label="Montant total" value={formatFCFA(item.totalAmount)} />
+          <StatMini label="#contenants" value={
+            section === "recoltes" ? (item as Recolte).contenants.length : section === "scoop" ? (item as Scoop).contenants.length : (item as Individuel).contenants.length
+          } />
+        </div>
+
+        {/* Section specific */}
+        {section === "recoltes" && <RecoltesDetails item={item as Recolte} />}
+        {section === "scoop" && <ScoopDetails item={item as Scoop} />} 
+        {section === "individuel" && <IndividuelDetails item={item as Individuel} />}
+
+        {/* Footer actions */}
+        <div className="flex flex-wrap gap-2 justify-end pt-2">
+          <Button variant="outline" onClick={async () => { await navigator.clipboard.writeText(item.id); toast({ title: "Copié", description: "ID collecte copié" }); }}><Copy className="h-4 w-4 mr-2"/>Copier ID</Button>
+          <Button variant="outline" onClick={async () => { await navigator.clipboard.writeText(item.path); toast({ title: "Copié", description: "Chemin Firestore copié" }); }}><Hash className="h-4 w-4 mr-2"/>Copier chemin</Button>
+          <Button variant="secondary" onClick={() => toast({ title: "Export PDF", description: "Export PDF bientôt disponible" })}><FileDown className="h-4 w-4 mr-2"/>Export PDF</Button>
+          <Button onClick={() => {
+            const rows: (string|number)[][] = [["id","site","date","technicien","poids","montant"]];
+            rows.push([item.id, item.site, new Date(item.date).toLocaleDateString('fr-FR'), item.technicien || "—", item.totalWeight || 0, item.totalAmount || 0]);
+            exportCsv(fileNameFor(section, item.site, new Date(item.date), `${item.id}_details`), rows);
+          }}><FileSpreadsheet className="h-4 w-4 mr-2"/>Export CSV</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Field({ label, value, copyable = false }: { label: string; value: string; copyable?: boolean }) {
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="flex items-center gap-2">
+        <div className="font-medium truncate" title={value}>{value}</div>
+        {copyable && (
+          <Button variant="ghost" size="icon" onClick={async () => { await navigator.clipboard.writeText(value); toast({ title: "Copié", description: `${label} copié` }); }}>
+            <Copy className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatMini({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-lg border bg-card p-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-lg font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function RecoltesDetails({ item }: { item: Recolte }) {
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Field label="Région" value={item.region || "—"} />
+        <Field label="Province" value={item.province || "—"} />
+        <Field label="Commune" value={item.commune || "—"} />
+        <Field label="Village" value={item.village || "—"} />
+      </div>
+      {item.predominances_florales?.length ? (
+        <div className="flex flex-wrap gap-2">
+          {item.predominances_florales.map((f) => <Badge key={f} variant="secondary">{f}</Badge>)}
+        </div>
+      ) : null}
+      <div className="mt-2">
+        <div className="text-sm font-medium mb-2">Contenants</div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>#</TableHead>
+              <TableHead>Type ruche</TableHead>
+              <TableHead>Type contenant</TableHead>
+              <TableHead>Poids (kg)</TableHead>
+              <TableHead>Prix unitaire</TableHead>
+              <TableHead>Montant</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {item.contenants.map((c, idx) => (
+              <TableRow key={c.id}>
+                <TableCell>{idx + 1}</TableCell>
+                <TableCell>{c.hiveType}</TableCell>
+                <TableCell>{c.containerType}</TableCell>
+                <TableCell>{c.weight}</TableCell>
+                <TableCell>{formatFCFA(c.unitPrice)}</TableCell>
+                <TableCell>{formatFCFA(c.total)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function ScoopDetails({ item }: { item: Scoop }) {
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Field label="Nom SCOOP" value={item.scoop_nom} />
+        <Field label="Période" value={item.periode_collecte || "—"} />
+        <Field label="Qualité" value={item.qualite || "—"} />
+        <Field label="Localisation" value={item.localisation || "—"} />
+      </div>
+      <div className="mt-2">
+        <div className="text-sm font-medium mb-2">Contenants</div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>#</TableHead>
+              <TableHead>Type contenant</TableHead>
+              <TableHead>Type miel</TableHead>
+              <TableHead>Quantité (kg)</TableHead>
+              <TableHead>Prix unitaire</TableHead>
+              <TableHead>Montant</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {item.contenants.map((c, idx) => (
+              <TableRow key={`${idx}-${c.type_contenant}`}>
+                <TableCell>{idx + 1}</TableCell>
+                <TableCell>{c.type_contenant}</TableCell>
+                <TableCell>{c.type_miel}</TableCell>
+                <TableCell>{c.quantite}</TableCell>
+                <TableCell>{formatFCFA(c.prix_unitaire)}</TableCell>
+                <TableCell>{formatFCFA(c.montant_total)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function IndividuelDetails({ item }: { item: Individuel }) {
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Field label="Producteur" value={item.nom_producteur} />
+        <Field label="#contenants" value={String(item.contenants.length)} />
+      </div>
+      {item.origines_florales?.length ? (
+        <div className="flex flex-wrap gap-2">
+          {item.origines_florales.map((f) => <Badge key={f} variant="secondary">{f}</Badge>)}
+        </div>
+      ) : null}
+      <div className="mt-2">
+        <div className="text-sm font-medium mb-2">Contenants</div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>#</TableHead>
+              <TableHead>Type contenant</TableHead>
+              <TableHead>Type miel</TableHead>
+              <TableHead>Quantité (kg)</TableHead>
+              <TableHead>Prix unitaire</TableHead>
+              <TableHead>Montant</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {item.contenants.map((c, idx) => (
+              <TableRow key={`${idx}-${c.type_contenant}`}>
+                <TableCell>{idx + 1}</TableCell>
+                <TableCell>{c.type_contenant}</TableCell>
+                <TableCell>{c.type_miel}</TableCell>
+                <TableCell>{c.quantite}</TableCell>
+                <TableCell>{formatFCFA(c.prix_unitaire)}</TableCell>
+                <TableCell>{formatFCFA(c.montant_total)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+export function ListSkeleton() {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <Card key={i} className="shadow-sm">
+          <CardContent className="p-4 space-y-2">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-5 w-64" />
+            <div className="grid grid-cols-3 gap-2">
+              <Skeleton className="h-4" />
+              <Skeleton className="h-4" />
+              <Skeleton className="h-4" />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+
+
+/* Types and mock data for Collectes module */
+export type Section = "recoltes" | "scoop" | "individuel";
+
+export type Role = "admin" | "controller";
+
+export interface BaseCollecte {
+  id: string;
+  path: string; // Firestore path
+  site: string;
+  date: string; // ISO string
+  technicien?: string;
+  statut?: string;
+  totalWeight?: number;
+  totalAmount?: number;
+  containersCount?: number;
+}
+
+export interface RecolteContenant {
+  id: string;
+  hiveType: string;
+  containerType: string;
+  weight: number;
+  unitPrice: number;
+  total: number;
+}
+export interface Recolte extends BaseCollecte {
+  type: "recoltes";
+  region?: string;
+  province?: string;
+  commune?: string;
+  village?: string;
+  predominances_florales?: string[];
+  contenants: RecolteContenant[];
+}
+
+export interface ScoopContenant {
+  type_contenant: string;
+  type_miel: string;
+  quantite: number;
+  prix_unitaire: number;
+  montant_total: number;
+  predominance_florale?: string;
+}
+export interface Scoop extends BaseCollecte {
+  type: "scoop";
+  scoop_nom: string;
+  periode_collecte?: string;
+  qualite?: string;
+  localisation?: string;
+  contenants: ScoopContenant[];
+}
+
+export interface IndividuelContenant {
+  type_contenant: string;
+  type_miel: string;
+  quantite: number;
+  prix_unitaire: number;
+  montant_total: number;
+}
+export interface Individuel extends BaseCollecte {
+  type: "individuel";
+  nom_producteur: string;
+  origines_florales?: string[];
+  observations?: string;
+  contenants: IndividuelContenant[];
+}
+
+export type AnyCollecte = Recolte | Scoop | Individuel;
+
+const baseRecolte: Recolte = {
+  type: "recoltes",
+  id: "REC-001",
+  path: "Sites/Koudougou/nos_recoltes/REC-001",
+  site: "Koudougou",
+  date: "2025-08-01T08:12:00Z",
+  technicien: "Otis Malo",
+  statut: "en_attente",
+  totalWeight: 185.5,
+  totalAmount: 742000,
+  region: "Centre-Ouest",
+  province: "Boulkiemdé",
+  commune: "Koudougou",
+  village: "Koudougou",
+  predominances_florales: ["Karité", "Néré"],
+  contenants: [
+    { id: "c1", hiveType: "Kenyan Top Bar", containerType: "Bidon 30L", weight: 60.0, unitPrice: 4000, total: 240000 },
+    { id: "c2", hiveType: "Langstroth", containerType: "Bidon 20L", weight: 40.5, unitPrice: 4000, total: 162000 },
+    { id: "c3", hiveType: "Kenyan Top Bar", containerType: "Pot 1L", weight: 85.0, unitPrice: 4000, total: 340000 },
+  ],
+};
+
+const baseScoop: Scoop = {
+  type: "scoop",
+  id: "SC-20250801-01",
+  path: "Sites/Koudougou/nos_achats_scoop/SC-20250801-01",
+  site: "Koudougou",
+  date: "2025-08-01T09:00:00Z",
+  technicien: "Marie D.",
+  statut: "collecte_terminee",
+  totalWeight: 220.0,
+  totalAmount: 880000,
+  scoop_nom: "SCOOP Rucher des Pins",
+  periode_collecte: "Grande Miélliée",
+  contenants: [
+    { type_contenant: "Bidon 30L", type_miel: "Liquide", quantite: 150.0, prix_unitaire: 4000, montant_total: 600000, predominance_florale: "Acacia" },
+    { type_contenant: "Pot 1L", type_miel: "Brute", quantite: 70.0, prix_unitaire: 4000, montant_total: 280000 },
+  ],
+};
+
+const baseIndividuel: Individuel = {
+  type: "individuel",
+  id: "IND-20250801-01",
+  path: "Sites/Koudougou/nos_achats_individuels/IND-20250801-01",
+  site: "Koudougou",
+  date: "2025-08-01T10:30:00Z",
+  technicien: "Jean M.",
+  statut: "collecte_terminee",
+  totalWeight: 95.0,
+  totalAmount: 380000,
+  containersCount: 4,
+  nom_producteur: "Samba Traoré",
+  origines_florales: ["Karité", "Moringa"],
+  observations: "Qualité correcte, taux d'humidité acceptable.",
+  contenants: [
+    { type_contenant: "Bidon 20L", type_miel: "Liquide", quantite: 60.0, prix_unitaire: 4000, montant_total: 240000 },
+    { type_contenant: "Pot 1L", type_miel: "Brute", quantite: 35.0, prix_unitaire: 4000, montant_total: 140000 },
+  ],
+};
+
+function clone<T>(o: T): T { return JSON.parse(JSON.stringify(o)); }
+
+function randAround(base: number, delta: number) {
+  const v = base + (Math.random() * 2 - 1) * delta;
+  return Math.round(v * 10) / 10;
+}
+
+export function generateMockData(countPerSection = 48) {
+  const sites = ["Koudougou", "Ouagadougou", "Bobo", "Banfora", "Tenkodogo"]; 
+  const techs = ["Otis Malo", "Marie D.", "Jean M.", "Awa B.", "Idrissa K."];
+  const statuses = ["en_attente", "collecte_terminee", "brouillon"];
+
+  const recoltes: Recolte[] = [];
+  const scoop: Scoop[] = [];
+  const individuel: Individuel[] = [];
+
+  for (let i = 0; i < countPerSection; i++) {
+    // Recoltes
+    const r = clone(baseRecolte);
+    r.id = `REC-${(i + 1).toString().padStart(3, "0")}`;
+    r.path = `Sites/${sites[i % sites.length]}/nos_recoltes/${r.id}`;
+    r.site = sites[i % sites.length];
+    r.technicien = techs[i % techs.length];
+    r.statut = statuses[i % statuses.length];
+    r.date = new Date(Date.parse(baseRecolte.date) + i * 86400000).toISOString();
+    r.totalWeight = randAround(180, 40);
+    r.totalAmount = Math.round((r.totalWeight || 0) * 4000);
+    r.contenants = r.contenants.map((c, idx) => ({
+      ...c,
+      id: `${r.id}-c${idx + 1}`,
+      weight: randAround(c.weight, 15),
+      total: Math.round(randAround(c.weight, 15) * c.unitPrice),
+    }));
+    recoltes.push(r);
+
+    // Scoop
+    const s = clone(baseScoop);
+    s.id = `SC-${(20250801 + i).toString()}`;
+    s.path = `Sites/${sites[(i + 1) % sites.length]}/nos_achats_scoop/${s.id}`;
+    s.site = sites[(i + 1) % sites.length];
+    s.technicien = techs[(i + 2) % techs.length];
+    s.statut = statuses[(i + 1) % statuses.length];
+    s.date = new Date(Date.parse(baseScoop.date) + i * 86400000).toISOString();
+    s.totalWeight = randAround(220, 60);
+    s.totalAmount = Math.round((s.totalWeight || 0) * 4000);
+    s.contenants = s.contenants.map((c) => ({
+      ...c,
+      quantite: randAround(c.quantite, 25),
+      montant_total: Math.round(randAround(c.quantite, 25) * c.prix_unitaire),
+    }));
+    scoop.push(s);
+
+    // Individuel
+    const ind = clone(baseIndividuel);
+    ind.id = `IND-${(20250801 + i).toString()}`;
+    ind.path = `Sites/${sites[(i + 2) % sites.length]}/nos_achats_individuels/${ind.id}`;
+    ind.site = sites[(i + 2) % sites.length];
+    ind.technicien = techs[(i + 3) % techs.length];
+    ind.statut = statuses[(i + 2) % statuses.length];
+    ind.date = new Date(Date.parse(baseIndividuel.date) + i * 86400000).toISOString();
+    ind.totalWeight = randAround(95, 30);
+    ind.totalAmount = Math.round((ind.totalWeight || 0) * 4000);
+    ind.containersCount = Math.floor(randAround(4, 2));
+    ind.contenants = ind.contenants.map((c) => ({
+      ...c,
+      quantite: randAround(c.quantite, 15),
+      montant_total: Math.round(randAround(c.quantite, 15) * c.prix_unitaire),
+    }));
+    individuel.push(ind);
+  }
+
+  return { recoltes, scoop, individuel };
+}
+
+export function formatFCFA(n?: number) {
+  if (n == null) return "—";
+  return new Intl.NumberFormat('fr-FR').format(n) + " FCFA";
+}
+
+export function formatKg(n?: number) {
+  if (n == null) return "—";
+  return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(n)} kg`;
+}
+
+export function exportCsv(filename: string, rows: (string | number)[][]) {
+  const csv = rows.map(r => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function fileNameFor(section: Section, site: string, date: Date, suffix = "list") {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const ts = Date.now();
+  return `${section}_${site || 'multi'}_${y}${m}${d}_${suffix}_${ts}.csv`;
+}
+
+
+fait le en flutter mais fait tout pour que ce soit extrèmement responsive sur mobile en gerer au max les eureurs et les overflow possible !!!
